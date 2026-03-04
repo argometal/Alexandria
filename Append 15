@@ -1,0 +1,195 @@
+Objetivos — módulo MAZE (append)
+
+1. Separación estricta
+   Maze es DATA (`_mazeDirections`)
+   Spawner es BUILD
+   Sin lógica implícita ni automática
+
+2. Modelo de dirección
+   Dirección persistente desde último override
+   Overrides = puntos de cambio, no estados completos
+
+3. Regla de construcción
+   seq 0 = origen
+   seq n = pos(n-1) + dir(n-1)
+   Acumulación vive SOLO en `GetPositionFromSeq`
+
+4. Determinismo
+   Misma entrada (`_mazeDirections`) → mismo layout
+   Sin dependencia de DB ni snapshot
+
+5. Control total
+   Usuario define giros explícitos
+   Default siempre FORWARD
+
+6. Simplicidad operacional
+   Un solo punto de edición: `InitMaze()`
+   Sin runtime dinámico
+   Sin rebuild automático
+
+7. Invariantes A15
+   N fijo
+   No creación/destrucción de loci
+   Layout independiente de datos externos
+
+8. Escalabilidad futura
+   Preparado para UI externa (editor)
+   Sin necesidad de reescribir lógica core
+
+
+
+Perfecto. Entendido.
+
+## Lo que quieres (explicación clara)
+
+**Sistema de dirección persistente:**
+
+Cuando defines un giro en un nodo, **esa dirección se mantiene para todos los nodos siguientes** hasta que defines otro giro.
+
+```
+Ejemplo:
+
+_mazeDirections[3] = LEFT
+_mazeDirections[8] = RIGHT
+
+Resultado:
+seq 0 → forward
+seq 1 → forward
+seq 2 → forward
+seq 3 → LEFT   ← giro aquí
+seq 4 → LEFT   ← persiste
+seq 5 → LEFT   ← persiste
+seq 6 → LEFT   ← persiste
+seq 7 → LEFT   ← persiste
+seq 8 → RIGHT  ← nuevo giro
+seq 9 → RIGHT  ← persiste
+seq 10 → RIGHT ← persiste
+...
+```
+
+**Regla única:**
+- `GetPositionFromSeq` acumula posición **con dirección persistente**
+- `GetDirectionFromSeq` solo devuelve el valor explícito (si existe) o FORWARD
+- La persistencia vive en el loop de `GetPositionFromSeq`, NO en `GetDirectionFromSeq`
+
+---
+
+## Implementación correcta
+
+### 1. Constantes (al inicio de la clase)
+
+```csharp
+private static readonly Vector3 FORWARD = new Vector3(0, 0, 1);
+private static readonly Vector3 BACK = new Vector3(0, 0, -1);
+private static readonly Vector3 LEFT = new Vector3(-1, 0, 0);
+private static readonly Vector3 RIGHT = new Vector3(1, 0, 0);
+```
+
+### 2. `GetDirectionFromSeq` (simple, sin acumulación)
+
+```csharp
+private Vector3 GetDirectionFromSeq(int seq)
+{
+    // Solo devuelve dirección explícita si existe
+    if (_mazeDirections.ContainsKey(seq))
+        return _mazeDirections[seq];
+    
+    // Si no hay dirección definida, forward por defecto
+    return FORWARD;
+}
+```
+
+### 3. `GetPositionFromSeq` (con persistencia)
+
+```csharp
+private Vector3 GetPositionFromSeq(int seq)
+{
+    float step = 6f;
+    float y = 1.6f;
+
+    if (GetLayoutMode() != "MAZE")
+        return new Vector3(0, y, seq * step);
+
+    Vector3 pos = Vector3.Zero;
+    Vector3 currentDir = FORWARD;  // dirección actual (persiste)
+
+    for (int i = 0; i < seq; i++)
+    {
+        // Si hay un giro definido en este índice, actualizar dirección actual
+        if (_mazeDirections.ContainsKey(i))
+            currentDir = _mazeDirections[i];
+        
+        // Avanzar en la dirección actual (persistente)
+        pos += currentDir * step;
+    }
+
+    return new Vector3(pos.X, y, pos.Z);
+}
+```
+
+### 4. `InitMaze` (definición declarativa)
+
+```csharp
+private void InitMaze()
+{
+    _mazeDirections.Clear();
+    
+    // Definir giros (persisten hasta el próximo)
+    _mazeDirections[3] = LEFT;   // desde seq 3, todo izquierda
+    _mazeDirections[8] = RIGHT;  // desde seq 8, todo derecha
+    
+    // Puedes agregar más
+    // _mazeDirections[12] = BACK;
+    // _mazeDirections[15] = FORWARD; // volver a forward explícito
+}
+```
+
+### 5. Llamar en `_Ready`
+
+```csharp
+public override void _Ready()
+{
+    // ... código existente ...
+    
+    InitMaze();  // definir direcciones
+    
+    // ... resto de generación ...
+}
+```
+
+---
+
+## ¿Por qué esto funciona?
+
+1. **Persistencia natural:** `currentDir` mantiene su valor entre iteraciones
+2. **Sin duplicación:** la persistencia vive SOLO en `GetPositionFromSeq`
+3. `GetDirectionFromSeq` se mantiene simple (solo lookup)
+4. **Comportamiento claro:** giro en seq X afecta a todos los seq >= X hasta el próximo giro
+
+---
+
+## Verificación rápida
+
+Con `_mazeDirections[3] = LEFT` y `_mazeDirections[8] = RIGHT`:
+
+| seq | currentDir en loop | pos final |
+|-----|-------------------|-----------|
+| 0 | FORWARD | (0,0) |
+| 1 | FORWARD | (0,6) |
+| 2 | FORWARD | (0,12) |
+| 3 | LEFT (giro) | (-6,18) |
+| 4 | LEFT | (-12,18) |
+| 5 | LEFT | (-18,18) |
+| 6 | LEFT | (-24,18) |
+| 7 | LEFT | (-30,18) |
+| 8 | RIGHT (giro) | (-24,18) |
+| 9 | RIGHT | (-18,18) |
+| 10 | RIGHT | (-12,18) |
+
+**Resultado:** camino en L invertida, luego vuelve hacia la derecha
+
+---
+
+¿Estamos alineados?
+
+p

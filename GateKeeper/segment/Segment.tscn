@@ -1,0 +1,28 @@
+[gd_scene format=3 uid="uid://bprqfqn5uetq6"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4kqji"]
+albedo_color = Color(0.7019608, 0.6509804, 1, 1)
+
+[sub_resource type="PlaneMesh" id="1"]
+size = Vector2(6, 5)
+
+[sub_resource type="PlaneMesh" id="2"]
+size = Vector2(6, 5)
+
+[sub_resource type="QuadMesh" id="3"]
+size = Vector2(5, 3.2)
+
+[node name="Segment" type="Node3D" unique_id=185158412]
+
+[node name="Floor" type="MeshInstance3D" parent="." unique_id=1609236283]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.5)
+material_override = SubResource("StandardMaterial3D_4kqji")
+mesh = SubResource("1")
+
+[node name="Ceiling" type="MeshInstance3D" parent="." unique_id=1942288594]
+transform = Transform3D(-1, 8.742278e-08, 0, -8.742278e-08, -1, 0, 0, 0, 1, 0, 3.2, 2.5)
+mesh = SubResource("2")
+
+[node name="WallPath" type="MeshInstance3D" parent="." unique_id=1789570085]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 3, 1.6, 2.5)
+mesh = SubResource("3")

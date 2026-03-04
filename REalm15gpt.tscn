@@ -1,0 +1,34 @@
+[gd_scene format=3 uid="uid://povawin1bxol"]
+
+[ext_resource type="Environment" uid="uid://c6rf5ntanj50u" path="res://env/raz_environment.tres" id="1_bax7v"]
+[ext_resource type="PackedScene" uid="uid://bprqfqn5uetq6" path="res://segment/Segment.tscn" id="2_golwa"]
+[ext_resource type="Script" uid="uid://18aqr6yatrci" path="res://CameraRig.cs" id="2_lqny5"]
+[ext_resource type="Script" uid="uid://btxivp8i62ls2" path="res://RealmController.cs" id="3_rc"]
+[ext_resource type="PackedScene" uid="uid://dwyybiuvpk5bm" path="res://FrameTemplate.tscn" id="4_8agoh"]
+[ext_resource type="Script" uid="uid://da2uxug8tq51l" path="res://Spawner.cs" id="5_hfvsv"]
+
+[node name="Realm" type="Node3D" unique_id=1916784824]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=178147848]
+environment = ExtResource("1_bax7v")
+
+[node name="Parcour" type="Node3D" parent="." unique_id=1398265088]
+
+[node name="Segment" parent="Parcour" unique_id=185158412 instance=ExtResource("2_golwa")]
+
+[node name="Frames" type="Node3D" parent="." unique_id=1861885583]
+
+[node name="FrameTemplate" parent="Frames" unique_id=1939345774 instance=ExtResource("4_8agoh")]
+
+[node name="CameraRig" type="Node3D" parent="." unique_id=1209265259]
+script = ExtResource("2_lqny5")
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=375757673]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 1.6, 0)
+current = true
+
+[node name="Spawner" type="Node3D" parent="." unique_id=1318543823]
+script = ExtResource("5_hfvsv")
+
+[node name="RealmController" type="Node" parent="." unique_id=1373288692]
+script = ExtResource("3_rc")

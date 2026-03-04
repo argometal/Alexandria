@@ -1,0 +1,27 @@
+
+Commits
+
+cd C:\Tools\bridge
+git init
+git add .
+git commit -m "bridge v1 working: send reader upload mobile ui basic"
+
+app general
+ip
+
+node server.js
+
+& "C:\node-v24.14.0-win-x64\node.exe" node_modules\next\dist\bin\next dev --webpack
+
+==========================================================================
+====
+Abrir 
+C:\Tools\bridge
+
+ generar power shell con comando below 
+tools
+& "C:\Tools\node\node.exe" server.js
+==========================================================================
+iPhone:
+
+http://192.168.1.73:4000

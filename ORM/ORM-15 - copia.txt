@@ -1,0 +1,4452 @@
+1. Core Rules (KEY, jerarquía, invariantes)
+
+Sí. Entonces la explicación correcta no depende de archivos, sino de **topología**.
+
+**Red 3D de 14 → 15**
+
+En 14, la red 3D tenía esta lógica:
+
+* **World** = superficie espacial principal
+* **Parcour** = corredor de navegación
+* **Frames** = estaciones visibles del recorrido
+* cada frame = **puerta**
+* al entrar por una puerta, accedes a un **espacio interno**
+* dentro de ese espacio interno existen **slots/objects** que también pueden crecer
+
+Lo importante es esto:
+
+**14 no era solo un corredor con contenido.**
+Era una red de:
+
+**corredor principal → puertas → interior estructurado**
+
+---
+
+En 15, esa lógica **no debe perderse**.
+Solo cambia el nombre y la autoridad estructural.
+
+Entonces la traducción correcta es:
+
+* **World** desaparece como nombre central
+* **Realm** toma ese lugar
+* **Parcour** sigue siendo el recorrido visible
+* **Frame/Locus** sigue siendo el nodo de entrada
+* **Room/Object** sigue siendo el interior del nodo
+* **Warp** agrega conectividad transversal entre partes de la red
+
+---
+
+La forma más clara de verlo es así:
+
+### A14
+
+**World**
+→ contiene parcour
+→ parcour contiene frames
+→ frame abre room
+→ room contiene objects
+
+### A15
+
+**Realm**
+→ contiene parcour(s)
+→ parcour contiene locus-frames
+→ cada locus-frame abre su espacio interno
+→ el espacio interno contiene objects / slots
+→ warp conecta nodos entre recorridos o realms
+
+---
+
+Entonces el cambio **no es**:
+
+“antes había red 3D y ahora solo hay contenido”
+
+El cambio real es:
+
+“antes la red estaba pensada como world + rooms; ahora la misma red se reordena como realm + parcour + locus + object + warp”
+
+---
+
+### Qué se conserva de 14
+
+1. **La navegación horizontal**
+   Sigues recorriendo una línea o secuencia visible de nodos.
+
+2. **La lógica de puerta**
+   Un nodo visible no es solo contenido; es acceso a otra profundidad.
+
+3. **La interioridad**
+   Cada nodo puede tener estructura interna propia.
+
+4. **La posibilidad de expansión**
+   La red no es plana.
+
+---
+
+### Qué cambia en 15
+
+1. **Realm sustituye a World**
+   Ahora el contenedor superior es realm.
+
+2. **Locus se vuelve la unidad central**
+   Ya no “room” como entidad separada obligatoria del modelo antiguo.
+   El locus es el nodo evaluable/estructural.
+
+3. **Object queda como capa interna**
+   Object ya no compite con el corredor; vive dentro del locus.
+
+4. **Warp formaliza conexiones transversales**
+   Antes podían sentirse como saltos implícitos.
+   Ahora son parte de la arquitectura.
+
+---
+
+### Lectura espacial correcta
+
+La red 3D de Alexandria no es solo una fila de frames.
+
+Es una red de tres movimientos:
+
+* **avance** por parcour
+* **profundidad** al entrar a un locus
+* **salto transversal** por warp
+
+Eso es lo que 15 debe heredar de 14.
+
+---
+
+### Fórmula simple
+
+**14 enseñó la geometría.**
+**15 reorganiza la ontología.**
+
+O más directo:
+
+**14 definió cómo se recorre.**
+**15 define qué es cada cosa dentro de ese recorrido.**
+
+---
+
+### Modelo final que debes defender
+
+**Realm = mundo navegable actual**
+**Parcour = secuencia visible**
+**Locus = nodo/puerta/unidad central**
+**Object = capa interna del locus**
+**Warp = conexión transversal entre nodos o realms**
+
+---
+
+Si quieres seguir afinándolo, el siguiente paso útil es separar en una sola hoja:
+
+**topología espacial**
+vs
+**autoridad de datos**.
+
+
+
+[DECISION METHOD — A15 (MANDATORY)]
+
+Objective:
+
+- prevent architectural drift
+- eliminate reactive coding
+- ensure decisions are validated before implementation
+
+PHASE 1 — OBSERVE
+- analyze current behavior (render, logs, scene)
+- identify REAL symptom (not assumption)
+- confirm with evidence (screen, logs, code)
+
+Rule:
+- no changes allowed in this phase
+
+PHASE 2 — ISOLATE
+- determine source of issue:
+  - Spawner
+  - FrameTemplate
+  - Snapshot
+  - Scene structure
+- validate against ORM contracts
+
+Rule:
+- if conflict with ORM → ORM is source of truth
+- if ORM unclear → update ORM BEFORE coding
+
+PHASE 3 — REFERENCE (CONTROLLED)
+- review legacy ONLY as conceptual reference
+- extract valid patterns (layout, flow)
+- reject:
+  - DB access
+  - __SLOT_
+  - seed logic
+
+Rule:
+- legacy NEVER copied, only abstracted
+
+PHASE 4 — DECISION
+- define single approach
+- validate:
+  - ORM consistency
+  - separation of responsibilities
+  - deterministic behavior
+
+Rule:
+- no parallel approaches
+
+PHASE 5 — SIMPLIFICATION
+- reduce to minimal viable logic
+- remove duplicated sources of truth
+
+Rule:
+- simplest working model wins
+
+PHASE 6 — IMPLEMENTATION
+- ONE change per step
+- MUST include:
+  - exact anchor
+  - BEFORE
+  - AFTER
+
+Rule:
+- if BEFORE not found → STOP
+
+PHASE 7 — VALIDATION
+- verify:
+  - render
+  - logs
+  - ORM alignment
+
+Rule:
+- unexpected result → return to PHASE 1
+
+CRITICAL RULES:
+
+- NO coding without decision
+- NO decision without reference
+- NO reference without isolation
+- ORM must be updated BEFORE coding
+
+ANCHOR RULE (MANDATORY):
+
+- every change MUST include:
+  - exact anchor (copy-paste literal)
+  - BEFORE / AFTER block
+- vague references (e.g. “arriba”, “cerca”) → INVALID
+
+OBJECTIVE:
+
+- stable A15 evolution
+- eliminate chaotic iteration
+- enforce deterministic development
+
+[COMMIT PROCEDURE — HARD BLOCK -ENFORCEMENT]
+
+The allowed workflow is strictly:
+
+git status
+git add .
+git commit -m "iteration short-title — key change — secondary change"
+git tag -a vXX_feature_name -m "vXX_feature_name"
+git log --oneline --decorate -5
+git push
+git push --tags
+
+Rule
+
+[LOCUS — DEFINICIÓN ÚNICA (A15)]
+
+LOCUS es la única unidad estructural del sistema.
+
+DEFINICIÓN:
+
+LOCUS =
+posición estructural donde una unidad de significado puede ser accedida, recorrida y conectada.
+
+PROPIEDADES:
+
+- tiene KEY único e inmutable
+- contiene contenido (body, images, hint, etc.)
+- puede relacionarse con otros LOCUS (KEY ↔ KEY)
+
+REGLAS:
+
+- NO existen tipos de locus (room, object, parcour prohibidos)
+- toda entidad es LOCUS
+- no existe entidad intermedia
+
+JERARQUÍA (emergente, no explícita):
+
+- parentKey define relación
+- seq define orden
+- nivel se interpreta por relaciones, no por tipo
+
+INTERPRETACIÓN DE NIVELES:
+
+- “object” = LOCUS con baja granularidad
+- “locus” = LOCUS estándar
+- “parcour” = secuencia de LOCUS
+- “locus parcour” = LOCUS que sintetiza una secuencia
+
+REGLA CRÍTICA:
+
+- la diferencia entre niveles NO es estructural
+- es cognitiva (densidad / síntesis)
+
+PROHIBIDO:
+
+- crear clases separadas:
+  - Room
+  - Object
+  - Parcour
+- lógica condicional por tipo de locus
+
+OBJETIVO:
+
+- eliminar fragmentación conceptual
+- unificar modelo bajo KEY
+- permitir que el contexto emerja de relaciones
+
+[A15 NAMING RULE — CLEAN]
+
+OBJETIVO:
+
+- evitar colisión con A14
+- evitar colisión con A12 (LB)
+- mantener nombres mínimos
+- no introducir nuevas capas semánticas
+
+---
+
+REGLA:
+
+se mantienen nombres base del sistema (GK A15):
+
+- Realm
+- Parcour
+- Frames
+- Spawner
+- FrameTemplate
+- RealmController
+- CameraRig
+
+---
+
+PROHIBIDO (GLOBAL):
+
+- usar nombres exactos de A14:
+  - LocusSpawner
+  - ViewerMin
+  - Frame01
+  - CorridorSpawner
+  - cualquier *-14
+
+---
+
+PROHIBIDO (LB / A12):
+
+- usar nombres genéricos que colisionen con runtime GK:
+  - main
+  - app
+  - viewer
+  - spawner
+  - controller
+
+LB debe usar nombres propios de su módulo
+(no compartidos con GK)
+
+---
+
+ACLARACIÓN:
+
+- “FrameTemplate” sigue siendo válido
+- el conflicto real era:
+  - LocusSpawner (A14)
+  - ViewerMin (A14)
+  - main/app (A12)
+
+---
+
+REGLA CRÍTICA:
+
+- GK y LB no deben compartir nombres de entrada
+- si un nombre puede ser interpretado como:
+  - runtime GK
+  - o engine LB
+→ INVALID
+
+---
+
+OBJETIVO:
+
+- estabilidad
+- claridad entre motores
+- cero fricción
+- evitar contaminación silenciosa
+
+
+[LEGACY ENFORCEMENT DISCRIMINATION — HARD BLOCK]
+
+DEFINICIÓN:
+
+- Cualquier archivo con sufijo "-14" = LEGACY
+- LEGACY = NO EJECUTABLE, NO MODIFICABLE, NO DEBUGGEABLE
+
+ALCANCE:
+
+- escenas (.tscn)
+- scripts (.cs)
+- flutter (.dart / yaml)
+- cualquier recurso asociado
+
+PROHIBIDO:
+
+- cargar escenas -14 en runtime
+- asignar scripts -14 a nodos activos
+- copiar lógica parcial desde -14
+- conectar señales desde -14
+- usar paths de -14 en código
+
+DETECCIÓN OBLIGATORIA (ANTES DE CODING):
+
+- si path contiene "-14" → ABORTAR
+- si escena referencia "-14" → INVALIDA
+- si script activo proviene de "-14" → ERROR CRÍTICO
+
+REGLA DE ORO:
+
+- LEGACY NO SE DEBUGGEA
+- LEGACY NO SE CORRIGE
+- LEGACY NO SE EXTIENDE
+- LEGACY SOLO SE LEE COMO REFERENCIA
+
+OBJETIVO:
+
+- eliminar confusión de runtime
+- evitar contaminación entre A14 y A15
+- garantizar que A15 nace limpio
+
+VALIDACIÓN:
+
+- runtime A15 debe contener CERO referencias a "-14"
+- si existe UNA → sistema inválido
+
+LOG REQUERIDO:
+
+- [SYSTEM][LEGACY_DETECTED] path=...
+- [SYSTEM][ABORT_EXECUTION]
+
+FIN
+
+[LEGACY FILES — A14]
+
+[LEGACY FILES — A14]
+
+All files suffixed with "-14" are LEGACY.
+
+[LEGACY OVERRIDE — CRITICAL]
+
+- Cualquier archivo marcado por el usuario como LEGACY queda fuera de alcance absoluto
+
+EXPLICIT LOCK (A15):
+
+- LocusSpawner.cs = LEGACY ABSOLUTO
+- ViewerMin.cs = LEGACY ABSOLUTO
+
+REGLAS:
+
+- NO se analiza para diagnóstico
+- NO se usa como evidencia de estado del sistema
+- NO se cita en decisiones
+- NO se toma como referencia de comportamiento actual
+
+ENFORCEMENT:
+
+- si aparece en análisis → INVALID
+- si se usa como base → INVALID
+
+OBJETIVO:
+
+- eliminar contaminación cognitiva total
+- evitar regresión a lógica A14
+
+REGLAS:
+
+- NO se modifica
+- NO se refactoriza
+- NO se usa como base directa de implementación
+- SOLO lectura para referencia conceptual
+
+ENFORCEMENT:
+
+- si un cambio propone modificar estos archivos → INVALID
+- si runtime depende de estos archivos → INVALID
+
+Examples:
+- World-14
+- Frame01-14
+- CorridorSpawner-14
+- ViewerMin-14
+- AlexandriaPaths-14
+- main-14.dart
+- pubspec-14.yaml
+
+RULES:
+
+- Legacy files are NOT part of A15 runtime
+- Legacy files MUST NOT define behavior
+- Legacy files are reference only (read-only)
+- A15 must NOT depend on any -14 file
+
+ENFORCEMENT:
+
+- If a feature depends on -14 → INVALID
+- All new logic must exist in A15 only
+
+Ajuste real (añadir debajo de LEGACY RULE):
+[LEGACY LOGIC BLOCK]
+
+DEFINICIÓN:
+
+Se considera LEGACY cualquier implementación que use:
+- __SLOT_ (No implementar)
+- seed / entryState
+- acceso directo a SQLite desde GK
+- lógica fuera de RealmController
+
+REGLAS:
+
+- aplica incluso si el archivo NO tiene sufijo -14
+- NO se permite en runtime A15
+- NO se reutiliza lógica
+- NO se debuggea
+
+ENFORCEMENT:
+
+- si se detecta → INVALID SYSTEM
+- log requerido:
+  [SYSTEM][LEGACY_LOGIC_DETECTED]
+
+OBJETIVO:
+
+bloquear contaminación conceptual (no solo archivos)
+
+
+* “Antes de cualquier análisis de código: validar si archivo ∈ LEGACY”
+* “Si LEGACY → ignorar completamente para decisiones”
+
+[LEGACY ANALYSIS BLOCK — HARD]
+
+- archivos LEGACY solo pueden usarse como:
+  - referencia histórica
+  - comparación conceptual
+
+PROHIBIDO:
+
+- usar lógica LEGACY para:
+  - diagnóstico actual
+  - decisiones de arquitectura
+  - propuestas de cambio
+  - validación de comportamiento
+
+REGLA:
+
+- si una propuesta depende de lógica LEGACY → INVALID
+- si un diagnóstico usa LEGACY como fuente principal → INVALID
+
+OBJETIVO:
+
+- separar referencia vs implementación real
+- eliminar contaminación cognitiva durante análisis
+
+
+[LEGACY OVERRIDE — MANUAL]
+
+DEFINICIÓN:
+
+cualquier archivo puede ser marcado como LEGACY por decisión del usuario
+
+REGLAS:
+
+override manual tiene prioridad absoluta
+
+si usuario marca LEGACY → se excluye del runtime
+
+no se evalúa nombre ni lógica después del override
+
+Verificación:
+
+permite clasificar LocusSpawner y ViewerMin como LEGACY sin ambigüedad
+
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+[CRITICAL RULE — ORM PERSISTENCE]
+
+- Toda lógica crítica DEBE copiarse y pegarse en el ORM
+- Ninguna decisión estructural puede vivir solo en código o chat
+- Si una lógica afecta:
+  * render
+  * snapshot
+  * integridad (KEY, seq, parent)
+  * bridge LB↔GK
+  → ES OBLIGATORIO documentarla en el ORM
+
+REGLAS:
+- si no está en ORM → no existe
+- ORM es única fuente de verdad
+- código debe seguir ORM, no al revés
+- cada cambio crítico → actualizar ORM antes de continuar
+
+ENFORCEMENT:
+- antes de implementar → validar contra ORM
+- después de fallo → documentar causa en ORM
+- handoff entre chats → basado en ORM, no memoria
+
+OBJETIVO:
+eliminar pérdida de contexto y desviaciones entre iteraciones
+
+================================================================================================================================================================================================
+
+
+
+2. Data Model (entries + assets reales) 
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+STRUCTURAL MODEL — A15 (FROM ZERO)
+
+CORE PRINCIPLE:
+
+- Only real entries exist
+- No preallocated structure
+- No slots
+- No placeholders
+
+IDENTITY:
+
+- KEY = unique, immutable
+- All relations are KEY → KEY
+
+CREATION:
+
+- Entry exists only when created
+- No implicit rows
+- No structural seeds
+
+---
+
+[LB CREATE LOCUS — A15]
+
+[LAYOUT STORAGE — A15 EXTENSION]
+
+NUEVOS CAMPOS (DB):
+
+- posX REAL
+- posY REAL
+- posZ REAL
+
+- rotX REAL
+- rotY REAL
+- rotZ REAL
+
+- layoutMode TEXT
+  valores:
+  - "runtime"
+  - "baked"
+
+REGLAS:
+
+- por defecto:
+  layoutMode = "runtime"
+
+- si layoutMode = "runtime":
+  pos/rot = NULL
+  GK calcula layout
+
+- si layoutMode = "baked":
+  pos/rot deben existir
+  GK NO calcula layout
+
+---
+
+TRANSICIÓN:
+
+CAPTURE:
+
+- sistema escribe pos/rot en DB
+- cambia layoutMode → "baked"
+
+---
+
+GK CONTRACT:
+
+if layoutMode == "baked":
+    usar DB.pos/rot
+
+if layoutMode == "runtime":
+    usar lógica Spawner
+
+---
+
+PROHIBIDO:
+
+- mezclar runtime y baked en mismo nivel
+- pos/rot parciales
+
+---
+
+OBJETIVO:
+
+- persistir arquitectura 3D
+- habilitar replay determinista
+
+INPUT:
+
+- title (usuario)
+- parentKey (contexto actual)
+
+GENERACIÓN:
+
+- KEY:
+  UUID único (inmutable)
+
+- seq:
+
+  SELECT MAX(seq) FROM entries WHERE parentKey = X
+
+  if null → seq = 0  
+  else → seq = max + 1
+
+---
+
+INSERT:
+
+- key
+- title
+- parentKey
+- seq
+- createdAt
+- updatedAt
+- version = 1
+- layer = raw
+
+---
+
+REGLAS:
+
+- LB es el ÚNICO que puede crear entries
+- seq SIEMPRE es incremental (sin huecos)
+- GK NUNCA crea estructura
+
+---
+
+CONSECUENCIA:
+
+- orden estable
+- render determinista
+- no reordenamiento en GK
+
+---
+
+PROHIBIDO:
+
+- insertar con seq manual
+- recalcular seq en GK
+- reindexado automático en runtime
+
+---
+
+OBJETIVO:
+
+- garantizar consistencia estructural
+- evitar corrupción por orden
+- mantener DB como única verdad
+
+HIERARCHY:
+
+- parentKey defines relation
+- seq defines order
+- if no entry → nothing exists
+
+GATEKEEPER:
+
+- renders only existing entries
+- no fallback generation
+- no structural assumptions
+
+RESULT:
+
+- DB defines reality
+- snapshot defines render
+- runtime is deterministic
+
+
+
+ROOT
+- Realm (Node3D)
+
+CHILDREN (orden fijo)
+
+[0] WorldEnvironment
+- type: WorldEnvironment
+- path: Realm/WorldEnvironment
+- must_be_first_child = true
+- unique = true
+- runtime_creation = false
+
+[1] Parcour
+- type: Node3D
+- path: Realm/Parcour
+- static geometry only
+
+  children:
+  - Floor (MeshInstance3D)
+  - Ceiling (MeshInstance3D)
+  - WallPath (MeshInstance3D)
+
+[2] Frames
+- type: Node3D
+- path: Realm/Frames
+- dynamic container
+
+  template:
+  - FrameTemplate (Node3D)
+    path: Realm/Frames/FrameTemplate
+
+    children:
+    - Mesh (MeshInstance3D)
+    - ClickArea (Area3D)
+    - Cover (Sprite3D)
+
+[3] CameraRig
+- type: Node3D
+- path: Realm/CameraRig
+
+[EVENT CONTRACT — A15]
+
+FrameTemplate (instancia dinámica):
+- emite evento: OnFrameSelected(KEY)
+- NO ejecuta navegación
+- NO escribe bridge
+
+[NAVIGATION EXECUTION — A15]
+
+EVENT:
+
+FrameTemplate → emit FrameSelected(key)
+
+RealmController recibe:
+:contentReference[oaicite:1]{index=1}
+
+OnFrameSelected(key)
+
+---
+
+---
+
+ACCIÓN DEFINIDA:
+
+1. escribir bridge:
+
+C:\Alexandria\data\bridge\open_key.txt = key
+
+2. escribir return:
+
+return_frame_key.txt = key
+
+3. solicitar refresh:
+
+refresh_now.txt
+
+---
+
+NAVEGACIÓN — A15 (UNIFICADA Y CORREGIDA)
+
+PRINCIPIO:
+
+- TODA navegación se resuelve por KEY
+- TODA navegación genera snapshot
+
+---
+
+REGLA ÚNICA:
+
+click en frame →
+
+→ open_key.txt = KEY
+→ LB genera snapshot con:
+   parentKey = KEY
+→ GK rebuild completo
+
+---
+
+INTERPRETACIÓN:
+
+- PARCOUR:
+  snapshot muestra LOCUS (frames principales)
+
+- ROOM:
+  snapshot muestra LOCUS internos (antes “objects”)
+
+---
+
+REGLA CRÍTICA:
+
+- NO existen modos de navegación distintos
+- NO existe navegación sin snapshot
+
+---
+
+TOPOLOGÍA:
+
+- horizontal vs profundidad
+  → es INTERPRETACIÓN espacial en GK
+  → NO cambia el mecanismo
+
+---
+
+RENDER:
+
+Spawner:
+- siempre reconstruye desde snapshot
+- no distingue niveles
+
+---
+
+OBJETIVO:
+
+- eliminar ambigüedad
+- unificar comportamiento
+- mantener A14 en geometría, A15 en datos
+
+---
+
+2) NAVEGACIÓN EN PROFUNDIDAD (LOCUS)
+
+→ NO cambia nivel estructural inmediato
+→ representa entrada a interior del nodo
+
+- LB:
+  puede generar snapshot del mismo nivel o preparar contenido interno
+
+- GK:
+  puede cambiar representación espacial (interior)
+  SIN cambiar el sistema de snapshot base
+
+---
+
+REGLA CRÍTICA:
+
+NO todo click implica cambio de snapshot
+
+---
+
+INTERPRETACIÓN:
+
+- parcour = navegación secuencial (snapshot)
+- locus = puerta a profundidad (representación distinta)
+
+---
+
+RENDER:
+
+Spawner:
+- NO decide navegación
+- SOLO reconstruye cuando snapshot cambia
+
+---
+
+REGLAS ACTUALIZADAS:
+
+- ChangeScene puede ser usado SOLO como representación (no navegación estructural)
+- snapshot sigue siendo la única fuente estructural
+- topología 3D (corredor vs interior) es responsabilidad de GK
+
+---
+
+OBJETIVO:
+
+- preservar lógica de palacio de memoria (A14)
+- mantener modelo estructural A15 (KEY + snapshot)
+- eliminar colapso incorrecto de navegación
+
+---
+
+
+
+OBJETIVO:
+
+- eliminar cambio de escena (error de 14)
+- navegación determinista
+- mantener continuidad espacial
+
+
+[RETURN FLOW — A15]
+
+DEFINICIÓN:
+
+- la posición del usuario se define SOLO por KEY
+
+---
+
+FLUJO:
+
+1. usuario selecciona frame (KEY)
+
+2. RealmController escribe:
+
+- open_key.txt = KEY
+- return_frame_key.txt = KEY
+
+3. LB:
+
+- detecta open_key.txt
+- genera snapshot con:
+  parentKey = KEY
+
+4. GK:
+
+- rebuild completo
+
+---
+
+RETORNO:
+
+al reiniciar o volver:
+
+1. GK lee:
+
+return_frame_key.txt
+
+2. LB genera snapshot donde:
+
+parentKey = parent del KEY
+
+3. GK reconstruye
+
+4. Spawner:
+
+- identifica frame con KEY
+- posiciona foco/cámara en ese frame
+
+---
+
+REGLAS:
+
+- NO coordenadas
+- NO transform persistente
+- SOLO KEY
+
+---
+
+PROHIBIDO:
+
+- guardar posición de cámara
+- guardar posición física de frame
+- reconstrucción parcial
+
+---
+
+OBJETIVO:
+
+- navegación determinista
+- independencia de layout
+- consistencia entre sesiones
+
+---
+
+RESULTADO:
+
+- mismo KEY → misma posición lógica
+- sistema robusto a cambios de layout
+
+[FOCUS RULE — A15]
+
+DEFINICIÓN:
+
+- tras cada rebuild, GK debe enfocar el frame correspondiente al KEY activo
+
+---
+
+INPUT:
+
+- KEY objetivo:
+  - desde open_key (navegación)
+  - desde return_frame_key (retorno)
+
+---
+
+FLUJO:
+
+1. Spawner reconstruye todos los frames
+
+2. al finalizar spawn:
+
+- iterar frames
+- encontrar frame donde frame.key == KEY objetivo
+
+3. RealmController:
+
+- mueve cámara hacia ese frame
+
+---
+
+IMPLEMENTACIÓN:
+
+- NO durante spawn
+- SOLO después de build completo
+
+---
+
+REGLAS:
+
+- foco por KEY, no por índice fijo
+- fallback:
+  - si KEY no existe → frame seq 0
+
+---
+
+PROHIBIDO:
+
+- mover cámara durante instanciación
+- asumir orden fijo sin validar KEY
+- depender de posición previa
+
+---
+
+OBJETIVO:
+
+- garantizar consistencia visual
+- navegación determinista
+- evitar drift de cámara
+
+---
+
+RESULTADO:
+
+- mismo KEY → mismo foco lógico
+- robusto ante cambios de layout
+
+[ACTIVE KEY STATE — A15]
+
+DEFINICIÓN:
+
+- existe un único KEY activo en todo momento
+
+---
+
+FUENTE DE VERDAD:
+
+archivo:
+
+C:\Alexandria\data\bridge\active_key.txt
+
+---
+
+RESPONSABLE:
+
+- RealmController escribe
+- LB puede leer
+- GK NO decide, solo usa
+
+---
+
+FLUJO:
+
+1. al seleccionar frame:
+
+- RC escribe active_key.txt = KEY
+
+2. LB:
+
+- usa ese KEY como contexto
+- genera snapshot correspondiente
+
+3. GK:
+
+- renderiza snapshot
+- aplica FOCUS RULE con ese KEY
+
+---
+
+REGLAS:
+
+- solo un KEY activo
+- siempre debe existir (excepto inicio)
+
+---
+
+INICIO:
+
+- si no existe active_key.txt:
+  → usar KEY raíz (realm inicial)
+
+---
+
+PROHIBIDO:
+
+- múltiples KEY activos
+- inferir KEY desde escena
+- calcular KEY en GK
+
+---
+
+OBJETIVO:
+
+- unificar navegación
+- eliminar ambigüedad de estado
+- coordinar LB ↔ GK ↔ Bridge
+
+---
+
+RESULTADO:
+
+- estado global claro
+- navegación consistente
+- sistema controlado por KEY
+
+
+[RUNTIME COMPATIBILITY LOCK — A15]
+
+ESTADO ACTUAL:
+
+- navegación vía ChangeSceneToFile (válido temporal)
+- ViewerMin funcional (flujo probado)
+- DB access presente en flujo legacy
+
+DECISIÓN:
+
+- NO se rompe flujo actual hasta reemplazo completo
+
+REGLA:
+
+- sistema actual = baseline válido
+- A15 evoluciona SIN interrumpir ejecución
+
+TRANSICIÓN:
+
+Fase 1 (actual):
+- navegación por escenas permitida
+- Viewer permitido
+- bridge parcial
+
+Fase 2 (futura):
+- navegación por snapshot
+- eliminación Viewer
+- GK 100% sin DB
+
+ENFORCEMENT:
+
+- cualquier cambio que rompa ejecución actual → INVALID
+- optimización ≠ ruptura
+
+OBJETIVO:
+
+- preservar sistema funcional
+- evitar reinicio de arquitectura
+- evolución incremental controlada
+
+[PATH RULE — A15]
+
+PROHIBIDO:
+
+- rutas absolutas tipo:
+  /root/World/...
+
+Regla:
+
+- todos los nodos deben resolverse desde Realm
+
+Ejemplo válido:
+
+- /root/Realm/RealmController
+
+FAIL:
+
+- path incorrecto → eventos no conectan → INVALID
+
+[RUNTIME ARCHITECTURE — A15]
+
+
+[RUNTIME FLOW — A15]
+
+[LB SNAPSHOT GENERATION — A15]
+
+INPUT:
+
+- parentKey (KEY actual)
+
+SOURCE:
+
+- SQLite (única fuente de verdad)
+
+QUERY:
+
+- SELECT * FROM entries
+  WHERE parentKey = parentKey
+  ORDER BY seq ASC
+
+OUTPUT:
+
+snapshot:
+
+- version
+- valid = true
+- frames[]
+
+FRAME:
+
+- key (UUID real)
+- seq (orden)
+- z (opcional)
+- assetsCount
+- assets[]
+
+---
+
+REGLAS:
+
+- LB es el ÚNICO que lee DB
+- GK NUNCA lee DB
+- snapshot SIEMPRE representa un solo nivel (parentKey)
+
+---
+
+VALIDACIÓN:
+
+- si no hay rows → frames = []
+- pero valid = true
+
+---
+
+PROHIBIDO:
+
+- generar estructura artificial
+- inferir hijos
+- crear entries implícitos
+
+---
+
+OBJETIVO:
+
+- snapshot determinista
+- DB → snapshot → render
+- eliminar ambigüedad de datos
+
+DETALLE LB:
+
+- recibe parentKey
+- consulta DB:
+  SELECT entries WHERE parentKey = X ORDER BY seq
+- construye snapshot.frames[] con:
+  - key
+  - seq
+  - z (opcional)
+  - assets[]
+
+- escribe:
+  C:\Alexandria\snapshot\current.json
+
+---
+
+GK valida snapshot (version + checksum + valid=true)
+
+Spawner.Build(snapshot.frames[])
+
+
+[LB INLINE MODE — A15]
+
+- LB puede ejecutarse como función (no proceso)
+- buildSnapshot(parentKey) → snapshot
+
+REGLAS:
+
+- lógica única (sin duplicados)
+- Flutter puede consumir snapshot en memoria
+- archivos son opcionales (solo debug)
+
+PROHIBIDO:
+
+- doble implementación LB
+- divergencia entre plataformas
+
+OBJETIVO:
+
+- habilitar iPhone
+- eliminar dependencia CLI
+- unificar builder
+
+
+[LB INLINE MODE — A15]
+
+DEFINICIÓN:
+
+LB puede ejecutarse como función (no proceso)
+
+FORMATO:
+
+buildSnapshot(parentKey) → snapshot
+
+---
+
+USO:
+
+Flutter (iPhone):
+- llama buildSnapshot()
+- consume snapshot en memoria
+- NO usa archivos
+
+Windows:
+- puede seguir usando escritura a archivo (modo debug)
+
+---
+
+REGLAS:
+
+- lógica LB única (no duplicada)
+- snapshot generado en memoria es válido
+- escritura a archivo es opcional
+
+PROHIBIDO:
+
+- mantener dos implementaciones LB
+- lógica divergente entre plataformas
+
+---
+
+OBJETIVO:
+
+- permitir ejecución en iPhone
+- eliminar dependencia de CLI
+- unificar builder dentro del sistema
+
+
+
+
+[GK CURRENT STATE — LOCKED BEFORE LB REWORK]
+
+Estado validado en runtime:
+
+- FrameTemplate funciona (duplicación correcta)
+- Click → RealmController OK :contentReference[oaicite:1]{index=1} :contentReference[oaicite:2]{index=2}
+- Snapshot carga correctamente :contentReference[oaicite:3]{index=3}
+- Refresh por bridge operativo :contentReference[oaicite:4]{index=4}
+
+Spawner (estado real):
+
+- usa PackedScene para geometry (Wall/Floor/Ceiling)
+- usa Duplicate() para FrameTemplate
+- limpia correctamente antes de rebuild :contentReference[oaicite:5]{index=5}
+
+Layout validado:
+
+- Wall → (3.0, 1.6, z)
+- Floor → (0.0, 0.0, z)
+- Ceiling → (0.0, 3.2, z)
+- Frame → (2.8, 1.6, z + 2.5)
+
+Geometry:
+
+- definida en .tscn independientes
+- orientación fija en escena
+- Spawner NO rota geometry
+
+---
+
+[KNOWN DEVIATIONS — TO FIX IN LB PHASE]
+
+1) z calculado en GK:
+
+- actual:
+  z = seq * spacing
+
+- correcto A15:
+  usar snapshot.z
+
+2) X inconsistente:
+
+- Wall = 3.0
+- Frame = 2.8
+→ debe unificarse
+
+3) geometry en GK:
+
+- permitido temporal
+- objetivo: mover control a Parcour estático
+
+---
+OUTPUT:
+
+snapshot:
+
+---
+
+[LB CURRENT IMPLEMENTATION — A15 (REAL)]
+
+LB ya implementado y funcional:
+
+Archivo:
+- library_build.dart :contentReference[oaicite:1]{index=1}
+
+Comportamiento actual:
+
+1) Lee KEY desde bridge:
+
+- path:
+  C:\Alexandria\data\bridge\open_key.txt
+
+2) Consulta SQLite:
+
+SELECT key, seq
+FROM entries
+WHERE parentKey = ?
+ORDER BY seq ASC
+
+3) Construye frames[]:
+
+frames = [
+  {
+    "key": row.key,
+    "seq": row.seq,
+    "z": seq * 10.0
+  }
+]
+
+4) Genera snapshot:
+
+- version = 1
+- valid = true
+- checksum = "init"
+
+5) Escribe snapshot:
+
+C:\Alexandria\snapshot\current.json
+
+6) Trigger GK:
+
+- escribe:
+  refresh_now.txt
+
+---
+
+
+
+---
+
+OBJETIVO:
+
+- eliminar ambigüedad
+- mantener separación LB vs GK
+- evitar regresión a modelo híbrido
+
+Cambio requerido:
+
+- eliminar:
+  z = seq * spacing en GK
+
+- usar:
+  snapshot.z directamente
+
+---
+
+[LB ROLE — FINAL TARGET]
+
+LB define:
+
+- orden (seq)
+- posición (z)
+- contenido (assets)
+
+GK solo:
+
+- renderiza 1:1 snapshot
+
+---
+
+OBJETIVO:
+
+- unificar fuente de layout
+- eliminar duplicidad de cálculo
+- garantizar determinismo total
+
+
+
+[LB REWORK TARGET]
+
+LB debe pasar a ser:
+
+- única fuente de:
+  - z real
+  - orden definitivo
+  - contenido por frame
+
+GK debe quedar:
+
+- render puro (sin cálculos)
+
+---
+
+OBJETIVO SIGUIENTE CHAT:
+
+- eliminar cálculo z en Spawner
+- usar snapshot como layout completo
+- estabilizar contract LB → GK
+
+---
+
+[PARCOUR LEVEL CONTRACT — A15]
+
+DEFINICIÓN:
+
+- snapshot SIEMPRE representa un solo parentKey
+
+REGLA:
+
+- snapshot = hijos directos de un entry
+
+EJEMPLO:
+
+parentKey = PARCOUR_MAIN
+→ snapshot.frames[] = todos los loci dentro del parcour
+
+parentKey = LOCUS_X
+→ snapshot.frames[] = hijos de ese locus
+
+---
+
+NAVEGACIÓN:
+
+seleccionar frame (key)
+
+→ LB debe generar nuevo snapshot donde:
+
+parentKey = key seleccionado
+
+→ GK reconstruye escena completa
+
+---
+
+REGLAS:
+
+- no múltiples niveles simultáneos
+- no mezcla de parents en snapshot
+- un snapshot = un nivel
+
+---
+
+COMPATIBILIDAD ACTUAL:
+
+- ChangeSceneToFile permitido (fase actual)
+- flujo futuro = mismo snapshot, distinto parentKey
+
+---
+
+OBJETIVO:
+
+- unificar:
+  parcour
+  locus
+  object
+
+todos bajo mismo modelo:
+
+KEY → snapshot → frames
+
+---
+
+RESULTADO:
+
+- desaparece concepto de “room” como entidad separada
+- todo es navegación por niveles de KEY
+
+
+
+[SNAPSHOT CONTRACT — A15]
+
+[RUNTIME LOCK — A15]
+
+- snapshot NO contiene z
+- snapshot NO contiene posiciones
+- LB = estructura pura
+
+Spawner:
+- calcula z = seq * spacing
+- controla geometry 100%
+
+PROHIBIDO:
+- z en LB
+- layout en DB
+
+[DUAL EXECUTION MODEL — A15]
+
+PC (AUTHORING MODE):
+
+- Flutter = editor principal (RAZ12)
+- SQLite = única fuente de verdad
+- LB = genera snapshot + assets
+- Godot NO requerido
+
+---
+
+iPhone (CONSUMPTION MODE):
+
+- Godot = runtime único
+- NO SQLite
+- NO Flutter
+- solo lectura de:
+  - snapshot.json
+  - /assets/*
+
+---
+
+SNAPSHOT EXTENSION:
+
+snapshot debe contener:
+
+- frames[]
+  - key
+  - seq
+  - assetsCount
+  - assets[]
+
+assets[]:
+
+- path relativo (/assets/...)
+- orden explícito
+- rol opcional (hero, collage)
+
+---
+
+REGLAS:
+
+- snapshot = paquete final portable
+- DB nunca sale de PC
+- Godot nunca consulta DB
+- Flutter nunca es requerido en iPhone
+
+---
+
+PROHIBIDO:
+
+- SQLite en iPhone
+- lógica de edición en Godot
+- assets implícitos (todo debe estar en snapshot)
+
+---
+
+OBJETIVO:
+
+- separar creación vs consumo
+- permitir exportación portable
+- garantizar render determinista en Godot
+
+snapshot = fuente de datos (KEY + seq)
+
+COMPORTAMIENTO SEGÚN MODO:
+
+MODE = runtime:
+- snapshot NO define layout
+- GK calcula geometría
+
+MODE = baked:
+- snapshot DEBE incluir:
+  - posX, posY, posZ
+  - rotX, rotY, rotZ
+
+- GK NO calcula layout
+- GK renderiza 1:1 snapshot
+
+---
+
+REGLAS:
+
+- snapshot siempre consistente con DB.layoutMode
+- runtime → sin coordenadas
+- baked → con coordenadas completas
+
+PROHIBIDO:
+
+- snapshot parcial en modo baked
+- GK recalculando layout en baked
+
+OBJETIVO:
+
+- permitir transición transparente runtime → baked
+- mantener snapshot como única fuente de render
+
+
+Godot:
+
+controla layout (posición, spacing)
+
+instancia FrameTemplate desde escena (NO .tscn load)
+
+Regla:
+
+- Spawner DEBE usar:
+  GetNode("Frames/FrameTemplate")
+  Duplicate()
+
+- PROHIBIDO:
+  ResourceLoader
+  PackedScene.Instantiate
+
+Verificación:
+snapshot sin z sigue renderizando frames correctamente
+
+
+path:
+C:\Alexandria\snapshot\current.json
+
+formato mínimo:
+
+{
+  "version": 1,
+  "valid": true,
+  "frames": [
+    {
+      "key": "UUID",
+      "seq": 0,
+      "z": 0.0
+    }
+  ]
+}
+
+reglas:
+
+- frames ordenado por seq
+- key siempre real
+- z opcional
+
+Regla:
+
+- si z existe → usar
+- si no → calcular por seq (Spawner)
+
+Objetivo:
+
+- evitar dependencia rígida del snapshot
+- permitir render mínimo siempre
+- snapshot completo (no parcial)
+
+prohibido:
+
+- GK calcular layout
+- GK consultar DB
+
+
+
+
+
+
+RealmController habilita input
+
+REGLAS:
+
+snapshot = mapping parcial (KEY → seq).
+NO define existencia de loci.
+NO define layout.
+
+
+prohibido MazeSpawner
+
+[SNAPSHOT VALIDATION — HARD]
+
+GK debe validar:
+
+- valid == true
+- frames != null
+- frames.length > 0
+- seq continuo
+- keys únicas
+
+fail:
+
+- abort render
+
+log:
+
+[FRAME POSITION CONTRACT — A15]
+
+Responsabilidad:
+
+- Spawner define posición de frames
+- snapshot NO define geometría completa
+
+Inputs válidos:
+
+- seq → orden lógico
+- z → offset longitudinal (opcional)
+
+Reglas:
+
+- X = constante (StartX)
+- Y = constante (StartY)
+- Z =:
+    - usar snapshot.z si existe
+    - fallback: acumulado por seq
+
+Spacing:
+
+- spacing puede ser:
+    - fijo (ZSpacing)
+    - dinámico (según contenido)
+
+Restricciones:
+
+- GK no consulta DB
+- layout no se guarda en SQLite
+- layout se calcula en Spawner
+
+Objetivo:
+- garantizar render determinista
+- separar estructura (LB) de geometría (GK)
+
+[SPAWNER LAYOUT FORMULAS — A15]
+
+[SPAWNER LAYOUT FORMULAS — A15]
+
+Constantes reales:
+
+- WallX = 3.0
+- FrameX = 2.8
+- Floor/Ceiling X = 0.0
+
+- WallY = 1.6
+- FloorY = 0.0
+- CeilingY = 3.2
+
+- FrameY = 1.6
+
+- FrameOffsetZ = 2.5
+- Spacing = 6.0
+
+Fórmulas:
+
+Z_base:
+- z = seq * 6.0
+
+Wall:
+- (3.0, 1.6, z)
+
+Floor:
+- (0.0, 0.0, z)
+
+Ceiling:
+- (0.0, 3.2, z)
+
+Frame:
+- (2.8, 1.6, z + 2.5)
+
+Rotación Frame:
+- (0, -90, 0)
+
+Reglas:
+
+- X NO es uniforme (cada elemento tiene su propio eje)
+- Y absoluto (no offsets relativos)
+- Frame separado en Z respecto a wall
+
+Objetivo:
+
+- consistencia visual
+- separación clara geometry vs frame
+- base para spacing dinámico futuro
+
+[GK][SNAPSHOT_INVALID]
+
+
+prohibido SegmentData
+
+GK no genera ni interpreta layout
+
+REGLAS:
+
+Spawner SIEMPRE ejecuta
+snapshot es opcional (solo contenido)
+
+
+snapshot debe ser completo y valid=true
+
+no regeneración automática en GK
+
+FAIL:
+
+si Spawner corre sin snapshot → INVALID
+
+si snapshot cambia sin rebuild completo → INVALID
+
+[LAYOUT OWNERSHIP — HARD RULE]
+
+[MAZE OVERRIDE — A15]
+
+DECISIÓN:
+
+- LB NO controla layout espacial
+- LB NO define spacing
+- LB NO define distancias
+
+GK mantiene control TOTAL de:
+
+- spacing
+- posición
+- geometría
+
+---
+
+EXCEPCIÓN FUTURA (MAZE):
+
+LB podrá definir SOLO:
+
+- dirección lógica (giros)
+- conexiones (KEY ↔ KEY)
+
+PROHIBIDO (incluso en MAZE):
+
+- coordenadas
+- distancias
+- posiciones absolutas
+
+---
+
+ESTADO ACTUAL:
+
+- layout completamente en GK (como A14)
+- snapshot = estructura pura (key + seq)
+
+---
+
+OBJETIVO:
+
+- mantener simplicidad
+- evitar sobrecarga en LB
+- preparar maze sin romper render
+
+[LAYOUT CAPTURE → BAKE → REPLAY — A15 EXTENSION]
+
+FASE 1 — RUNTIME (GK AUTORITY)
+
+- GK genera layout dinámico:
+  - posiciones (Vector3)
+  - rotaciones (Vector3)
+  - dirección de recorrido
+  - spacing adaptativo
+
+- layout NO es persistente en esta fase
+
+---
+
+FASE 2 — CAPTURE (SIMPLIFICADO)
+
+- SOLO se captura estructura de recorrido (maze):
+
+datos capturados:
+
+- key
+- conexiones (KEY ↔ KEY)
+- dirección lógica (opcional: forward index / branch)
+
+PROHIBIDO:
+
+- position (x,y,z)
+- rotation (x,y,z)
+- spacing
+- cualquier dato geométrico
+
+---
+
+REGLA:
+
+- LB guarda TOPOLOGÍA
+- GK genera GEOMETRÍA
+
+---
+
+OBJETIVO:
+
+- mantener GK libre (como A14)
+- evitar rigidez
+- permitir maze dinámico sin romper render
+
+---
+
+FASE 3 — BAKE (LB AUTORITY)
+
+- LB persiste layout en DB
+
+DB ahora contiene:
+
+- estructura (KEY, parent, seq)
+- layout 3D completo (pos, rot)
+
+REGLA:
+
+- layout baked reemplaza generación dinámica
+
+---
+
+FASE 4 — REPLAY (GK RENDER PURO)
+
+- GK deja de calcular layout
+- GK SOLO renderiza:
+
+frame.position = DB.position  
+frame.rotation = DB.rotation  
+
+PROHIBIDO en esta fase:
+
+- spacing dinámico  
+- giros generados  
+- adaptación runtime  
+
+---
+
+REGLA DE TRANSICIÓN:
+
+- cada parcour/realm puede estar en:
+
+  MODE = RUNTIME | BAKED
+
+- RUNTIME:
+  GK genera layout
+
+- BAKED:
+  GK renderiza layout persistido
+
+---
+
+OBJETIVO:
+
+- permitir exploración libre (procedural)
+- permitir congelar recorridos (memoria estable)
+- separar fase creativa vs fase de estudio
+
+---
+
+RESULTADO:
+
+- sistema híbrido:
+  procedural → capture → deterministic replay
+
+
+Spawner es el ÚNICO responsable de:
+
+- X
+- Y
+- Z (si snapshot no define)
+- Rotation
+
+snapshot SOLO define:
+
+- key
+- seq
+- z (opcional)
+
+PROHIBIDO:
+
+- layout en snapshot
+- layout en DB
+- layout en FrameTemplate
+
+OBJETIVO:
+
+- evitar frames en (0,0,0)
+- mantener control determinista en GK
+
+
+[REBUILD CONTRACT — A15]
+
+REGLAS:
+
+- cualquier cambio de layout → REBUILD completo
+- Spawner debe:
+
+1) eliminar TODOS los módulos generados (EXCEPTO FrameTemplate)
+
+Regla:
+
+- FrameTemplate es persistente
+- solo instancias duplicadas se eliminan
+
+  2) reconstruir desde SegmentData[]
+
+- prohibido:
+  * añadir segmentos incrementales
+  * modificar transform de módulos existentes
+
+LIMPIEZA:
+
+- usar QueueFree() en todos los hijos generados
+- esperar 1 frame antes de rebuild
+
+FAIL:
+
+- duplicados → INVALID
+- residuos en escena → INVALID
+
+
+
+[DEBUG GLOBAL RULE — A15]
+
+[TRACEABILITY & SAFETY PROCEDURE — MANDATORY]
+
+OBJETIVO:
+- todo cambio debe ser observable
+- evitar debugging ciego
+- validar sistema vivo en runtime
+
+REGLAS OBLIGATORIAS:
+
+1. COMENTARIOS EN CÓDIGO
+- todo cambio debe incluir comentario:
+  [TRACE] → acción que ejecuta
+  [STATE] → estado esperado
+  [FAIL] → condición de fallo
+
+ejemplo:
+GD.Print("[TRACE][SPAWNER][INIT]");
+GD.PrintErr("[FAIL][SPAWNER][TEMPLATE_NULL]");
+
+2. LOGS MÍNIMOS POR MÓDULO
+
+Spawner:
+- INIT
+- SNAPSHOT_READ
+- FRAME_SPAWN (key + position)
+- TEMPLATE_OK / TEMPLATE_ERR
+
+RealmController:
+- INPUT_EVENT
+- FRAME_SELECTED
+- ACTION_EXECUTED
+
+FrameTemplate:
+- READY
+- CLICK
+- KEY_ASSIGNED
+
+Bridge:
+- READ
+- WRITE
+
+3. VALIDACIONES VISIBLES
+
+cada operación crítica debe validar:
+- null checks
+- existencia de nodos
+- existencia de archivos
+
+y loggear:
+
+OK:
+[MODULE][CHECK_OK]
+
+FAIL:
+[MODULE][CHECK_FAIL]
+
+4. SISTEMA VIVO (HEALTH CHECK)
+
+mínimo requerido en output:
+
+- [SPAWNER][INIT]
+- [SPAWNER][SPAWN]
+- [FRAME][READY]
+- [RC][INIT]
+
+si falta cualquiera → sistema inválido
+
+5. PROHIBIDO
+
+- lógica silenciosa
+- fallos sin log
+- returns sin explicación
+- asumir estado correcto sin verificación
+
+6. DESACTIVACIÓN FUTURA
+
+- logs NO se eliminan
+- solo se comentan
+
+ejemplo:
+ // GD.Print("[TRACE][...]");
+
+OBJETIVO FINAL:
+
+- reconstruir cualquier fallo SOLO con logs
+- cero dependencia de memoria del chat
+- sistema auditable en runtime
+
+ALCANCE:
+
+- aplica a TODA la arquitectura:
+  - GK
+  - LB
+  - Flutter
+  - Godot
+  - Bridge
+  - Snapshot
+  - cualquier módulo futuro
+
+REGLA ABSOLUTA:
+
+- ningún módulo puede existir sin trazabilidad
+- toda acción crítica debe generar log
+
+COBERTURA MÍNIMA:
+
+- creación (entries, snapshot)
+- render (frames, panels)
+- navegación (input, movement)
+- bridge (read/write)
+- validación (integrity checks)
+
+FORMATO:
+
+- prefijo obligatorio por módulo
+- logs legibles y consistentes
+
+ENFORCEMENT:
+
+- módulo sin logs → inválido
+- feature sin trazabilidad → inválida
+- bug sin rastro → fallo de arquitectura
+
+OBJETIVO:
+
+- eliminar debugging ciego
+- reconstruir cualquier fallo desde logs únicamente
+
+
+RealmController
+- único responsable de input
+- controla navegación (forward, select, return)
+- NO accede a DB
+- NO lee snapshot
+
+CameraRig
+- ejecuta transform únicamente
+- position / rotation
+- NO interpreta input
+
+Spawner:
+
+consume snapshot.frames[] (KEY + seq)
+instancia FrameTemplate.tscn por cada frame
+posición/spacing definidos por lógica interna (no snapshot)
+- asigna posición por seq
+- NO lógica de estado
+- NO DB
+
+FLOW:
+
+RealmController → CameraRig (move)
+Spawner → Frames (render)
+
+REGLAS:
+
+- separación estricta de responsabilidades
+- ningún componente mezcla input + render + data
+- GK = ejecución, no decisión
+
+FAIL CONDITION:
+
+- si CameraRig depende de input → inválido
+- si Spawner lee DB → inválido
+- si RealmController renderiza → inválido
+
+
+  children:
+  - Camera3D
+  - DirectionalLight3D
+
+[FRAME REBUILD RULE — A15]
+
+Rebuild is mandatory:
+
+- Spawner MUST clear previous frames before spawning new ones
+
+Cleanup:
+
+- iterate all children of Frames
+- DO NOT delete FrameTemplate
+- delete ALL other children
+
+Implementation rule:
+
+- FrameTemplate = prototype (must persist)
+- all duplicates = disposable
+
+Forbidden:
+
+- incremental spawn
+- partial updates
+- transform reuse of existing nodes
+
+Flow:
+
+1. clear Frames children (except template)
+2. duplicate FrameTemplate per snapshot entry
+3. assign position
+4. attach to Frames
+
+Fail conditions:
+
+- duplicated frames after rebuild → INVALID
+- template duplicated unintentionally → INVALID
+- mixed old/new frames → INVALID
+
+Objective:
+
+- guarantee deterministic rebuild
+- avoid visual corruption
+- align with snapshot = full truth
+
+
+[CAMERA CONTRACT — A15]
+
+ACCESS RULE:
+
+- only RealmController may call CameraRig.Move
+- any other caller → INVALID
+
+[INPUT & INTERACTION CONTRACT — A15]
+
+INPUT SOURCES:
+
+- mouse click
+- touch tap
+- keyboard (debug)
+
+FLOW:
+
+Frame01
+- does NOT execute navigation
+- emits event → RealmController
+
+RealmController
+- receives input events
+- resolves action:
+  - move forward
+  - select frame
+  - return
+
+OUTPUT:
+
+- calls CameraRig.Move(...)
+- writes bridge (open_key.txt) only on selection
+
+RULES:
+
+- CameraRig never processes input
+- Spawner never receives input
+- Frame01 is passive (event emitter only)
+- no script outside RealmController may call CameraRig.Move
+
+
+- CameraRig siempre presente
+- movimiento siempre permitido (debug + runtime)
+- no depende de snapshot
+- no bloqueos por estado
+
+INPUT:
+
+- proviene SOLO de RealmController
+
+REGLA CRÍTICA:
+
+si usuario no puede moverse → sistema inválido
+
+[4] RealmController
+- type: Node
+- path: Realm/RealmController
+
+[5] Spawner
+- type: Node3D
+- path: Realm/Spawner
+
+
+[SPAWNER HARD RULE — A15]
+
+[SPAWNER BASELINE LOCK — A15]
+
+ESTADO VALIDADO:
+
+- Spawner actual = implementación oficial A15 runtime
+- archivo: Spawner.cs (activo en scene)
+- pipeline LB → snapshot → GK → render = funcional
+
+---
+
+DECISIÓN:
+
+- Spawner NO se reestructura
+- Spawner NO se divide
+- Spawner queda congelado como baseline
+
+---
+
+RESPONSABILIDAD:
+
+Spawner:
+- layout (posición, spacing)
+- geometría (Wall, Floor, Ceiling)
+- instanciación de FrameTemplate
+
+LB:
+- estructura (KEY, seq)
+- snapshot
+
+---
+
+REGLAS:
+
+- GK NO accede DB
+- __SLOT_ prohibido
+- snapshot = única entrada
+- Spawner NO contiene navegación
+
+---
+
+MAZE COMPATIBILITY — FASE 1:
+
+- soportado:
+  recorrido lineal (seq)
+
+- permitido:
+  giro simple (dirección acumulativa)
+
+---
+
+PROHIBIDO:
+
+- branching
+- múltiples caminos simultáneos
+- alterar contrato snapshot
+
+---
+
+OBJETIVO:
+
+- preservar estabilidad
+- evitar regresión A14
+- permitir evolución incremental
+
+
+
+- input único: snapshot
+- output: frames completos
+
+COMPORTAMIENTO SEGÚN MODO:
+
+MODE = runtime:
+- calcula:
+  - posición
+  - rotación
+  - spacing
+  - dirección
+
+MODE = baked:
+- NO calcula layout
+- usa directamente:
+  - posX, posY, posZ
+  - rotX, rotY, rotZ
+
+---
+
+REGLAS:
+
+- no reconstrucción parcial
+- no lógica de navegación
+- no lectura DB
+
+PROHIBIDO:
+
+- recalcular layout en baked
+- mezclar lógica runtime con baked
+
+OBJETIVO:
+
+- convertir Spawner en dual-mode
+- mantener determinismo en replay
+
+
+[FRAME TEMPLATE CONTRACT — A15]
+
+FrameTemplate:
+
+- MUST exist as a Node inside Realm scene
+- path: Realm/Frames/FrameTemplate
+
+- .tscn file may exist as source asset
+- but MUST NOT be loaded at runtime
+
+- used only as in-scene prototype for duplication
+
+- debe contener:
+  - Mesh
+  - ClickArea
+  - Collision
+  - Script FrameTemplate.cs
+
+Frames (Node3D):
+- contenedor dinámico
+- contiene SOLO:
+  - FrameTemplate (prototipo)
+- path: Realm/Frames
+
+Spawner:
+- única entidad autorizada a instanciar FrameTemplate
+- fuente: snapshot.frames[]
+
+REGLA CRÍTICA:
+
+
+- FrameTemplate DEBE existir como único hijo inicial
+- cualquier otro hijo al iniciar → INVALID
+
+[FRAME TEMPLATE SOURCE — A15]
+
+Source of truth:
+
+- FrameTemplate exists inside Realm scene
+- path: Realm/Frames/FrameTemplate
+
+Instantiation rule:
+
+- Spawner MUST use:
+  GetNode("Frames/FrameTemplate")
+  Duplicate()
+
+- Spawner MUST NOT:
+  - use PackedScene
+  - use ResourceLoader
+  - load .tscn at runtime
+
+Template behavior:
+
+- FrameTemplate remains in scene as prototype
+- must be hidden or ignored during runtime render
+
+Instances:
+
+- duplicated nodes = runtime frames
+- all runtime frames must originate from the same template
+
+Validation:
+
+- if FrameTemplate is missing → render fails
+- if ResourceLoader is used → INVALID SYSTEM
+
+Objective:
+
+- eliminate dual source (scene vs file)
+- guarantee deterministic render
+- align with Segment pattern
+
+
+[FRAME RENDER RESOLUTION — A15 (CRITICAL LESSON)]
+
+Context:
+
+A15 failed to render frames despite correct snapshot and template.
+
+Root causes identified:
+
+1. Wrong relative paths in Spawner
+2. Template lookup using invalid node path
+3. FramesRoot not resolved due to hierarchy misunderstanding
+4. Template being treated as external resource instead of scene prototype
+
+---
+
+ACTUAL SCENE STRUCTURE (REAL):
+
+Realm
+├─ Frames
+│  └─ FrameTemplate
+├─ Spawner
+
+Spawner is sibling of Frames (NOT parent)
+
+---
+
+CRITICAL FIXES APPLIED:
+
+1. FramesRoot path
+
+WRONG:
+- "Frames"
+
+CAUSE:
+- resolved relative to Spawner → Spawner/Frames (invalid)
+
+FIX:
+- "../Frames"
+
+RULE:
+- all NodePath must respect real scene hierarchy
+- NEVER assume root-relative unless explicit
+
+---
+
+2. Template lookup
+
+WRONG:
+- GetNode("Frames/FrameTemplate")
+
+CAUSE:
+- again resolved from Spawner → invalid
+
+FIX:
+- use resolved container:
+
+CORRECT:
+- _framesRoot.GetNode("FrameTemplate")
+
+RULE:
+- once container is resolved → NEVER re-navigate from root
+- always derive children from known node
+
+---
+
+3. Template lifecycle
+
+RULE:
+
+- FrameTemplate MUST remain in scene
+- MUST be hidden:
+
+template.Visible = false
+
+- MUST NOT be deleted during rebuild
+
+---
+
+4. Spawn pipeline (FINAL — VALID)
+
+Spawner flow:
+
+1. resolve FramesRoot
+2. resolve FrameTemplate from FramesRoot
+3. hide template
+4. clear children (EXCEPT template)
+5. for each snapshot frame:
+    - Duplicate()
+    - AddChild()
+    - assign:
+        position (StartX, StartY, Z)
+        rotation
+        key
+
+---
+
+CODE REFERENCE (LOCKED):
+
+template = _framesRoot.GetNode("FrameTemplate")
+frame = template.Duplicate()
+_framesRoot.AddChild(frame)
+
+frame.Position = new Vector3(StartX, StartY, Z)
+frame.RotationDegrees = (0, -90, 0)
+
+---
+
+FAIL CONDITIONS:
+
+- FramesRoot null → no render
+- Template not found → system stops
+- wrong path → silent failure
+- deleting template → no duplication possible
+
+---
+
+DEBUG SIGNALS REQUIRED:
+
+[SPAWNER][FRAMES_ROOT OK]
+[SPAWNER][TEMPLATE_OK]
+[SPAWNER][SPAWN]
+
+absence of any → system invalid
+
+---
+
+LESSON:
+
+Render failure was NOT data issue.
+
+It was:
+→ incorrect scene graph navigation
+
+---
+
+RULE ADDED:
+
+"NodePath correctness is part of system integrity"
+
+- incorrect relative path = system failure
+- must always validate with debug logs
+
+---
+
+OBJECTIVE:
+
+- prevent repetition of A15 failure
+- guarantee deterministic frame spawn
+- enforce scene-driven architecture
+
+[NODE NAVIGATION CONTRACT — A15]
+
+REGLA:
+
+- todo acceso a nodos debe seguir:
+
+1. resolver contenedor UNA vez
+2. navegar hijos DESDE ese contenedor
+
+PROHIBIDO:
+
+- GetNode("Frames/...") desde Spawner
+- rutas relativas ambiguas
+- múltiples resoluciones del mismo nodo
+
+CORRECTO:
+
+_framesRoot = GetNode("../Frames")
+template = _framesRoot.GetNode("FrameTemplate")
+
+OBJETIVO:
+
+- eliminar errores de path
+- garantizar consistencia jerárquica
+
+
+
+[PARCOUR VS FRAMES — SEPARATION RULE]
+
+Parcour:
+- estructura espacial
+- construido por SegmentScene
+- define layout físico
+
+Frames:
+- contenido lógico
+- construido por snapshot.frames[]
+- define KEY interactivos
+
+REGLA:
+
+- mismo count permitido
+- misma lógica PROHIBIDA
+
+FAIL:
+
+si Frame depende de Segment → INVALID
+si Segment depende de snapshot → INVALID
+
+
+[GEOMETRY RULE — HARD BLOCK]
+[GEOMETRY RULE — A15 RUNTIME]
+
+Geometry:
+- NO existe geometry base en Realm.tscn
+- Realm.tscn contiene solo estructura (Parcour, Frames, CameraRig)
+
+Spawner:
+- NO crea geometry base
+
+Geometry base:
+
+- Floor, Ceiling, WallPath existen en Realm.tscn
+- definidos en editor
+- Spawner solo instancia frames
+
+Objetivo:
+
+- garantizar render inmediato
+- evitar dependencia runtime frágil
+
+[GEOMETRY SCENES — A15 IMPLEMENTATION REAL]
+
+Decisión aplicada:
+
+- geometry NO se construye en código
+- geometry se define en escenas independientes (.tscn)
+- Spawner SOLO instancia (PackedScene)
+
+Escenas creadas:
+
+1) FloorScene.tscn
+
+Estructura:
+- Node3D (FloorRoot)
+  - MeshInstance3D
+
+Mesh:
+- PlaneMesh
+- size = (6, 5)
+
+Transform:
+- identidad (0,0,0)
+
+Código equivalente:
+mesh = PlaneMesh(6,5)
+transform = identity
+
+---
+
+2) CeilingScene.tscn
+
+Estructura:
+- Node3D (CeilingRoot)
+  - MeshInstance3D
+
+Mesh:
+- PlaneMesh
+- size = (6, 5)
+
+Transform:
+- Transform3D(-1,0,0, 0,-1,0, 0,0,1, 0,0,0)
+
+Interpretación:
+- inversión 180° en XY
+- cara visible apunta hacia abajo
+
+---
+
+3) WallScene.tscn
+
+Estructura:
+- Node3D (WallRoot)
+  - MeshInstance3D
+
+Mesh:
+- PlaneMesh
+- size = (3.2, 5)
+
+Transform:
+- Transform3D(0,-1,0, 1,0,0, 0,0,1, 0,0,0)
+
+Interpretación:
+- rotación 90° → vertical
+- altura efectiva = 3.2 (Y)
+- ancho = 5 (Z)
+
+---
+
+[SPAWNER USAGE — A15]
+
+Spawner instancia cada pieza:
+
+SpawnPiece(scene, position)
+
+Escenas conectadas:
+
+- WallScene
+- FloorScene
+- CeilingScene
+
+Posiciones:
+
+Wall:
+(3.0, 1.6, z)
+
+Floor:
+(0.0, 0.0, z)
+
+Ceiling:
+(0.0, 3.2, z)
+
+---
+
+REGLAS CRÍTICAS:
+
+- cada pieza es independiente (no Segment)
+- pivote definido en escena, NO en código
+- Spawner SOLO define posición global
+- transform interno define orientación
+
+---
+
+ERROR RESUELTO:
+
+Antes:
+- Segment único
+- rotaciones en código → inconsistente
+
+Ahora:
+- 3 escenas separadas
+- orientación fija → determinista
+
+---
+
+OBJETIVO:
+
+- eliminar lógica condicional por tipo
+- estabilizar geometry
+- permitir ajuste visual desde editor
+
+
+MazeSpawner:
+- define layout (posición + rotación por segmento)
+- puede cambiar dirección (giros)
+- NO crea meshes
+
+RELACIÓN:
+
+
+
+[DYNAMIC GEOMETRY ADJUSTMENT — A15]
+
+Spawner puede AJUSTAR geometry existente (NO crear nueva):
+
+Ejemplo:
+
+- extender WallPath hasta último frame
+
+Regla:
+
+maxZ = último frame.z
+
+WallPath:
+- tamaño Z = maxZ
+- posición Z = maxZ / 2
+
+PROHIBIDO:
+
+- geometry desde snapshot
+- geometry desde DB
+
+OBJETIVO:
+
+- mantener coherencia visual
+- sincronizar corridor con frames
+
+
+================================================================================================================================================================================================
+
+3. State Model ( active / to be defined )
+================================================================================================================================================================================================
+
+STATE MODEL — A15
+
+IDENTITY RULE — A15
+
+- KEY es la única identidad válida
+- pseudo-keys están prohibidas
+- no existe "__SLOT_"
+- no existe key derivada de parentKey
+
+[SEED ELIMINATION — A15]
+
+- no existe seed
+- no existe placeholder
+- no existe preestructura
+
+REGLA:
+
+- EXISTS → entry real en DB
+- EMPTY → no existe entry
+
+CONSECUENCIA:
+
+GK renderiza todos los loci
+EXISTS → con contenido
+EMPTY → vacío
+
+- LB no genera estructura vacía
+- no hay estados intermedios
+
+PROHIBIDO:
+
+- seed logic
+- fallback estructural
+- creación implícita
+
+OBJETIVO:
+
+- eliminar ambigüedad del modelo A14
+- garantizar determinismo total
+
+NO EXISTE:
+
+- slot
+- placeholder
+- seed
+- identidad derivada
+
+REGLAS:
+
+- si no existe entry → el locus permanece vacío (renderizable)
+GK genera estructura base (loci)
+contenido sigue dependiendo de DB
+- snapshot solo contiene entries reales
+
+ENFORCEMENT:
+
+- cualquier referencia a slot (conceptual o técnica) → INVALID SYSTEM
+- cualquier intento de inferir estructura → INVALID
+
+OBJETIVO:
+
+- eliminar completamente el modelo A14
+- garantizar sistema 100% basado en existencia real
+
+REGLAS:
+
+- navegación solo con KEY real
+- ausencia de entry ≠ placeholder
+- EMPTY no genera key
+
+
+Estados válidos:
+
+- EXISTS → entry real en SQLite
+- EMPTY → no existe entry
+
+---
+
+[OBJECT RULE — A15]
+
+DEFINICIÓN:
+
+- OBJECT = entry con contenido interno (body, imágenes, etc.)
+- OBJECT pertenece a un LOCUS
+
+REGLA PRINCIPAL:
+
+- OBJECT NO genera frame en parcour
+
+COMPORTAMIENTO:
+
+- LOCUS:
+  → aparece en snapshot
+  → genera frame
+  → es navegable
+
+- OBJECT 
+
+[OBJECT RULE — A15 (CORRECCIÓN A14/A15)]
+
+DEFINICIÓN:
+
+- OBJECT es LOCUS en capa interna (no entidad distinta)
+- mantiene principio: TODO ES LOCUS
+
+---
+
+NIVELES OPERATIVOS (A14 PRESERVADO):
+
+1) PARCOUR
+→ snapshot renderiza LOCUS (frames visibles)
+
+2) ROOM
+→ snapshot renderiza LOCUS internos (antes llamados objects)
+
+---
+
+REGLA DE RENDER:
+
+- GK SIEMPRE renderiza LOCUS como frame
+- diferencia de nivel es contextual (no estructural)
+
+---
+
+VIEWER (REGLA CRÍTICA):
+
+- TODO LOCUS tiene viewer
+- PARCOUR → viewer del LOCUS
+- ROOM → viewer del LOCUS interno
+
+---
+
+NAVEGACIÓN:
+
+- snapshot SIEMPRE representa un nivel
+- cambiar nivel = cambiar parentKey
+
+---
+
+INTERPRETACIÓN:
+
+- “object” NO es terminal estructural
+- es LOCUS en menor escala
+
+- NO rompe:
+  - KEY único
+  - parentKey
+  - seq
+
+---
+
+PROHIBIDO:
+
+- tratar OBJECT como entidad separada
+- bloquear navegación futura por OBJECT
+
+---
+
+ORIGEN:
+
+- LB decide qué entries entran en snapshot.frames[]
+
+REGLAS:
+
+- snapshot SOLO incluye entries navegables (LOCUS)
+- OBJECT queda fuera del render espacial
+
+---
+
+PROHIBIDO:
+
+- OBJECT generando frame
+- OBJECT participando en layout
+- OBJECT afectando spacing
+
+---
+
+OBJETIVO:
+
+- separar navegación espacial vs contenido
+- evitar sobrecargar GK con lógica interna
+- prevenir colapso tipo A14 (frames mezclados con contenido)
+
+---
+
+RESULTADO:
+
+- GK renderiza estructura (LOCUS)
+- Viewer renderiza contenido (OBJECT)
+
+REGLAS:
+
+- KEY siempre es real o null
+- nunca pseudo-keys (__SLOT_ prohibido)
+GK genera estructura base (loci)
+contenido sigue dependiendo de DB
+- GK no materializa entries
+- ausencia de row = EMPTY absoluto
+- EMPTY no es navegable
+- EMPTY no genera eventos de bridge
+- EXISTS es única condición navegable
+
+
+
+=======================================================================================================================================================
+================================================================================================================================================================================================
+
+================================================================================================================================================================================================
+4. Operations (create, clean, delete, move)
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+
+
+**5. [BRIDGE CONTRACT (LB ↔ GK)]**
+[HYBRID VIEWER MODEL — A15]
+
+ARQUITECTURA:
+
+LB (Dart):
+- SQLite
+- snapshot
+- assets (images, text, hints)
+
+GK (Godot):
+- navegación 3D
+- render de frames
+- input → KEY
+
+VIEWER (Flutter):
+- render de contenido:
+  - imágenes
+  - texto
+  - hints
+- UI expandible
+
+---
+
+FLUJO:
+
+1) usuario click en GK
+
+→ RealmController:
+  - escribe open_key.txt
+  - escribe active_key.txt
+
+2) LB:
+  - genera snapshot (estructura)
+  - expone datos para Viewer
+
+3) VIEWER:
+  - lee active_key.txt
+  - consulta DB
+  - renderiza contenido
+
+---
+
+REGLAS CRÍTICAS:
+
+- GK NO renderiza contenido
+- VIEWER NO controla navegación
+- LB NO renderiza UI
+
+---
+
+PROHIBIDO:
+
+- imágenes en Godot
+- texto dinámico en Godot
+- DB access en GK
+
+---
+
+OBJETIVO:
+
+- mantener rendimiento GK
+- reutilizar capacidad UI de Flutter
+- evitar repetir fallo de 14
+
+---
+
+RESULTADO:
+
+- GK = espacio
+- Viewer = contenido
+- LB = verdad
+
+
+[BRIDGE DEBUG CONTRACT — A15]
+
+LB (writer):
+- [LB][SNAPSHOT_WRITE] path=... frames=N checksum=...
+- [LB][BRIDGE_WRITE] file=open_key.txt key=...
+
+GK (reader):
+- [GK][SNAPSHOT_READ] path=... valid=... frames=N
+- [GK][BRIDGE_READ] file=open_key.txt key=...
+
+REGLAS:
+
+- cada write → log inmediato
+- cada read → log inmediato
+- sin log → operación inválida
+
+FAIL CONDITIONS:
+
+- snapshot leído sin log → ERROR
+- bridge usado sin log → ERROR
+
+GK (reader):
+- [GK][SNAPSHOT_READ] path=... valid=... frames=N
+
+---
+
+[EXECUTION PATHS — A15]
+
+Rutas oficiales:
+
+- ROOT:
+  C:\Alexandria
+
+- SNAPSHOT:
+  C:\Alexandria\snapshot\current.json
+
+- BRIDGE:
+  C:\Alexandria\data\bridge\
+
+Archivos críticos:
+
+- open_key.txt
+- active_key.txt
+- return_frame_key.txt
+- refresh_now.txt
+
+---
+
+[LB EXECUTION — A15]
+
+PowerShell:
+
+cd C:\Alexandria
+dart run main.dart
+
+o:
+
+dart run library_build.dart
+
+Resultado esperado:
+
+- snapshot actualizado
+- refresh_now.txt generado
+
+Referencia:
+:contentReference[oaicite:1]{index=1}
+
+---
+
+[GK CURRENT LAYOUT — LOCKED]
+
+Posiciones reales:
+
+- Wall    → (3.0, 1.6, z)
+- Floor   → (0.0, 0.0, z)
+- Ceiling → (0.0, 3.2, z)
+- Frame   → (2.8, 1.6, z + 2.5)
+
+z actual:
+
+- z = seq * 6.0
+
+Referencia:
+:contentReference[oaicite:2]{index=2}
+
+---
+
+[LB RESPONSIBILITY — NEXT PHASE]
+
+LB debe generar:
+
+- z REAL (no calculado en GK)
+- orden definitivo
+- snapshot completo
+
+Formato mínimo:
+
+{
+  "key": "...",
+  "seq": N,
+  "z": REAL_Z
+}
+
+GK debe:
+
+- eliminar cálculo:
+  z = seq * spacing
+
+- usar snapshot directamente
+
+---
+
+[LOCK RULE]
+
+- GK NO se modifica en siguiente fase
+- cambios SOLO en LB
+- snapshot pasa a ser layout completo
+
+Objetivo:
+
+- mover ownership de layout → LB
+- convertir GK en renderer puro
+
+
+OBJETIVO
+LB genera verdad estructural; GK solo consume y renderiza.
+
+[SNAPSHOT RESPONSIBILITY — A15]
+
+LB:
+- lee SQLite
+- resuelve jerarquía
+- ordena frames
+- calcula z
+- escribe snapshot
+
+GK:
+- lee snapshot
+- valida
+- renderiza 1:1
+
+GK controla layout espacial determinista (posición/spacing)
+LB controla estructura de datos (KEY + seq)
+
+Regla:
+snapshot ≠ layout
+
+
+FLUJO
+LB: construye snapshot → valida → escribe `C:\Alexandria\snapshot\current.json` (atómico)
+GK: detecta → valida (version + checksum + valid=true) → renderiza
+
+BRIDGE (solo navegación)
+
+* open_key.txt → request navegación
+* active_key.txt → estado actual
+* return_frame_key.txt → retorno
+
+
+
+---
+
+[REFRESH MECHANISM — A15]
+
+DEFINICIÓN:
+
+- GK debe reconstruir cuando snapshot cambia
+
+ESTADO ACTUAL (válido):
+
+- snapshot se carga en _Ready()
+- navegación usa ChangeSceneToFile
+
+---
+
+MECANISMO MÍNIMO:
+
+archivo:
+
+C:\Alexandria\data\bridge\refresh_now.txt
+
+FLUJO:
+
+1. LB escribe:
+   - snapshot actualizado
+   - refresh_now.txt
+
+2. GK (Spawner):
+   - detecta archivo
+   - ejecuta LoadSnapshot()
+
+3. GK elimina archivo
+
+---
+
+REGLAS:
+
+- refresh = rebuild completo
+- no updates parciales
+- no merge de estado previo
+
+---
+
+COMPATIBILIDAD:
+
+- si no existe refresh → sistema sigue funcionando
+- no rompe flujo actual por escenas
+
+---
+
+PROHIBIDO:
+
+- polling agresivo
+- múltiples rebuild simultáneos
+- lectura parcial de snapshot
+
+---
+
+OBJETIVO:
+
+- permitir navegación futura sin cambiar escena
+- mantener estabilidad actual
+- preparar transición gradual
+
+---
+
+RESULTADO:
+
+- sistema puede evolucionar a runtime único
+- sin romper ejecución actual
+
+REGLAS
+
+snapshot = mapping parcial (KEY → seq).
+NO define existencia de loci.
+NO define layout.
+* bridge NO contiene datos
+* GK no escribe snapshot
+* LB no interpreta navegación
+* comunicación solo archivos
+
+---
+
+**6. Rendering Contract (OBLIGATORIO)**
+ROOT → Realm/Parcour
+- type: Node3D
+- dynamic: true
+- children:
+  [Frames]
+    - Node3D container
+    - clones dinámicos: FrameTemplate (Node3D)
+    - instanciación según snapshot: seq, ZSpacing
+    - No crea walls/ceiling/floor
+  [Floor]
+    - MeshInstance3D
+    - PlaneMesh(Size=Vector2(width, length))
+    - position: Y=0
+    - static: true
+    - visible: true
+  [Ceiling]
+    - MeshInstance3D
+    - PlaneMesh(Size=Vector2(width, length))
+    - position: Y=ceilingHeight
+    - static: true
+    - visible: true
+  [WallPath]
+    - MeshInstance3D (template)
+    - PlaneMesh(Size=Vector2(wallWidth, wallHeight))
+    - position: X=±wallOffset, Y=wallHeight/2
+    - static: true (template)
+    - visible: false
+
+Reglas A15 ORM:
+1. Floor/Ceiling/WallPath = estáticos, Parcour = dinámico.
+2. Frames instanciados dinámicamente desde FrameTemplate; posición según snapshot.
+3. BuildWalls duplica WallPath solo para paneles, no altera Floor/Ceiling.
+4. GK valida integridad física: posición, visibilidad, tamaño.
+5. Snapshot incluye: frames seq/Z, offsets walls, Floor/Ceiling Y.
+6. No dependencia de legacy ni seeds.
+7. Separación de responsabilidades: Parcour dinámico → frames; estáticos → walls/ceiling/floor.
+
+
+INPUT GK
+snapshot.json (no DB directa)
+
+DB ACCESS RULE:
+
+- GK MUST NOT read SQLite directly
+- any DB call inside GK → INVALID
+- DB access allowed ONLY in LB (builder side)
+
+REGLAS
+
+* GK renderiza 1:1 snapshot (sin lógica propia)
+
+
+
+COLLAGE — A15 (ASSET CONTRACT)
+
+DEFINICIÓN:
+
+- assets representan contenido visual asociado a un LOCUS
+
+ORIGEN:
+
+- LB obtiene assets desde DB
+- LB los inserta en snapshot
+
+FORMATO SNAPSHOT:
+
+frame:
+
+- key
+- seq
+- assetsCount
+- assets[] (ordenados)
+
+---
+
+REGLAS GK:
+
+- GK NO consulta DB
+- GK NO resuelve paths desde SQLite
+
+GK SOLO usa snapshot.frames[]
+
+PROHIBIDO EN GK (ACTUALIZADO):
+- CountParcourAssets()
+- ResolveParcourPaths()
+- cualquier acceso SQLite
+
+NOTA:
+Spawner actual aún usa DB indirectamente → estado transitorio válido
+DEBE eliminarse en siguiente iteración
+
+---
+
+COLLAGE:
+
+assets[] → panels
+
+- orden fijo (ya definido por LB)
+- render determinista
+- sin lógica condicional
+
+---
+
+REGLAS:
+
+- assetsCount > 0 → SIEMPRE render panels
+- assetsCount = 0 → no panels
+
+---
+
+PROHIBIDO:
+
+- CountParcourAssets()
+- ResolveParcourPaths()
+- queries SQLite en GK
+
+---
+
+FAIL:
+
+- assetsCount > 0 y assets[] vacío → INVALID
+- path inexistente → log + skip (no crash)
+
+---
+
+OBJETIVO:
+
+- eliminar dependencia DB en runtime
+- hacer collage reproducible
+- permitir delete → recreate sin corrupción
+
+---
+
+RESULTADO:
+
+- collage = función pura
+- mismo snapshot → mismo render siempre
+
+
+FAIL CONDITIONS
+
+* assets>0 y paths vacíos → ERROR
+* snapshot inválido → NO render
+
+---
+
+[INTEGRITY CONTRACT — A15 FINAL]
+
+GK DEBE VALIDAR antes de render:
+
+- snapshot.valid == true
+- frames != null
+- frames.length > 0
+- KEY únicos
+- seq continuo
+- snapshot completo (no parcial)
+
+---
+
+[SYSTEM INVALID CONDITIONS — HARD BLOCK]
+
+EL SISTEMA SE CONSIDERA INVÁLIDO SI:
+
+DATA:
+
+- snapshot inexistente
+- snapshot.valid != true
+- frames vacío
+- KEY duplicados
+- seq con huecos
+
+ARCHITECTURE:
+
+- GK accede a SQLite
+- lógica fuera de RealmController
+- FrameTemplate ejecuta navegación
+- Spawner ejecuta lógica de estado
+
+IDENTITY:
+
+- uso de pseudo-key
+- inferencia de estructura
+- existencia de seed / slot
+
+RENDER:
+
+- FrameTemplate no existe
+- FramesRoot no resuelto
+- snapshot parcial renderizado
+
+BRIDGE:
+
+- escritura sin log
+- lectura sin log
+
+---
+
+FAIL RESPONSE:
+
+- GK NO renderiza
+- log obligatorio:
+
+[SYSTEM][INVALID]
+
+---
+
+RECOVERY:
+
+- requiere snapshot válido
+- requiere rebuild completo
+
+---
+
+OBJETIVO:
+
+- evitar estados corruptos silenciosos
+- forzar consistencia estructural
+- garantizar comportamiento determinista
+
+---
+
+[SYSTEM INVALID CONDITIONS — HARD BLOCK]
+
+[LAYOUT MODE VALIDATION — A15]
+
+INVALID SI:
+
+- layoutMode = "baked" y:
+  - falta posX/Y/Z
+  - falta rotX/Y/Z
+
+- layoutMode = "runtime" y:
+  - existen coordenadas persistidas
+
+- snapshot.mode ≠ DB.layoutMode
+
+- GK ejecuta cálculo en modo baked
+
+- mezcla de frames runtime + baked en mismo snapshot
+
+---
+
+LOG REQUERIDO:
+
+[SYSTEM][LAYOUT_MODE_INVALID]
+
+---
+
+OBJETIVO:
+
+- evitar corrupción híbrida
+- garantizar transición limpia runtime → baked
+
+[A15 READY STATE — LOCK]
+
+EL SISTEMA ESTÁ LISTO PARA CRECER CUANDO:
+
+RUNTIME:
+
+- [SPAWNER][INIT]
+- [SPAWNER][SPAWN]
+- [FRAME][READY]
+- [RC][INIT]
+
+→ presentes en logs
+
+---
+
+DATA:
+
+- snapshot válido
+- frames renderizados correctamente
+- navegación (click) detectada
+
+---
+
+ARCHITECTURE:
+
+- GK no depende de DB para render
+- FrameTemplate es emisor puro (aunque temporalmente aún conectado)
+- Spawner controla instanciación
+
+---
+
+COMPATIBILITY:
+
+- flujo actual (Viewer + ChangeScene) funcional
+- bridge operativo
+
+---
+
+PROHIBIDO AVANZAR SI:
+
+- frames no aparecen
+- click no llega a RC
+- snapshot inconsistente
+- logs faltantes
+
+---
+
+AUTORIZADO:
+
+- construir Parcour real
+- construir Locus navegación
+- integrar Viewer evolutivo
+- empezar Alexandria (contenido real)
+
+---
+
+OBJETIVO:
+
+- congelar base estable
+- evitar reinicios
+- iniciar construcción real
+
+---
+
+RESULTADO:
+
+- sistema falla rápido
+- errores visibles
+- debugging directo desde logs
+
+
+---
+
+**STATE MODEL (REEMPLAZO DEFINITIVO)**
+
+Eliminar seed completamente
+
+Estados válidos:
+
+* EXISTS → entry real
+* EMPTY → no existe
+
+REGLAS
+
+* KEY siempre real o null
+* nunca pseudo (`__SLOT_` prohibido)
+GK genera estructura base (loci)
+contenido sigue dependiendo de DB
+---
+
+
+SNAPSHOT HARD RULE:
+
+- snapshot puede no existir
+GK debe renderizar estructura base
+- snapshot MUST be valid=true
+- if snapshot missing → GK does NOT render
+- GK NEVER builds fallback structure
+
+**SNAPSHOT STRUCTURE (FIJO)**
+
+```json
+{
+  "version": "A15",
+  "valid": true,
+  "checksum": "hash",
+  "frames": [
+    {
+      "key": "KEY_FRAME_01",
+      "seq": 1,
+      "parentKey": "PARCOUR_MAIN",
+      "assetsCount": 3,
+      "assets": [
+        {"path": "...", "type": "img"}
+      ]
+    }
+  ]
+}
+```
+
+REGLAS
+
+* orden ya viene desde LB
+* `assetsCount` explícito (no calcular en GK)
+* snapshot completo o nada
+
+---
+
+**SPAWNER CONTRACT**
+
+* usa snapshot, no DB
+* spacing separado de render
+* frame = unidad completa (no parcial)
+* no reconstrucción incremental
+
+---
+
+**SOURCE OF TRUTH**
+
+FASE ACTUAL (temporal):
+
+* GK puede leer DB
+
+FASE FINAL (obligatoria):
+
+* GK SOLO snapshot
+* DB prohibida en GK
+
+---
+
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ARCHIVOS BRIDGE (control runtime):
+
+C:\Alexandria\data\bridge\open_key.txt
+→ indica qué KEY abrir
+
+C:\Alexandria\data\bridge\active_key.txt
+→ estado actual en GK
+
+C:\Alexandria\data\bridge\return_frame_key.txt
+→ navegación retorno
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+REGLAS:
+
+- snapshot es fuente de datos (KEY → seq)
+NO define existencia de loci
+NO define layout
+- bridge solo controla navegación (NO datos)
+- GK nunca escribe snapshot
+- LB nunca interpreta navegación GK
+- comunicación es por archivos (no sockets)
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+SINCRONIZACIÓN:
+
+- snapshot write es atómico (replace completo)
+- GK solo lee snapshot completo (no parcial)
+- no lectura concurrente durante escritura
+- versión de snapshot debe coincidir con ORM
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ERRORES:
+
+- snapshot inválido → GK no renderiza
+- checksum inválido → GK log + stop
+- archivos bridge faltantes → ignorar (no crítico)
+
+================================================================================================================================================================================================
+
+
+6. Rendering Contract (Frame, ) 
+
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+[SCENE CONTRACT — REALM BASE A15]
+
+GATEKEEPER — REALM CONTRACT (A15)
+
+INPUT:
+- snapshot.json
+
+RESPONSABILIDAD:
+
+- renderizar Realm completo (WorldEnvironment + Parcour + Frames)
+- instanciar frames desde snapshot.frames[]
+
+REGLAS:
+
+- GK no lee SQLite
+- GK no interpreta estados
+GK genera estructura base (loci)
+contenido sigue dependiendo de DB
+
+FRAME:
+
+- 1 frame = 1 KEY real
+- sin KEY → no frame
+
+ORDEN:
+
+- definido por seq
+- sin reordenamiento en GK
+
+VALIDACIÓN:
+
+- KEY únicos
+- seq continuo
+- parentKey consistente
+
+
+ESTRUCTURA OBLIGATORIA:
+
+REQUIRED NODES:
+
+- RealmController MUST exist in scene
+- if missing → system INVALID
+
+Realm (Node3D)
+├─ WorldEnvironment
+├─ Parcour (Mesh base estático)
+│  ├─ Floor
+│  ├─ Ceiling
+│  └─ WallPath
+├─ Frames (contenedor dinámico)
+│  └─ FrameTemplate (plantilla duplicable)
+├─ CameraRig
+│  └─ Camera3D
+├─ RealmController
+└─ Spawner
+
+REGLAS:
+
+- FrameTemplate es la única unidad duplicable
+- Parcour NO se duplica por frame
+- Frames contiene SOLO instancias de FrameTemplate
+- CameraRig controla navegación (no Frame)
+- Spawner nunca modifica geometry base
+
+FRAME TEMPLATE (CONTRATO):
+
+Debe contener:
+
+- MeshInstance3D (visual)
+- Area3D (interacción)
+- CollisionShape3D (hitbox)
+
+REGLAS:
+
+- escala fija (2x2 aprox)
+- pivot centrado
+- profundidad baja (0.2)
+- no lógica interna
+
+CAMERA (CRÍTICO iOS):
+
+- Camera3D es controlada por CameraRig
+- movimiento SIEMPRE permitido (debug y producción)
+- input desacoplado de render
+
+REQUISITOS:
+
+- soporte touch (drag → rotate)
+- soporte forward movement (tap / input virtual)
+- no depender de teclado
+
+MODO DEBUG:
+
+- movimiento libre obligatorio
+- permite validar spacing, escala, visibilidad
+
+FALLO CRÍTICO:
+
+Si usuario no puede moverse:
+→ sistema inválido (bloquea desarrollo)
+
+REGLA:
+
+Render sin navegación = inválido
+
+NOTAS:
+
+- este contrato aplica a GK siempre
+- LB no define cámara
+- Realm debe ser navegable incluso sin snapshot
+
+STATUS FLAG:
+
+SCENE_BASE_READY = true
+FRAME_TEMPLATE_READY = true
+CAMERA_MOVEMENT_PENDING = true
+SPAWNER_PENDING = true
+
+[ENVIRONMENT CONTRACT — FIJO]
+
+- path: Realm/WorldEnvironment
+- index: 0 (primer hijo)
+- no runtime creation
+- no depende de snapshot
+
+[ENVIRONMENT SOURCE]
+
+source: ENV_PRESET (legacy validado)
+
+rules:
+- Environment se define UNA vez (editor)
+- configuración se guarda como preset/base
+- GK NO recalcula parámetros
+- GK NO modifica valores en runtime
+
+CONFIG
+
+- Background: Color (no sky dinámico)
+- Exposure fijo
+- Sin auto exposure
+- Sin procedural sky
+
+[RENDER PIPELINE ACTUALIZADO]
+
+0. Load Environment (preset fijo)
+1. Load snapshot
+2. Validate snapshot
+3. Validate structure
+4. Spawn frames
+5. Render panels
+
+VALIDACIÓN GK
+
+if (GetChild(0) != WorldEnvironment)
+→ GK_ABORT_ENV_INVALID
+
+
+================================================================================================================================================================================================
+
+7. Spawner Logic (corridor / frames)
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+
+[SPAWNER INPUT CONTRACT]
+
+input: snapshot.frames[]
+
+FRAME COUNT RULE — A15
+
+- número de loci = definido por GK (N fijo o parametrizado)
+snapshot.frames[] solo asigna contenido a algunos loci
+
+- GK NO define cantidad
+- GK NO completa espacios
+- GK NO itera por rango fijo
+
+REGLAS:
+
+- cada frame en snapshot → 1 instancia
+- ausencia de seq → no existe frame
+- no hay “huecos visuales”
+
+ORDEN:
+
+- estrictamente por seq (ya ordenado desde LB)
+- GK no reordena
+
+CONSECUENCIA:
+
+- estructura visual = estructura real
+- eliminar entries reduce frames
+- crear entries incrementa frames
+
+PROHIBIDO:
+
+- TotalFrames fijo (legacy)
+- loops por rango (1..N)
+- inferir frames faltantes
+
+OBJETIVO:
+
+- eliminar dependencia de estructura artificial
+- hacer render 100% data-driven
+- alinear Parcour con DB real
+
+
+
+REGLAS
+
+- 1 frame = 1 instancia completa
+- no parcial
+- orden = seq (no ordenar en GK)
+- spacing separado de render
+
+PROHIBIDO
+
+- leer DB
+- reconstrucción incremental
+- inferir datos
+
+OUTPUT
+
+- instancia FrameTemplate por frame
+- asignar key
+- asignar posición por seq
+
+
+================================================================================================================================================================================================
+
+8. Storage Paths (root, db, assets, bridge) 
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+[STORAGE PATHS — FIJOS]
+
+ROOT
+C:\Alexandria\
+
+DATA
+C:\Alexandria\data\
+
+SNAPSHOT
+C:\Alexandria\snapshot\current.json
+
+ASSETS
+C:\Alexandria\data\assets\
+
+BRIDGE
+C:\Alexandria\data\bridge\
+
+REGLAS
+
+- paths absolutos (no relativos)
+- snapshot único (no múltiples activos)
+- assets nunca embebidos
+- GK solo lectura
+
+
+================================================================================================================================================================================================
+9. Migration Rules (A14 → A15)
+
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+10. Known Failures + constraints
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+================================================================================================================================================================================================
+
+
+Errores graves:
+
+
+
+2. Uso de `__SLOT_` rompe identidad real (no determinístico) 
+3. Render depende de DB en tiempo real sin cache coherente
+4. Collage ligado a lógica de spacing (acoplado, frágil)
+5. Seed bloquea generación de panels → nunca reconstruye collage
+6. Falta contrato claro LB→GK (qué es “real”, qué es “placeholder”)
+7. Paths correctos pero sin validación de consistencia 
+
+Mejoras clave:
+
+1. Separar estados: EXISTE / NO EXISTE (sin seed ambiguo)
+2. KEY siempre real o null (nunca pseudo)
+3. Collage = función pura de assets (no de estado UI)
+4. GK no decide lógica, solo renderiza
+5. LB único generador de verdad
+6. Cache local en GK (snapshot por frame)
+7. Contrato explícito:
+
+   * si hay assets → render collage
+   * si no → vacío
+
+Sí, necesitas ORM + comentarios + trazas estrictas para evitar ciclo.
+
+1. Elimina `__SLOT_` y seed ambiguo → solo KEY real o null
+2. Define contrato: GK renderiza solo por assets (no estado)
+3. Mueve lógica collage a función pura (paths → panels)
+4. LB genera snapshot consistente (frames + assets)
+5. GK consume snapshot, no DB directa
+6. Log obligatorio por frame: key, assetsCount, paths
+7. Handoff en ORM por cada fallo detectado
+
+8. Unifica estado: solo EXISTS / EMPTY (elimina seed completamente)
+9. Snapshot incluye: key, seq, assets[], hero
+10. GK no consulta DB (solo snapshot)
+11. Validación: si assets>0 → siempre generar panels
+12. Separar spacing vs rendering (dos funciones)
+13. Logs: BEFORE render / AFTER render por frame
+14. Fail explícito si paths vacíos con assets>0
+15. ORM: sección “Render Contract” obligatoria
+
+16. KEY inmutable obligatorio (ni clean ni delete lo cambian)
+17. `seq` nunca cambia (posición fija estructural)
+18. LB debe garantizar orden completo (sin huecos)
+19. Snapshot incluye `assetsCount` explícito (no calcular en GK)
+20. GK no filtra nada (render 1:1 snapshot)
+21. Viewer y Corridor usan misma fuente (no divergencia) 
+22. BuildParcourPanels no depende de estado, solo paths 
+23. Fail si DB inconsistente (no fallback silencioso)
+24. Logs incluyen source (LB vs GK)
+25. ORM define “single source of truth = LB”
+
+26. Prohibido lógica implícita en GK (todo explícito en snapshot)
+27. assets ordenados desde LB (no ORDER BY en GK)
+28. Hero separado de parcour (roles estrictos)
+29. No reconstrucción parcial (frame completo o vacío)
+30. Bridge versionado (evitar desync LB↔GK)
+31. Snapshot atómico (write completo o nada)
+32. Validación previa en LB antes de exportar
+33. GK valida integridad snapshot antes render
+34. Timeout/refresh controlado (no refresh infinito)
+35. ORM incluye ejemplos reales de snapshot JSON
+
+Sí.
+
+36. GK valida unicidad de KEY por frame (fail si duplicado)
+37. GK valida parentKey + seq consistentes (árbol íntegro)
+38. GK rechaza snapshot incompleto (no render parcial)
+39. GK no crea datos, solo valida + renderiza
+40. LB responsable de consistencia global
+41. GK asegura continuidad espacial (frames alineados)
+42. GK detecta huecos de seq (fail explícito)
+43. GK logea inconsistencias estructurales
+44. Integridad > render (no dibuja si hay error)
+45. ORM: sección “Integrity Contract (GK)” obligatoria
+
+46. IDs únicos globales (no regenerables)
+47. Snapshot incluye checksum (validación rápida GK)
+48. Versión ORM en snapshot (compatibilidad)
+49. Política de errores: stop vs fallback definida
+50. Logs estructurados (parseables, no texto libre)
+51. Test mínimo: reconstruir 1 parcours completo
+52. Test crítico: delete → recreate → render
+53. Freeze contrato antes de codificar
+54. No cambios implícitos entre chats (solo ORM)
+55. Handoff obligatorio tras cada fallo crítico
+
+56. Definir tamaño máximo de snapshot (control memoria)
+57. Política de actualización (refresh manual vs automático)
+58. Manejo de assets faltantes (fail o skip explícito)
+59. Orden de render fijo (determinístico)
+60. Separar debug mode vs production
+61. Flag de integridad global (snapshot válido/inválido)
+62. Reglas de concurrencia LB→GK (no lectura parcial)
+63. Tiempo máximo de render por frame (control lag)
+64. Registro histórico de snapshots (rollback)
+65. Caso límite: parcours vacío validado
+
+
+
+
+
+
+[GK STRUCTURE VALIDATION]
+
+ANTES DE RENDER
+
+- verificar Realm root
+- verificar WorldEnvironment en index 0
+- verificar Parcour existe
+- verificar Frames existe
+- verificar FrameTemplate existe
+- verificar Spawner existe
+- verificar RealmController existe
+
+SI FALLA
+
+→ abort render
+→ log estructurado
+
+[RENDER PIPELINE — FIJO]
+
+1. Load snapshot
+2. Validate snapshot
+3. Validate structure
+4. Spawn frames
+5. Render panels
+
+orden inmutable
+
+
+Objetivo: handoff A15.02 consolidado (fallo real + estado actual + reglas cerradas)
+
+Plan:
+
+1. Fallo real: el sistema nunca construyó mundo porque `Spawner` **no ejecutó `_Ready()` (sin script activo)**. Luego se intentó forzar vía `.tscn` con `ExtResource("Spawner.cs")` → referencia inválida → corrupción del scene loader. Paralelo: `FrameTemplate` tenía dependencia absoluta a `/root/World/RealmController` → error runtime que contamina ejecución.
+2. Estado actual limpio: `.tscn` restaurado sin referencias inválidas, `FrameTemplate` pasivo (solo señales), `RealmController` existe, `Spawner` presente pero **sin binding seguro aún** → por eso no hay geometry visible. No es fallo de ORM, es fallo de activación.
+3. Reglas selladas A15.02: (a) `.tscn` no se edita manualmente para scripts, solo editor o código; (b) `Spawner` es obligatorio y debe validar ejecución con log; (c) cero rutas absolutas; (d) toda geometry nace en runtime desde Spawner; (e) si no hay `[SPAWNER][INIT]` → el sistema está muerto.
+
+Siguiente:
+Confirmar para proceder a activación segura de Spawner vía código (sin tocar `.tscn`).
+Objetivo: completar handoff A15.02 con fallos restantes y riesgos
+
+Plan:
+
+1. Riesgo crítico no resuelto: cámara no está validada contra el espacio generado → aunque Spawner funcione, puedes estar fuera del corridor (z=0 vs corridor inicia en z≈2.5+). Esto explica “no veo nada” aun con geometry correcta.
+2. Error estructural adicional: `FramesRootPath = "Frames"` depende de nodo existente en `.tscn`; si falla, SpawnFrame rompe silenciosamente → falta validación (`GetNodeOrNull`).
+3. Gap de arquitectura: no existe verificación de sistema vivo. Falta regla:
+
+   * Spawner debe imprimir INIT
+   * Debe imprimir creación de segmentos
+   * Si no → STOP inmediato
+
+Siguiente:
+Confirmar para agregar capa de debug mínimo (prints + cámara posicionada dentro del corridor).
+
+Objetivo: documentar rollback operativo tras bloqueo A15 (render nulo + interfaz inestable)
+
+Plan:
+
+1. Decisión: se suspende A15 runtime construction. Se considera fallido en estado actual por falta de ejecución confiable de Spawner y corrupción recurrente de `.tscn`. Se adopta rollback a **tscn-driven geometry** como baseline estable. El objetivo inmediato deja de ser arquitectura y pasa a ser **render visible funcional**.
+2. Nueva base temporal: `.tscn` se convierte en fuente única de verdad para geometry. `Parcour` debe contener manualmente `Floor`, `Ceiling`, `Walls` con meshes válidos y posiciones correctas. `Spawner` queda fuera del flujo. `FrameTemplate` permanece pasivo (solo señales). `CameraRig` se usa únicamente para validar visibilidad y movimiento.
+3. Criterio de éxito: si el corridor es visible y navegable → sistema base válido. Si no es visible → el problema no era ORM sino escena/cámara. Solo después de validar esto se reconsidera reintroducir runtime.
+
+Siguiente:
+Confirmar para definir especificación mínima de geometry en `.tscn` (dimensiones y posiciones exactas).
+
+

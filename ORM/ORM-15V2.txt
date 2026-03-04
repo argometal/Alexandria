@@ -1,0 +1,2554 @@
+A15 — ORM (BASE LIMPIA)
+
+git status
+git add .
+git commit -m "feat: A15 stable with maze directions — N=20 fixed loci, snapshot assign-only, wall rotation fix (+180°), left turn at seq5, right at seq10"
+git tag -a v15_a15_core_stable -m "RAZ15: A15 core stable — maze layout, persistent directions, wall alignment, snapshot assign-only, no DB dependency"
+git push
+git push --tags
+
+
+PRINCIPIO
+
+
+A15 — ORM (BASE LIMPIA)
+
+PRINCIPIO
+
+GK define existencia (loci)
+DB define contenido (KEY)
+snapshot asigna contenido a loci
+render NO depende de DB
+
+
+IDENTIDAD Y ASIGNACIÓN — BLOQUE OPERATIVO
+
+KEY
+
+* identificador único global
+* inmutable
+* nunca se reutiliza
+* nunca define posición
+
+---
+
+parentKey
+
+* define relación lógica
+* define jerarquía
+* no define posición espacial directa
+
+---
+
+seq
+
+* define posición lógica absoluta
+* pertenece al dominio de DB
+* no crea loci
+* no depende de snapshot
+* es índice de mapeo, no generador de estructura
+
+---
+
+SEPARACIÓN CRÍTICA
+
+KEY ≠ posición
+seq ≠ existencia
+
+KEY representa contenido
+seq representa ubicación lógica
+
+---
+
+ASIGNACIÓN KEY → LOCUS
+
+Proceso único permitido:
+
+1. snapshot entrega (KEY, seq)
+
+2. GK busca locus con seq
+
+3. si existe locus:
+
+   * asigna KEY
+   * estado → EXISTS
+
+4. si NO existe locus:
+
+   * ERROR (snapshot inválido)
+
+---
+
+REGLA CRÍTICA
+
+(ver SNAPSHOT — REGLA ÚNICA)
+
+si seq no existe en GK:
+
+→ el sistema está corrupto
+
+---
+
+DESASIGNACIÓN
+
+Si un locus no aparece en snapshot:
+
+* mantiene seq
+* pierde KEY
+* estado → EMPTY
+
+---
+
+INVARIANTE DE MAPEADO
+
+Para todo KEY en snapshot:
+
+existe exactamente un locus con ese seq
+
+Para todo locus:
+
+puede o no tener KEY
+
+---
+
+PROHIBICIONES
+
+Queda prohibido:
+
+* generar seq en GK
+* recalcular seq en runtime
+* usar KEY para determinar posición
+* permitir KEY sin seq
+* permitir seq duplicado en snapshot
+
+---
+
+VALIDACIÓN
+
+Sistema válido si:
+
+* cada KEY tiene seq válido
+* ningún seq fuera de rango
+* snapshot no introduce nuevos índices
+* loci no cambian cantidad
+
+---
+
+CRITERIOS DE ERROR
+
+Sistema inválido si:
+
+* KEY sin seq
+* seq inexistente en GK
+* duplicación de seq
+* mapeo KEY → múltiples loci
+
+---
+
+FIN BLOQUE
+
+---
+
+Verificación
+
+* forzar snapshot con seq fuera de rango → debe fallar
+* forzar snapshot vacío → loci permanecen
+* forzar eliminación de KEY → locus sigue visible
+
+
+ESTRUCTURA
+GK genera N loci siempre
+loci existen aunque estén vacíos
+ausencia de KEY ≠ ausencia de locus
+
+SNAPSHOT
+(ver bloque SNAPSHOT — REGLA ÚNICA)
+
+
+CAMBIO 08
+
+Archivo
+ORM_A15V2.txt
+
+SCOPE
+Definir LOCUS INTERACTION (comportamiento runtime de EMPTY vs EXISTS)
+
+---
+
+LOCUS INTERACTION — BLOQUE EJECUTABLE
+
+DEFINICIÓN
+
+locus = unidad interactiva mínima del sistema
+
+Cada locus tiene:
+
+* seq
+* estado (EMPTY / EXISTS)
+* comportamiento
+
+---
+
+ESTADOS
+
+EMPTY
+
+* no tiene KEY
+* representa espacio disponible
+
+EXISTS
+
+* tiene KEY
+* representa contenido activo
+
+---
+
+REGLA CRÍTICA
+
+EMPTY y EXISTS son estructuralmente iguales
+
+La diferencia es solo semántica
+
+---
+
+INTERACCIÓN — EMPTY
+
+Click en locus EMPTY:
+
+* NO genera navegación
+* NO genera snapshot
+* NO cambia contexto
+* puede emitir evento de creación (futuro)
+
+Resultado:
+
+permanece en mismo estado
+
+---
+
+INTERACCIÓN — EXISTS
+
+Click en locus EXISTS:
+
+* genera evento de navegación
+* produce KEY objetivo
+* dispara snapshot nuevo
+* cambia contexto
+
+---
+
+REGLA DE CONSISTENCIA
+
+El comportamiento del locus:
+
+* no depende de DB directa
+* no depende de layout
+* no depende de posición física
+
+Solo depende de:
+
+estado (EMPTY / EXISTS)
+
+---
+
+REGLA DE ESTABILIDAD
+
+Cambio de estado:
+
+EMPTY → EXISTS
+EXISTS → EMPTY
+
+NO debe:
+
+* recrear locus
+* mover locus
+* cambiar seq
+* afectar otros loci
+
+---
+
+RENDER VISUAL
+
+EMPTY:
+
+* placeholder visual
+* sin contenido
+
+EXISTS:
+
+* contenido visible
+* puede tener assets
+
+---
+
+REGLA DE INDEPENDENCIA
+
+La interacción:
+
+* no altera N
+* no altera layout
+* no altera estructura
+
+---
+
+REGLA DE AISLAMIENTO
+
+Cada locus es independiente
+
+Evento en un locus:
+
+* no afecta estado de otros loci
+
+---
+
+PROHIBICIONES
+
+Queda prohibido:
+
+* bloquear interacción en EMPTY
+* permitir navegación desde EMPTY
+* usar KEY para determinar interacción
+* usar layout para determinar comportamiento
+
+---
+
+INVARIANTE
+
+Todo locus es interactivo siempre
+
+---
+
+VALIDACIÓN
+
+Sistema válido si:
+
+* EMPTY responde sin romper flujo
+* EXISTS navega correctamente
+* cambio de estado no altera estructura
+* interacción no depende de datos externos
+
+---
+
+CRITERIOS DE ERROR
+
+Sistema inválido si:
+
+* EMPTY navega
+* EXISTS no navega
+* interacción cambia layout
+* interacción elimina loci
+
+---
+
+FIN BLOQUE
+
+---
+
+Verificación
+
+* click en EMPTY → no cambia contexto
+* click en EXISTS → genera snapshot
+* alternar estados → loci permanecen
+* interacción no cambia N
+
+
+OBJECT
+object = KEY con contenido completo
+
+ROOM
+
+room NO es estructura del sistema
+
+room es:
+
+- interpretación visual opcional
+- agrupación perceptual de loci
+- no tiene existencia en DB
+- no tiene KEY
+- no participa en snapshot
+- no afecta layout
+- no afecta navegación
+
+Regla crítica:
+
+ROOM ≠ rango de seq
+ROOM ≠ capa estructural
+
+Es solo una lectura visual del usuario
+
+RENDER Y CICLO RUNTIME — BLOQUE EJECUTABLE
+
+CICLO DE EJECUCIÓN
+
+El sistema sigue siempre este orden:
+
+1. GK inicializa espacio
+2. GK genera N loci
+3. GK asigna seq a cada locus
+4. GK posiciona loci (layout)
+5. snapshot es leído (opcional)
+6. GK asigna KEY a loci
+7. GK renderiza contenido
+
+---
+
+REGLA CRÍTICA
+
+El paso 1–4 ocurre SIEMPRE
+aunque snapshot no exista
+
+---
+
+GENERACIÓN DE LOCI
+
+GK debe:
+
+* crear N loci base
+* cada locus tiene seq fijo
+* cada locus existe antes de cualquier dato
+
+Esto ocurre:
+
+* en startup
+* en refresh
+* en cambio de contexto
+
+---
+
+LAYOUT
+
+GK define completamente:
+
+* spacing
+* orientación
+* coordenadas
+
+LAYOUT — DEFINICIÓN EJECUTABLE (GK MASTER OVERRIDE)
+
+layout es responsabilidad exclusiva de GK
+layout puede depender de seq + estado interno de GK
+layout NO depende de DB
+layout NO depende de snapshot
+layout NO depende de KEY
+
+INVARIANTE ACTUALIZADO
+
+posición = función(seq + estado interno GK)
+
+Donde estado interno GK puede incluir:
+
+orientación acumulada
+side dinámico
+reglas de percepción espacial
+ajustes visuales runtime
+
+RESTRICCIÓN
+
+estado interno GK NO puede depender de DB
+estado interno GK NO puede depender de snapshot
+estado interno GK NO puede depender de KEY
+
+Verificación
+
+mismo snapshot + distinto estado GK → layout puede cambiar
+eliminar DB → layout sigue funcionando
+cambiar KEY → layout no cambia
+walls siguen alineados aunque path sea igual
+
+
+---
+
+MAZE
+
+El maze es una propiedad del layout, no de la estructura.
+
+Se define como:
+
+- dirección por seq
+- acumulativa desde origen
+
+Reglas:
+
+- la dirección se calcula incrementalmente
+- los cambios de dirección afectan orientación del recorrido
+- NO afectan:
+  - N
+  - seq
+  - existencia de loci
+
+---
+
+PROHIBICIONES
+
+Queda prohibido:
+
+- definir layout en DB
+- definir layout en snapshot
+- usar KEY para calcular posición
+- recalcular seq en función de layout
+- crear nodos por lógica de maze
+
+---
+
+INVARIANTE
+
+Para todo seq:
+
+posición = función(seq)
+
+Nunca:
+
+posición = función(KEY, DB, snapshot)
+
+
+Reglas:
+
+* layout es determinista
+* layout no depende de snapshot
+* layout no depende de DB
+
+---
+
+APLICACIÓN DE SNAPSHOT
+
+snapshot es aplicado DESPUÉS del layout
+
+Proceso:
+
+para cada locus:
+
+* buscar entrada en snapshot con mismo seq
+* si existe → asignar KEY
+* si no → estado EMPTY
+
+---
+
+RENDER FINAL
+
+Cada locus se renderiza:
+
+EMPTY
+
+* placeholder visual
+* interactivo
+
+EXISTS
+
+* contenido visible
+* interactivo
+
+---
+
+REFRESH — DEFINICIÓN CORRECTA
+
+Trigger:
+
+* cambio de KEY
+* archivo refresh
+* acción del usuario
+
+Proceso:
+
+1. limpiar asignaciones (NO loci)
+2. aplicar snapshot
+3. renderizar
+
+---
+
+REGLA CRÍTICA
+
+REFRESH nunca:
+
+- recalcula layout
+- recrea geometría
+- altera posiciones
+- altera N
+
+REFRESH = solo cambio de contenido
+
+---
+
+REBUILD — DEFINICIÓN SEPARADA
+
+REBUILD es un proceso distinto.
+
+Se usa cuando:
+
+- cambia layout
+- cambia configuración espacial (maze)
+- se modifica lógica de posicionamiento
+
+Proceso:
+
+1. limpiar geometría (NO loci conceptuales)
+2. recalcular layout
+3. reconstruir geometría
+4. aplicar snapshot
+5. renderizar
+
+---
+
+REGLA CRÍTICA
+
+REBUILD es explícito.
+
+Nunca ocurre automáticamente en REFRESH.
+
+---
+
+PROHIBIDO
+
+- mezclar REFRESH con REBUILD
+- recalcular layout en REFRESH
+- usar snapshot para reconstrucción espacial
+
+
+--- 
+
+INVARIANTES — BLOQUE ÚNICO
+
+- existen N loci siempre
+- N es constante en runtime
+- snapshot no cambia N
+- snapshot no cambia layout
+- DB no define existencia
+- layout es independiente de DB
+- navegación no altera estructura
+- loci nunca se crean en runtime
+- loci nunca se destruyen en runtime
+
+Regla:
+
+si cualquier regla se viola → sistema inválido
+
+---
+
+REGLA CRÍTICA
+
+Nunca se destruyen loci en refresh
+
+solo se actualiza contenido
+
+---
+
+REBUILD
+
+Rebuild implica:
+
+* recrear estructura espacial
+* mantener N loci
+
+NO implica:
+
+* depender de snapshot
+* cambiar cantidad de loci
+
+---
+
+INVARIANTES — BLOQUE ÚNICO
+
+- existen N loci siempre
+- N es constante en runtime
+- snapshot no cambia N
+- snapshot no cambia layout
+- DB no define existencia
+- layout es independiente de DB
+- navegación no altera estructura
+- loci nunca se crean en runtime
+- loci nunca se destruyen en runtime
+
+Regla:
+
+si cualquier regla se viola → sistema inválido
+
+---
+
+FIN BLOQUE
+
+---
+
+Verificación
+
+* comentar lectura de snapshot → debe seguir renderizando
+* borrar snapshot → loci siguen visibles
+* forzar refresh → estructura no cambia
+
+
+CAMBIO 12
+
+Archivo
+ORM_A15V2.txt
+
+SCOPE
+Definir CONTRATO GK ↔ LB (límites estrictos para evitar recaer en A14/A15 roto)
+
+---
+
+
+
+---
+
+AFTER
+
+CONTRATO GK ↔ LB — BLOQUE ÚNICO
+
+PRINCIPIO
+
+GK y LB operan en dominios completamente separados.
+
+---
+
+GK (Godot)
+
+Responsabilidades:
+
+- generar N loci
+- definir layout (posición + orientación)
+- mantener continuidad espacial
+- renderizar
+- manejar interacción (click)
+
+GK NO puede:
+
+- leer DB
+- definir KEY
+- definir parentKey
+- definir seq
+- generar snapshot
+
+---
+
+LB (Library Build)
+
+Responsabilidades:
+
+- leer DB
+- definir KEY
+- definir parentKey
+- definir seq
+- generar snapshot
+- validar datos
+
+LB NO puede:
+
+- definir N
+- definir layout
+- crear loci
+- controlar render
+
+---
+
+SNAPSHOT
+
+snapshot es la única interfaz entre GK y LB.
+
+Reglas:
+
+- snapshot contiene solo (KEY, seq)
+- snapshot no contiene layout
+- snapshot no contiene estructura
+
+---
+
+FLUJO
+
+1. GK detecta interacción
+2. GK emite KEY
+3. LB recibe KEY
+4. LB genera snapshot desde parentKey
+5. GK aplica snapshot
+
+---
+
+AISLAMIENTO
+
+- GK puede correr sin DB
+- LB puede correr sin GK
+
+---
+
+INVARIANTE
+
+GK nunca conoce DB  
+LB nunca conoce geometría
+
+---
+
+Verificación
+
+* desconectar DB → GK sigue
+* desactivar GK → LB genera snapshot
+* snapshot aplicado → contenido correcto
+* eliminar snapshot → GK intacto
+
+---
+
+Con esto queda solo **1 bloque final**:
+CIERRE + INVARIANTES GLOBALES (sellado del ORM).
+
+
+PROHIBIDO
+slots
+seeds
+existencia dependiente de DB
+snapshot como estructura
+
+---
+
+AFTER
+
+A15 — ORM V2 (BASE LIMPIA · BLOQUE CONSOLIDADO EJECUTABLE)
+
+PRINCIPIO
+
+GK define existencia (loci)
+DB define contenido (KEY)
+snapshot asigna contenido a loci
+render NO depende de DB ni de snapshot
+
+---
+
+SEPARACIÓN FUNDAMENTAL
+
+El sistema se divide en dos capas estrictas:
+
+CAPA ESPACIAL (GK)
+
+* define existencia
+* define cantidad
+* define layout
+* define continuidad
+
+CAPA SEMÁNTICA (DB + snapshot)
+
+* define contenido
+* define relaciones
+* define orden lógico
+
+Regla crítica:
+existencia ≠ contenido
+
+---
+
+IDENTIDAD
+
+KEY
+
+* único
+* inmutable
+* identidad del contenido
+
+parentKey
+
+* define relación jerárquica
+
+seq
+
+* define posición absoluta lógica
+* no crea existencia
+* no depende de snapshot
+
+---
+
+
+CONTROL DE N — BLOQUE EJECUTABLE
+
+DEFINICIÓN DE N
+
+N = número total de loci generados por GK
+
+---
+
+AUTORIDAD
+
+GK es la única autoridad que define N
+
+---
+
+PROPIEDADES DE N
+
+* N es independiente de DB
+* N es independiente de snapshot
+* N es estable durante runtime
+* N no se recalcula por contenido
+
+---
+
+TIPOS DE N
+
+N puede ser:
+
+FIJO
+
+* constante definida en código
+
+PARAMÉTRICO
+
+* configurable por contexto
+* pero decidido por GK, no por DB
+
+---
+
+REGLA CRÍTICA
+
+snapshot.length nunca afecta N
+
+---
+
+EJEMPLOS VÁLIDOS
+
+snapshot vacío → N loci
+snapshot con 3 elementos → N loci
+snapshot con 100 elementos → máximo N loci (recorte)
+
+---
+
+OVERFLOW
+
+Si snapshot contiene más elementos que N:
+
+* los elementos fuera de rango se ignoran
+
+---
+
+UNDERFLOW
+
+Si snapshot contiene menos elementos:
+
+* loci restantes permanecen EMPTY
+
+---
+
+MAPEO
+
+Dominio válido de seq:
+
+0 ≤ seq < N
+
+---
+
+ERROR DE RANGO
+
+Si snapshot contiene:
+
+seq ≥ N
+
+→ snapshot inválido
+
+---
+
+ESTABILIDAD
+
+Durante un ciclo runtime:
+
+* N no cambia
+* cantidad de loci no cambia
+* indices seq no cambian
+
+---
+
+CAMBIO DE CONTEXTO
+
+N solo puede cambiar si:
+
+* GK cambia configuración
+* o se reconstruye el mundo explícitamente
+
+Nunca por:
+
+* DB
+* snapshot
+
+---
+
+INVARIANTE
+
+Para todo momento:
+
+existen exactamente N loci
+
+---
+
+PROHIBICIONES
+
+Queda prohibido:
+
+* N = snapshot.length
+* crear loci en función de datos
+* eliminar loci por ausencia de KEY
+* expandir N dinámicamente por snapshot
+* contraer N dinámicamente por snapshot
+
+---
+
+CRITERIOS DE VALIDACIÓN
+
+Sistema válido si:
+
+* snapshot vacío → N loci
+* snapshot parcial → N loci
+* snapshot completo → N loci
+* eliminar snapshot → N loci
+
+---
+
+CRITERIOS DE ERROR
+
+Sistema inválido si:
+
+* cantidad de loci cambia con snapshot
+* N depende de DB
+* N depende de número de entries
+* loci aparecen/desaparecen en runtime
+
+---
+
+FIN BLOQUE
+
+
+NAVIGATION STACK — LB (MÍNIMO)
+
+DEFINICIÓN
+
+La navegación se basa en contexto lógico, no espacial.
+
+El contexto activo es:
+
+→ parentKey
+
+---
+
+MODELO
+
+LB mantiene implícitamente:
+
+- KEY actual
+- parentKey actual
+
+No es necesario stack explícito en esta fase.
+
+---
+
+FLUJO
+
+1. GK emite KEY seleccionado
+2. LB recibe KEY
+3. LB establece:
+
+   parentKey = KEY
+
+4. LB consulta DB:
+
+   SELECT key, seq WHERE parentKey = KEY
+
+5. LB genera snapshot
+
+6. GK aplica snapshot
+
+---
+
+REGLA CRÍTICA
+
+Cambio de contexto:
+
+- NO altera N
+- NO altera layout
+- NO altera loci
+
+Solo cambia:
+
+→ contenido asignado
+
+---
+
+BACK (OPCIONAL FUTURO)
+
+Puede implementarse como:
+
+- historial de parentKey
+- pila (stack)
+
+NO requerido en esta fase
+
+---
+
+PROHIBIDO
+
+- usar contexto para generar loci
+- usar parentKey para layout
+- mezclar navegación con geometría
+
+---
+
+INVARIANTE
+
+La navegación es completamente independiente del espacio
+---
+
+Verificación
+
+* forzar snapshot con 1 elemento → deben existir N loci
+* forzar snapshot con 100 elementos → no deben generarse más loci
+* eliminar snapshot → loci siguen existiendo
+
+
+Definición:
+
+locus = posición estructural fija en el espacio
+
+---
+
+LOCUS — DEFINICIÓN OPERATIVA
+
+Cada locus tiene:
+
+* seq (posición)
+* estado
+* representación visual
+
+Estados posibles:
+
+EMPTY
+
+* no tiene KEY asignado
+
+EXISTS
+
+* tiene KEY asignado
+
+Reglas:
+
+* EMPTY y EXISTS se renderizan igual estructuralmente
+* EMPTY no elimina interacción
+* EXISTS solo agrega contenido
+
+---
+
+
+INICIALIZACIÓN — BLOQUE EJECUTABLE
+
+PRINCIPIO
+
+El sistema debe iniciar completamente funcional sin:
+
+* DB
+* snapshot
+
+---
+
+SECUENCIA DE STARTUP
+
+1. GK inicia motor
+2. GK genera N loci
+3. GK asigna seq a cada locus
+4. GK calcula layout
+5. contexto activo = ROOT
+6. snapshot = vacío (por defecto)
+7. render inicial
+
+---
+
+RESULTADO ESPERADO
+
+Al iniciar:
+
+* existen N loci
+* todos los loci están EMPTY
+* sistema es interactivo
+* no hay contenido
+
+---
+
+REGLA CRÍTICA
+
+La inicialización NO depende de:
+
+* DB
+* snapshot
+* archivos externos
+
+---
+
+COMPORTAMIENTO SIN DB
+
+Si DB no existe:
+
+* snapshot no se genera
+* loci permanecen EMPTY
+* sistema sigue navegable
+
+---
+
+COMPORTAMIENTO SIN SNAPSHOT
+
+Si snapshot no existe:
+
+* no se asigna ningún KEY
+* loci permanecen EMPTY
+* render es válido
+
+---
+
+REGLA DE CONTINUIDAD
+
+El sistema nunca debe:
+
+* bloquear inicio
+* esperar datos
+* fallar por ausencia de contenido
+
+---
+
+TRANSICIÓN POST-STARTUP
+
+Cuando snapshot aparece:
+
+* se aplica sobre loci existentes
+* NO se regeneran loci
+* NO se recalcula N
+
+---
+
+REGLA DE IDPOTENCIA
+
+Inicializar múltiples veces:
+
+* produce mismo layout
+* produce mismo N
+* no duplica loci
+
+---
+
+REGLA DE LIMPIEZA
+
+Startup no debe:
+
+* arrastrar estado previo inválido
+* depender de memoria anterior
+
+---
+
+INVARIANTE
+
+Startup siempre produce:
+
+estructura válida sin datos
+
+---
+
+PROHIBICIONES
+
+Queda prohibido:
+
+* generar loci desde snapshot en startup
+* bloquear render esperando DB
+* fallar si snapshot está vacío
+* crear estructura desde DB
+
+---
+
+VALIDACIÓN
+
+Sistema válido si:
+
+* borrar DB → sistema inicia
+* eliminar snapshot → sistema inicia
+* primer render muestra loci
+* interacción funciona sin contenido
+
+---
+
+CRITERIOS DE ERROR
+
+Sistema inválido si:
+
+* sistema no inicia sin DB
+* sistema no inicia sin snapshot
+* render depende de datos
+* loci no aparecen en startup
+
+---
+
+FIN BLOQUE
+
+---
+
+Verificación
+
+* eliminar DB → iniciar → loci visibles
+* eliminar snapshot → iniciar → loci visibles
+* iniciar en limpio → todos EMPTY
+* aplicar snapshot después → contenido aparece
+
+
+* el usuario siempre tiene puntos de interacción
+
+---
+
+SNAPSHOT — CONTRATO FORMAL EJECUTABLE
+
+SNAPSHOT — REGLA ÚNICA
+
+snapshot es exclusivamente:
+
+→ mapping de contenido (KEY → seq)
+
+snapshot NO:
+
+- define existencia
+- define cantidad (N)
+- define layout
+- crea loci
+- elimina loci
+
+DEFINICIÓN
+
+snapshot = conjunto de asignaciones KEY → seq
+
+Representa contenido para un único contexto
+
+---
+
+FORMATO MÍNIMO
+
+snapshot:
+
+* frames[]
+
+Cada frame:
+
+* key (string)
+* seq (int)
+
+---
+
+PROPIEDADES
+
+* snapshot puede estar vacío
+* snapshot puede ser parcial
+* snapshot nunca es obligatorio
+* snapshot no cubre necesariamente todos los loci
+
+---
+
+UNIVERSO DE VALIDEZ
+
+Para cada frame:
+
+* key debe existir en DB
+* seq debe existir en GK
+
+---
+
+REGLA DE UNICIDAD
+
+Dentro de snapshot:
+
+* no puede haber seq duplicado
+* no puede haber KEY duplicado
+
+---
+
+REGLA DE CONTEXTO
+
+snapshot representa:
+
+hijos directos de un parentKey
+
+---
+
+REGLA CRÍTICA
+
+snapshot NO contiene:
+
+* cantidad de loci
+* layout
+* coordenadas
+* estructura
+
+---
+
+APLICACIÓN
+
+Para cada elemento en snapshot:
+
+* buscar locus con seq
+* asignar KEY
+
+Para loci sin entrada:
+
+* estado → EMPTY
+
+---
+
+COMPORTAMIENTO VACÍO
+
+snapshot vacío:
+
+* no asigna ningún KEY
+* todos los loci → EMPTY
+* render sigue activo
+
+---
+
+ERRORES DE SNAPSHOT
+
+snapshot inválido si:
+
+* seq fuera de rango
+* seq duplicado
+* KEY duplicado
+* formato incorrecto
+
+---
+
+MANEJO DE ERROR
+
+Si snapshot inválido:
+
+* se ignora completamente
+* sistema mantiene estado anterior
+
+---
+
+ORDEN
+
+El orden de snapshot:
+
+* no afecta layout
+* no afecta render
+
+seq es la única referencia válida
+
+---
+
+INVARIANTE
+
+snapshot nunca cambia:
+
+* N
+* layout
+* existencia
+
+---
+
+PROHIBICIONES
+
+(ver SNAPSHOT — REGLA ÚNICA)
+
+* usar snapshot sin validar
+
+---
+
+VALIDACIÓN
+
+Sistema válido si:
+
+* snapshot vacío → sistema estable
+* snapshot parcial → sistema estable
+* snapshot inválido → no rompe render
+* snapshot completo → llena loci correctamente
+
+---
+
+CRITERIOS DE ERROR
+
+Sistema inválido si:
+
+* snapshot cambia cantidad de loci
+* snapshot altera layout
+* snapshot crea o elimina loci
+* snapshot genera indices nuevos
+
+---
+
+FIN BLOQUE
+
+---
+
+Verificación
+
+* inyectar snapshot vacío → todos EMPTY
+* inyectar snapshot parcial → solo algunos EXISTS
+* inyectar snapshot con seq inválido → debe ignorarse
+* duplicar seq → snapshot rechazado
+
+
+Función:
+
+mapear contenido existente a loci existentes
+
+---
+
+ASIGNACIÓN
+
+Para cada elemento en snapshot:
+
+KEY → seq
+
+Proceso:
+
+* buscar locus con seq
+* asignar KEY
+* cambiar estado a EXISTS
+
+Si no hay entrada:
+
+* locus permanece EMPTY
+
+---
+
+RENDER
+
+Render es 100% responsabilidad de GK
+
+Proceso:
+
+1. GK genera N loci
+2. GK posiciona loci usando seq
+3. GK aplica layout (spacing, orientación)
+4. snapshot asigna contenido (opcional)
+
+Reglas:
+
+* render no depende de snapshot
+* render no depende de DB
+* layout no depende de DB
+* layout no depende de snapshot
+
+---
+
+OBJECT
+
+Definición:
+
+object = KEY con contenido completo
+
+Propiedades:
+
+* vive dentro del locus
+* no afecta estructura
+* no define layout
+
+---
+
+ROOM
+
+Definición:
+
+room = agrupación visual de loci
+
+Propiedades:
+
+* basada en rango de seq
+* no existe en DB
+* no tiene KEY
+* no afecta estructura
+
+---
+
+CONTEXTO ACTIVO — BLOQUE EJECUTABLE
+
+DEFINICIÓN
+
+El sistema siempre opera sobre un único contexto activo
+
+contexto = KEY activo
+
+---
+
+ROL DEL CONTEXTO
+
+El contexto define:
+
+* qué snapshot se genera
+* qué contenido se muestra
+* qué nivel se está visualizando
+
+---
+
+REGLA CRÍTICA
+
+Solo puede existir un contexto activo a la vez
+
+---
+
+ORIGEN DEL SNAPSHOT
+
+snapshot siempre se genera desde:
+
+parentKey = contexto activo
+
+---
+
+INTERPRETACIÓN
+
+snapshot representa:
+
+hijos directos del contexto activo
+
+---
+
+INICIO DEL SISTEMA
+
+Al iniciar:
+
+contexto activo = ROOT
+
+---
+
+ROOT
+
+ROOT es un KEY válido
+
+* define el primer nivel
+* no depende de DB
+* siempre existe conceptualmente
+
+---
+
+CAMBIO DE CONTEXTO
+
+Ocurre cuando:
+
+* usuario selecciona un locus EXISTS
+
+Proceso:
+
+1. locus entrega KEY
+2. KEY → nuevo contexto activo
+3. snapshot se regenera con ese KEY
+
+---
+
+REGLA DE AISLAMIENTO
+
+Cambio de contexto:
+
+* NO altera N
+* NO altera layout
+* NO altera loci
+
+Solo cambia:
+
+* asignación KEY → seq
+
+---
+
+REGLA DE CONSISTENCIA
+
+Para cualquier momento:
+
+snapshot corresponde exactamente al contexto activo
+
+---
+
+ERROR DE CONTEXTO
+
+Sistema inválido si:
+
+* snapshot no corresponde al contexto
+* múltiples contextos activos
+* snapshot mezcla múltiples parentKey
+
+---
+
+CONTEXTO Y EMPTY
+
+Si contexto no tiene hijos:
+
+* snapshot vacío
+* todos los loci EMPTY
+* sistema sigue navegable
+
+---
+
+PROHIBICIONES
+
+Queda prohibido:
+
+* snapshot sin contexto
+* múltiples contextos simultáneos
+* navegación sin actualizar contexto
+* usar seq como contexto
+* usar posición como contexto
+
+---
+
+INVARIANTE
+
+contexto activo determina completamente el contenido del sistema
+
+---
+
+VALIDACIÓN
+
+Sistema válido si:
+
+* contexto único siempre
+* snapshot depende del contexto
+* cambio de contexto actualiza contenido
+* layout permanece estable
+
+---
+
+CRITERIOS DE ERROR
+
+Sistema inválido si:
+
+* snapshot sin parentKey definido
+* contexto no coincide con snapshot
+* múltiples contextos
+* navegación sin cambio de contexto
+
+---
+
+FIN BLOQUE
+
+---
+
+Verificación
+
+* iniciar sistema → contexto ROOT
+* click en EXISTS → contexto cambia
+* snapshot nuevo corresponde al KEY
+* snapshot vacío → sistema estable
+
+---
+
+EVENTO DE NAVEGACIÓN
+
+Click en locus con estado EXISTS:
+
+→ produce KEY objetivo
+
+---
+
+FLUJO ÚNICO
+
+1. usuario selecciona KEY
+
+2. KEY se convierte en contexto activo
+
+3. LB genera snapshot con:
+
+   parentKey = KEY
+
+4. GK recibe snapshot
+
+5. GK aplica snapshot sobre loci existentes
+
+---
+
+REGLA CRÍTICA
+
+Toda navegación genera snapshot
+
+NO existe navegación sin snapshot
+
+---
+
+INTERPRETACIÓN
+
+snapshot siempre representa:
+
+hijos de un KEY
+
+---
+
+NIVEL
+
+Un snapshot = un nivel
+
+Reglas:
+
+* no mezcla de niveles
+* no múltiples parents
+* no árbol completo
+
+---
+
+CONTEXTO ACTIVO
+
+Existe un único KEY activo
+
+Este KEY define:
+
+* qué snapshot se genera
+* qué contenido se muestra
+
+---
+
+LOCUS EMPTY
+
+Click en locus EMPTY:
+
+→ NO genera navegación
+
+→ NO genera snapshot
+
+→ permanece en mismo contexto
+
+---
+
+LOCUS EXISTS
+
+Click en locus EXISTS:
+
+→ genera navegación
+→ cambia contexto
+→ genera snapshot
+
+---
+
+REGLA DE ESTRUCTURA
+
+La navegación:
+
+* NO crea loci
+* NO elimina loci
+* NO cambia N
+* NO cambia layout
+
+Solo cambia:
+
+* contenido asignado
+
+---
+
+REGLA DE CONSISTENCIA
+
+Después de navegación:
+
+* loci siguen siendo N
+* solo cambia mapping KEY → seq
+
+---
+
+REGLA DE ERROR
+
+Sistema inválido si:
+
+* navegación ocurre sin snapshot
+* snapshot mezcla múltiples parentKey
+* snapshot no corresponde al KEY activo
+* navegación altera estructura
+
+---
+
+PROHIBICIONES
+
+Queda prohibido:
+
+* navegación directa sin snapshot
+* ChangeScene como mecanismo estructural
+* navegación basada en índice
+* navegación basada en posición física
+* navegación basada en DB directa en GK
+
+---
+
+INVARIANTE
+
+KEY activo define completamente el estado del sistema
+
+---
+
+VALIDACIÓN
+
+Sistema válido si:
+
+* click en EXISTS → nuevo snapshot
+* click en EMPTY → no cambia estado
+* snapshot cambia contenido pero no estructura
+* contexto siempre definido por KEY
+
+---
+
+CRITERIOS DE ERROR
+
+Sistema inválido si:
+
+* múltiples KEY activos
+* navegación parcial sin rebuild
+* loci cambian al navegar
+* layout cambia al navegar
+
+---
+
+FIN BLOQUE
+
+---
+
+Verificación
+
+* click en locus con KEY → debe generar snapshot nuevo
+* click en locus vacío → no debe cambiar nada
+* cambiar KEY → mismo N loci
+* navegación no altera layout
+
+
+---
+
+REGLAS DEL SISTEMA
+
+GK:
+
+* define existencia
+* define layout
+* renderiza
+
+DB:
+
+* define contenido
+* define relaciones
+
+snapshot:
+
+* asigna contenido
+
+---
+
+PROHIBICIONES
+
+Queda prohibido:
+
+* usar snapshot para crear loci
+* usar DB para definir existencia
+* usar snapshot como estructura
+* usar “frame count = snapshot.length”
+* eliminar loci sin KEY
+* renderizar solo entries existentes
+* fallback de creación basado en datos
+
+---
+
+INVARIANTES
+
+Siempre debe cumplirse:
+
+* loci existen sin datos
+* snapshot puede ser vacío
+* DB puede estar vacía
+* render sigue funcionando
+
+---
+
+CRITERIOS DE VALIDACIÓN
+
+El sistema es válido si:
+
+* GK renderiza sin snapshot
+* GK renderiza sin DB
+* snapshot parcial no rompe render
+* EMPTY loci siguen visibles
+* EXISTS loci muestran contenido
+
+---
+
+CAMBIO 09
+
+Archivo
+ORM_A15V2.txt
+
+SCOPE
+Definir ERRORES, FALLBACK y comportamiento ante datos inválidos (cierra ambigüedad crítica)
+
+---
+
+ERRORES — BLOQUE ÚNICO
+
+PRINCIPIO
+
+Errores de datos nunca afectan estructura.
+
+---
+
+TIPOS
+
+- snapshot inválido
+- seq fuera de rango
+- duplicación de seq
+- KEY inválido
+
+---
+
+COMPORTAMIENTO
+
+Si snapshot inválido:
+
+- se ignora completamente
+- no se aplica parcialmente
+
+Resultado:
+
+- todos los loci → EMPTY
+- layout intacto
+
+---
+
+REGLA
+
+Errores afectan solo contenido, nunca:
+
+- N
+- layout
+- existencia de loci
+
+---
+
+FALLBACK
+
+Único permitido:
+
+→ EMPTY
+
+---
+
+PROHIBIDO
+
+- crear loci por error
+- eliminar loci por error
+- reconstruir layout por error
+
+---
+
+INVARIANTE
+
+error de datos ≠ error de sistema
+
+---
+
+Verificación
+
+* enviar snapshot corrupto → render estable
+* eliminar DB → loci visibles
+* duplicar seq → snapshot ignorado
+* KEY inválido → locus EMPTY
+
+---
+
+FIN BLOQUE
+
+---
+
+Verificación
+
+* eliminar cualquier lógica tipo:
+  frames = snapshot.length
+* validar ejecución con snapshot vacío
+* validar ejecución sin DB
+* todos los loci deben seguir visibles
+
+
+Verificación:
+No debe quedar ninguna referencia a:
+
+snapshot define existencia
+frame count = snapshot
+only existing entries
+fallback prohibido
+
+
+
+CIERRE E INVARIANTES GLOBALES — BLOQUE SELLADO
+
+PRINCIPIO FINAL
+
+El sistema separa completamente:
+
+* existencia (GK)
+* contenido (DB)
+* asignación (snapshot)
+
+---
+
+INVARIANTES NO NEGOCIABLES
+
+1. GK genera N loci siempre
+2. loci existen sin DB
+3. loci existen sin snapshot
+4. snapshot no crea loci
+5. snapshot no define cantidad
+6. snapshot no define layout
+7. DB no define existencia
+8. DB no define layout
+9. render no depende de DB
+10. render no depende de snapshot
+11. seq no crea loci
+12. KEY no define posición
+13. N no depende de datos
+14. navegación no altera estructura
+15. contexto activo es único
+16. snapshot representa un solo nivel
+17. EMPTY y EXISTS siempre renderizan
+18. errores de datos no rompen render
+
+---
+
+REGLAS DE CONSISTENCIA
+
+Siempre debe cumplirse:
+
+* existen exactamente N loci
+* cada locus tiene seq válido
+* snapshot mapea solo contenido
+* contexto define snapshot
+
+---
+
+PROHIBICIONES CONSOLIDADAS
+
+Queda prohibido:
+
+* frame count = snapshot.length
+* render solo entries existentes
+* crear loci desde snapshot
+* eliminar loci por ausencia de KEY
+* usar DB para generar estructura
+* usar snapshot como estructura
+* recalcular N por datos
+* navegación sin snapshot
+* múltiples contextos activos
+* layout dependiente de DB
+* layout dependiente de snapshot
+* fallback estructural
+* creación dinámica de loci por contenido
+
+---
+
+CRITERIO DE SISTEMA VÁLIDO
+
+El sistema es válido si:
+
+* inicia sin DB
+* inicia sin snapshot
+* renderiza N loci siempre
+* snapshot vacío no rompe render
+* snapshot parcial funciona
+* navegación no altera estructura
+* errores no rompen el sistema
+
+---
+
+CRITERIO DE SISTEMA INVÁLIDO
+
+El sistema es inválido si:
+
+* render depende de snapshot
+* render depende de DB
+* loci desaparecen
+* N cambia por datos
+* snapshot crea estructura
+* layout cambia por contenido
+* múltiples contextos activos
+* navegación rompe continuidad
+
+---
+
+REGLA DE ABORTO
+
+Si cualquier invariante es violado:
+
+→ detener implementación inmediatamente
+
+→ no parchear
+
+→ no adaptar
+
+→ corregir arquitectura
+
+---
+
+REGLA FINAL
+
+Si una regla no puede verificarse en runtime:
+
+→ no pertenece al ORM
+
+---
+
+RESULTADO
+
+Este ORM define un sistema:
+
+* determinista
+* estable
+* independiente de datos
+* escalable sin colapsar
+
+---
+REVIEW
+
+
+Sí, pero **solo como comportamiento de GK**, no como regla global.
+
+---
+
+**Dónde sí va en ORM**
+
+Agregar bloque bajo:
+
+→ “LAYOUT” o “RUNTIME GK”
+
+Como:
+
+**ORIENTACIÓN ESPACIAL — BLOQUE EJECUTABLE**
+
+---
+
+**Contenido correcto**
+
+* dirección por seq es propiedad de GK
+* se calcula de forma determinista
+* puede ser parametrizada internamente
+* NO depende de DB
+* NO depende de snapshot
+
+---
+
+**Regla crítica a incluir**
+
+* dirección se calcula de forma acumulativa
+* cambios en dirección afectan solo orientación
+* nunca afectan:
+  → posición
+  → N
+  → seq
+
+---
+
+**Dónde NO debe ir**
+
+* no en IDENTIDAD
+* no en SNAPSHOT
+* no en CONTRATO GK/LB
+
+---
+
+**Advertencia importante**
+
+Si lo escribes como:
+
+→ “cada locus tiene dirección”
+
+sin aclarar acumulación
+
+→ alguien lo implementará mal y romperá continuidad
+
+---
+
+**Conclusión**
+
+Sí agrégalo, pero como:
+
+→ extensión del layout (GK puro)
+→ no como propiedad estructural del sistema
+
+---
+
+Si quieres, te doy el bloque listo para pegar sin ambigüedad.
+
+
+
+FIN ORM A15V2 — SELLADO
+
+
+## ✅ PLAN MAZE — Manteniendo A15 (Diseño limpio)
+
+### PRINCIPIO
+
+El maze NO es una estructura dinámica.  
+El maze es **cómo se orienta y conecta visualmente una estructura fija de loci**.
+
+---
+
+## 🧱 1. DIRECCIÓN POR SEQ (sin romper A15)
+
+### Estado actual
+- `GetDirectionFromSeq(seq)` es una función con giro fijo en `i == 5`
+- Todos los frames giran según esa dirección global
+
+### Diseño propuesto
+Mantener `GetDirectionFromSeq` como **fuente única de dirección**, pero hacerla **paramétrica por seq** sin introducir estado externo.
+
+```csharp
+// [SCOPE:DIRECTION_PER_SEQ]
+// dirección por seq sin depender de DB ni snapshot
+private Vector3 GetDirectionFromSeq(int seq)
+{
+    // Fase 1: mantener giro fijo para validar
+    // Fase 2: leer desde arreglo interno (no DB)
+    Vector3 dir = new Vector3(0, 0, 1);
+    
+    for (int i = 0; i < seq; i++)
+    {
+        if (i == 5)
+        {
+            dir = new Vector3(-1, 0, 0); // giro izquierda
+        }
+        // futuro: if (turnTable.ContainsKey(i)) dir = turnTable[i];
+    }
+    
+    return dir;
+}
+```
+
+**Regla A15:**  
+- ✅ No depende de DB  
+- ✅ No depende de snapshot  
+- ✅ No crea/destruye nodos  
+- ✅ Solo afecta orientación, no existencia  
+
+---
+
+## 🧭 2. ORIENTACIÓN DE FRAMES Y WALLS (ya funciona)
+
+Tu código ya hace esto correctamente:
+
+```csharp
+float angle = 0f;
+if (dir == new Vector3(0, 0, 1)) angle = -90f;
+if (dir == new Vector3(1, 0, 0)) angle = 0f;
+if (dir == new Vector3(-1, 0, 0)) angle = 180f;
+if (dir == new Vector3(0, 0, -1)) angle = 90f;
+
+frame.RotationDegrees = new Vector3(0, angle, 0);
+wall.RotationDegrees = new Vector3(0, angle + 90f, 0);
+```
+
+**Lo que falta:**  
+Que la dirección por seq pueda ser **diferente para cada seq**, no solo un giro global.
+
+---
+
+## 🔧 3. CÓMO EVOLUCIONAR SIN ROMPER
+
+### Fase 1: Dirección definida por arreglo interno (no DB)
+
+```csharp
+// Dentro de Spawner, después de _snapshotLoaded
+private Dictionary<int, Vector3> _customDirections = new();
+
+private void InitMazeLayout()
+{
+    // Esto se llama UNA vez al inicio (en _Ready)
+    // Define direcciones específicas por seq
+    _customDirections[5] = new Vector3(-1, 0, 0); // giro en 5
+    _customDirections[12] = new Vector3(0, 0, 1); // recto
+    // futuro: más puntos
+}
+
+private Vector3 GetDirectionFromSeq(int seq)
+{
+    // Si hay dirección personalizada, usarla
+    if (_customDirections.ContainsKey(seq))
+        return _customDirections[seq];
+    
+    // Fallback: dirección acumulativa (como antes)
+    Vector3 dir = new Vector3(0, 0, 1);
+    for (int i = 0; i < seq; i++)
+    {
+        if (_customDirections.ContainsKey(i))
+            dir = _customDirections[i];
+    }
+    return dir;
+}
+```
+
+**Esto cumple A15:**  
+- ✅ Definido en GK  
+- ✅ No toca DB  
+- ✅ No toca snapshot  
+- ✅ No cambia N  
+- ✅ No crea nodos  
+
+---
+
+## 🧩 4. PREPARACIÓN PARA CONECTIVIDAD (futuro)
+
+Para que eventualmente puedas **abrir/cerrar walls** sin romper nada:
+
+```csharp
+// En NodeData (si decides agregarlo, pero NO para posición)
+// Esto es información de conectividad, NO estructura espacial
+
+public class NodeConnectivity
+{
+    public bool WallNorth = true;
+    public bool WallSouth = true;
+    public bool WallEast = true;
+    public bool WallWest = true;
+}
+
+private Dictionary<int, NodeConnectivity> _connectivity = new();
+
+// En generación de walls:
+if (_connectivity.ContainsKey(seq) && !_connectivity[seq].WallEast)
+{
+    // NO generar wall este
+}
+else
+{
+    // generar wall normal
+}
+```
+
+**Regla crítica:**  
+- `_connectivity` es parte de GK  
+- No viene de DB  
+- No define existencia  
+- Solo controla render condicional  
+
+---
+
+## 🚫 5. LO QUE NO SE HACE (prohibido)
+
+| Concepto | Por qué no |
+|----------|------------|
+| `NodeData` con posición | Ya existe `GetPositionFromSeq` |
+| Leer direcciones de DB | Rompe separación GK/DB |
+| Cambiar N por conectividad | N es fijo |
+| Destruir/crear nodos en runtime | Violación A15 |
+| ROOM como entidad | Capa falsa, no necesaria |
+| Recalcular seq | seq es fijo |
+
+---
+
+## ✅ 6. CRITERIO DE ÉXITO PARA ESTA FASE
+
+- [ ] `GetDirectionFromSeq(seq)` puede devolver direcciones diferentes por seq  
+- [ ] Frames y walls se orientan correctamente a esas direcciones  
+- [ ] No hay cambios en `LoadSnapshot`  
+- [ ] No hay cambios en N  
+- [ ] No se crean/destruyen nodos  
+- [ ] Warp sigue funcionando  
+- [ ] El recorrido visual deja de ser lineal rígido  
+
+---
+
+## 📦 7. IMPLEMENTACIÓN INMEDIATA (código exacto)
+
+### Cambio A: Agregar diccionario de direcciones
+
+```csharp
+// En Spawner, después de _snapshotLoaded
+private Dictionary<int, Vector3> _mazeDirections = new();
+```
+
+### Cambio B: Inicializar direcciones en `_Ready()`
+
+```csharp
+// Dentro de _Ready(), después de generar N loci pero antes de render
+private void InitMazeDirections()
+{
+    // Giro en seq 5 (izquierda)
+    _mazeDirections[5] = new Vector3(-1, 0, 0);
+    
+    // Ejemplo: giro en seq 12 (derecha)
+    // _mazeDirections[12] = new Vector3(1, 0, 0);
+    
+    // Puedes agregar más puntos
+}
+```
+
+### Cambio C: Modificar `GetDirectionFromSeq`
+
+```csharp
+private Vector3 GetDirectionFromSeq(int seq)
+{
+    // 1. Si hay dirección específica para este seq, usarla
+    if (_mazeDirections.ContainsKey(seq))
+        return _mazeDirections[seq];
+    
+    // 2. Si no, calcular acumulativamente
+    Vector3 dir = new Vector3(0, 0, 1);
+    for (int i = 0; i < seq; i++)
+    {
+        if (_mazeDirections.ContainsKey(i))
+            dir = _mazeDirections[i];
+    }
+    return dir;
+}
+```
+
+### Cambio D: Llamar inicialización
+
+```csharp
+// En _Ready(), después de generar los frames pero antes de renderizar
+InitMazeDirections();
+```
+
+---
+
+## 🧪 8. VERIFICACIÓN
+
+| Prueba | Resultado esperado |
+|--------|-------------------|
+| Ejecutar sin cambios | Misma escuadra en seq 5 |
+| Agregar `_mazeDirections[10] = new Vector3(1,0,0)` | Giro adicional en seq 10 |
+| Warp desde locus 5 | Snapshot correcto, estructura intacta |
+| Snapshot vacío | Todos los loci EMPTY, direcciones preservadas |
+
+---
+
+## 🎯 CONCLUSIÓN
+
+Este diseño:
+- ✅ Mantiene A15 intacto  
+- ✅ No toca DB ni snapshot  
+- ✅ No cambia N  
+- ✅ No crea/destruye nodos  
+- ✅ Permite direcciones variables por seq  
+- ✅ Prepara el terreno para conectividad futura (walls condicionales)  
+
+**¿Quieres que procedamos con el código exacto para `_mazeDirections` y `InitMazeDirections()`?**
+
+
+
+
+# MAZE — Objetivos (A15 V2)
+
+## 1. Separación estricta
+
+Maze es DATA (_mazeDirections)
+Spawner es BUILD
+Sin lógica implícita ni automática
+
+## 2. Modelo de dirección
+
+Dirección persistente desde último override
+Overrides = puntos de cambio, no estados completos
+
+## 3. Regla de construcción
+
+seq 0 = origen
+seq n = pos(n-1) + dir(n-1)
+Acumulación vive SOLO en GetPositionFromSeq
+
+## 4. Determinismo
+
+Misma entrada (_mazeDirections) → mismo layout
+Sin dependencia de DB ni snapshot
+
+## 5. Control total
+
+Usuario define giros explícitos
+Default siempre FORWARD
+
+## 6. Simplicidad operacional
+
+Un solo punto de edición: InitMaze()
+Sin runtime dinámico
+Sin rebuild automático
+
+## 7. Invariantes A15
+
+N fijo
+No creación/destrucción de loci
+Layout independiente de datos externos
+
+## 8. Escalabilidad futura
+
+Preparado para UI externa (editor)
+Sin necesidad de reescribir lógica core

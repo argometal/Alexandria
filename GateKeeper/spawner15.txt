@@ -1,0 +1,211 @@
+using Godot;
+using System;
+
+public partial class Spawner : Node3D
+{
+	// REMOVED FrameScene (A15 uses template duplication)	
+	// [A15][SEGMENT_ALIGN_WITH_FRAMES]
+	// Segment debe duplicarse por frame usando mismo Z
+	[Export] public PackedScene WallScene;
+	[Export] public PackedScene FloorScene;
+	[Export] public PackedScene CeilingScene;
+
+	private void SpawnPiece(PackedScene scene, Vector3 position)
+
+	{
+		if (scene == null)
+		{
+			GD.Print("[SPAWNER][PIECE_SKIP]");
+			return;
+		}
+
+		var seg = scene.Instantiate<Node3D>();
+		_framesRoot.AddChild(seg);
+
+		seg.Position = position;
+
+		GD.Print($"[SPAWNER][SEGMENT] pos={position}");
+	}
+
+
+		// [A15][REQUIRED] path hacia contenedor Frames
+	[Export] public NodePath FramesRootPath { get; set; } = new NodePath("../Frames");
+
+	private Node3D _framesRoot;
+	private RealmController _rc;
+	private bool _snapshotLoaded = false;
+
+	public override void _Ready()
+	{
+		GD.Print("[SPAWNER][DEBUG] CHILDREN OF ROOT:");
+
+		foreach (Node child in GetTree().Root.GetChildren())
+		{
+			GD.Print("[ROOT CHILD] " + child.Name);
+		}
+
+		foreach (Node child in GetParent().GetChildren())
+		{
+			GD.Print("[REALM CHILD] " + child.Name);
+		}
+
+		_framesRoot = GetNodeOrNull<Node3D>(FramesRootPath);
+
+		if (_framesRoot == null)
+		{
+			GD.PrintErr("[SPAWNER][ERR] FramesRoot NOT FOUND PATH=" + FramesRootPath);
+			return;
+		}
+
+		GD.Print("[SPAWNER][FRAMES_ROOT OK]");
+
+
+		_rc = GetNode<RealmController>("/root/Realm/RealmController");
+
+		GD.Print("[SPAWNER][INIT]");
+
+		if (!_snapshotLoaded)
+		{
+			LoadSnapshot();
+			_snapshotLoaded = true;
+		}
+
+		SetProcess(true);
+
+		// [SCOPE:REFRESH_WATCHER]
+		GD.Print("[SPAWNER][PROCESS_ENABLED]");
+	}
+	
+
+	private void LoadSnapshot()
+{
+	var path = @"C:\Alexandria\snapshot\current.json";
+
+	if (!System.IO.File.Exists(path))
+	{
+		GD.PrintErr("[SPAWNER][SNAPSHOT_NOT_FOUND]");
+		return;
+	}
+
+	var json = System.IO.File.ReadAllText(path);
+
+	GD.Print("[SPAWNER][SNAPSHOT_RAW] " + json);
+
+	foreach (Node child in _framesRoot.GetChildren())
+	{
+		if (child.Name == "FrameTemplate")
+			continue;
+
+		child.Free();
+	}
+
+	var data = System.Text.Json.JsonDocument.Parse(json);
+
+	var frames = data.RootElement.GetProperty("frames");
+
+	// REMOVED maxZ (no global geometry)
+
+	foreach (var f in frames.EnumerateArray())
+	{
+		var key = f.GetProperty("key").GetString();
+		var seq = f.GetProperty("seq").GetInt32();
+		float spacing = 6f;
+
+
+		// [A15][GK_PURE_LAYOUT] ignore snapshot z completely
+		float z = seq * spacing;
+
+
+		// REMOVED maxZ tracking
+
+		float startX = 0f;
+		float startY = 1.6f;
+
+
+
+		// wall primero (inicio del bloque)
+		// WALL
+SpawnPiece(WallScene, new Vector3(3.0f, 1.6f, z));
+
+		// FLOOR
+SpawnPiece(FloorScene, new Vector3(startX, 0f, z));
+
+		// CEILING
+SpawnPiece(CeilingScene, new Vector3(startX, 3.2f, z));
+
+		// espacio visual para collage
+		float frameOffset = 2.5f;
+
+		// frame después del espacio
+		SpawnFrame(key, new Vector3(2.8f, startY, z + frameOffset));
+
+
+
+
+	}
+
+	// [A15][GEOMETRY_REMOVED] handled per-frame
+}
+
+
+
+	public override void _Process(double delta)
+	{
+		var refreshPath = @"C:\Alexandria\data\bridge\refresh_now.txt";
+
+		if (System.IO.File.Exists(refreshPath))
+		{
+			GD.Print("[SPAWNER][REFRESH_DETECTED]");
+
+			System.IO.File.Delete(refreshPath);
+
+			_snapshotLoaded = false;
+			LoadSnapshot();
+			_snapshotLoaded = true;
+
+
+		}
+	}
+
+	public void SpawnFrame(string key, Vector3 position)
+
+	{
+
+	// [TRACE][SPAWNER][TEMPLATE_FETCH] intentando obtener FrameTemplate
+
+	var template = _framesRoot.GetNode<Node3D>("FrameTemplate");
+
+	if (template == null)
+	{
+		GD.PrintErr("[SPAWNER][ERR] FrameTemplate NOT FOUND IN SCENE");
+		GD.PrintErr("[SPAWNER][STATE] SYSTEM NOT RENDERING");
+		return;
+	}
+
+	// [TRACE][SPAWNER][TEMPLATE_OK] template encontrado correctamente
+	GD.Print("[SPAWNER][TEMPLATE_OK]");
+
+	// ocultar template base (no debe renderizarse)
+	template.Visible = false;
+
+	var frame = (Node3D)template.Duplicate();
+	_framesRoot.AddChild(frame);
+
+	frame.Position = position;
+	frame.RotationDegrees = new Vector3(0, -90, 0);
+	frame.Visible = true;
+
+	// opcional si usas script propio:
+	var f = frame as FrameTemplate;
+	if (f != null)
+	{
+		f.SetKey(key);
+		f.FrameSelected += _rc.OnFrameSelected;
+	}
+
+
+	GD.Print($"[SPAWNER][SPAWN] key={key} pos={position}");
+
+
+	}
+}

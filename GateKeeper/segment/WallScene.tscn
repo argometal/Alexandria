@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://pt6w7jvlegsa"]
+
+[sub_resource type="PlaneMesh" id="1"]
+size = Vector2(3.2, 5)
+
+[node name="WallRoot" type="Node3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(0,-1,0, 1,0,0, 0,0,1, 0,0,0)
+mesh = SubResource("1")

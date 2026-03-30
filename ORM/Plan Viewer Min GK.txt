@@ -1,0 +1,34 @@
+
+## Hand off — Cambio 326 (GateKeeper)
+
+### Qué se hizo
+Refactor en **`GateKeeper/Spawner.cs`**: los marcos interactivos quedaron separados de la geometría (muros, suelo, techo) en **contenedores dedicados**, para que el **`seq` del snapshot sea el índice directo** del marco (`FramesContainer.GetChild(seq)`), sin mezclar con piezas de segmento.
+
+### Estructura bajo `_framesRoot` (`Frames`)
+- **`FrameTemplate`** — sigue en la escena, oculto; plantilla para `Duplicate()`.
+- **`FramesContainer`** — 20 instancias `Frame_{0}` … `Frame_{19}`.
+- **`WallsContainer`** — 20 muros.
+- **`FloorsContainer`** — 20 suelos (vía `SpawnPiece`).
+- **`CeilingsContainer`** — 20 techos (vía `SpawnPiece`).
+
+### API / detalles de código
+- **`GetOrCreateContainer(parent, name)`** — evita duplicar contenedores si `_Ready` se reejecuta.
+- **`SpawnPiece(scene, position, container)`** — tercer argumento obligatorio: nodo padre del segmento.
+- **`LoadSnapshotAndAssign()`** — exige `FramesContainer`; si falta, log `[SNAPSHOT] FramesContainer not found`; asigna con **`FrameTemplate`** en el índice `seq`.
+- **`SpawnFrame()`** — si existe `FramesContainer`, añade el clon ahí; si no, en `_framesRoot`.
+
+### Qué no se tocó
+- **LibraryBuild (LB)** — sin cambios; el usuario cerró el alcance en GK.
+- Contrato A15: N=20, snapshot sin DB para estructura, bridge/refresh como antes.
+
+### Verificación esperada
+- `FramesContainer` / `WallsContainer` / `FloorsContainer` / `CeilingsContainer` → **20** hijos cada uno.
+- Consola: 20× `[SNAPSHOT][ASSIGN] seq=… key=…`; no deberían aparecer `[FRAME][BLOCK] EMPTY CLICK` en marcos con key del snapshot.
+
+### Build
+- `dotnet build Gatekeeper.csproj` — **OK** (warnings previos en `Spawner.cs`, no introducidos por este cambio).
+
+### Contexto previo en el hilo (referencia)
+- Estado pipeline: DB / snapshot / GK alineados; `active_key` vs `open_key` comentado como residual.
+- Legacy `Legacy-Reference only`: corredor con frames aislados de muros inspiró la separación de contenedores.
+- Índice viejo `seq+1` sobre `_framesRoot` era incorrecto con wall/floor/ceiling mezclados; **este refactor lo corrige**.

@@ -47,8 +47,9 @@ public partial class RealmController : Node
 		// [A15][BRIDGE_WRITE]
 		var bridgePath = @"C:\Alexandria\data\bridge\";
 
-		System.IO.File.WriteAllText(bridgePath + "open_key.txt", key);
+	
 		System.IO.File.WriteAllText(bridgePath + "active_key.txt", key);
+		System.IO.File.WriteAllText(bridgePath + "open_key.txt", key);
 
 		// [A15][REMOVED] GK no dispara refresh
 

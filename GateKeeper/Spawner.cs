@@ -11,20 +11,28 @@ public partial class Spawner : Node3D
 	[Export] public PackedScene FloorScene;
 	[Export] public PackedScene CeilingScene;
 	[Export] public PackedScene CornerPieceScene;
-	private void SpawnPiece(PackedScene scene, Vector3 position)
-
+	private static Node3D GetOrCreateContainer(Node3D parent, string containerName)
 	{
-		if (scene == null)
+		var existing = parent.GetNodeOrNull<Node3D>(containerName);
+		if (existing != null)
+			return existing;
+
+		var n = new Node3D { Name = containerName };
+		parent.AddChild(n);
+		return n;
+	}
+
+	private void SpawnPiece(PackedScene scene, Vector3 position, Node3D container)
+	{
+		if (scene == null || container == null)
 		{
 			GD.Print("[SPAWNER][PIECE_SKIP]");
 			return;
 		}
 
 		var seg = scene.Instantiate<Node3D>();
-		_framesRoot.AddChild(seg);
-
+		container.AddChild(seg);
 		seg.Position = position;
-
 		GD.Print($"[SPAWNER][SEGMENT] pos={position}");
 	}
 
@@ -36,6 +44,9 @@ public partial class Spawner : Node3D
 	private RealmController _rc;
 
 	private bool _snapshotLoaded = false;
+
+	// [Cambio 273] diagnóstico refresh — evitar spam (1 Hz)
+	private double _snapshotRefreshCheckTimer = 0;
 
 	// [SCOPE:MAZE_OVERRIDE]
 	private Dictionary<int, Vector3> _mazeDirections = new Dictionary<int, Vector3>();
@@ -250,6 +261,11 @@ public partial class Spawner : Node3D
 		var template = _framesRoot.GetNode<Node3D>("FrameTemplate");
 		template.Visible = false;
 
+		var framesContainer = GetOrCreateContainer(_framesRoot, "FramesContainer");
+		var wallsContainer = GetOrCreateContainer(_framesRoot, "WallsContainer");
+		var floorsContainer = GetOrCreateContainer(_framesRoot, "FloorsContainer");
+		var ceilingsContainer = GetOrCreateContainer(_framesRoot, "CeilingsContainer");
+
 		for (int seq = 0; seq < N; seq++)
 		{
 			Vector3 basePos = GetPositionFromSeq(seq);
@@ -263,8 +279,7 @@ public partial class Spawner : Node3D
 			GD.Print($"[SIDE_DEBUG_AFTER] seq={seq} debugSide={debugSide} _currentSide={_currentSide}");
 
 			var wall = WallScene.Instantiate<Node3D>();
-
-			_framesRoot.AddChild(wall);
+			wallsContainer.AddChild(wall);
 
 			// detectar esquina (cuando cambia dirección respecto al anterior)
 			Vector3 dirNow = GetDirectionFromSeq(seq);
@@ -309,14 +324,15 @@ public partial class Spawner : Node3D
 			wall.RotationDegrees = new Vector3(0, wallRotation, 0);
 
 			// FLOOR
-			SpawnPiece(FloorScene, new Vector3(basePos.X, 0f, basePos.Z));
+			SpawnPiece(FloorScene, new Vector3(basePos.X, 0f, basePos.Z), floorsContainer);
 
 			// CEILING
-			SpawnPiece(CeilingScene, new Vector3(basePos.X, 3.2f, basePos.Z));
+			SpawnPiece(CeilingScene, new Vector3(basePos.X, 3.2f, basePos.Z), ceilingsContainer);
 
 			// FRAME
 			var frame = (Node3D)template.Duplicate();
-			_framesRoot.AddChild(frame);
+			framesContainer.AddChild(frame);
+			frame.Name = $"Frame_{seq}";
 
 			float frameOffsetX = side.X * 2.8f;
 			frame.Position = basePos + new Vector3(frameOffsetX, 0f, 2.5f);
@@ -416,7 +432,7 @@ public partial class Spawner : Node3D
 
 		if (!_snapshotLoaded)
 		{
-			LoadSnapshot();
+			LoadSnapshotAndAssign();
 			_snapshotLoaded = true;
 		}
 
@@ -427,67 +443,63 @@ public partial class Spawner : Node3D
 	}
 	
 
-	private void LoadSnapshot()
+	/// <summary>
+	/// [A14→A15] Lee snapshot únicamente; asigna KEY por índice de slot (seq). Sin DB.
+	/// Frames viven en FramesContainer; seq es índice directo (0..N-1).
+	/// </summary>
+	private void LoadSnapshotAndAssign()
 	{
 		var path = @"C:\Alexandria\snapshot\current.json";
 
 		if (!System.IO.File.Exists(path))
 		{
-			GD.PrintErr("[SPAWNER][SNAPSHOT_NOT_FOUND]");
+			GD.Print("[SNAPSHOT][MISS]");
 			return;
 		}
 
-		var json = System.IO.File.ReadAllText(path);
+		if (_framesRoot == null)
+			return;
 
-		GD.Print("[SPAWNER][SNAPSHOT_RAW] " + json);
-
-
-		// [A15][BLOCK] loci no se destruyen
-		// se mantiene estructura, solo se reasignará contenido
-
-
-		var data = System.Text.Json.JsonDocument.Parse(json);
-
-		var frames = data.RootElement.GetProperty("frames");
-
-		// REMOVED maxZ (no global geometry)
-
-		// [A15][ASSIGN_ONLY]
-
-		// limpiar loci (EMPTY)
-		int idx = 0;
-		foreach (Node child in _framesRoot.GetChildren())
+		var framesContainer = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
+		if (framesContainer == null)
 		{
-			if (child.Name == "FrameTemplate")
-				continue;
-
-			var ft = child as FrameTemplate;
-			if (ft != null && idx < 20)
-			{
-				ft.SetKey("");
-				idx++;
-			}
+			GD.PrintErr("[SNAPSHOT] FramesContainer not found");
+			return;
 		}
 
-		// asignar KEYs desde snapshot
-		foreach (var f in frames.EnumerateArray())
+		var jsonText = System.IO.File.ReadAllText(path);
+		var jsonNode = new Json();
+		Error parseErr = jsonNode.Parse(jsonText);
+		if (parseErr != Error.Ok)
 		{
-			var key = f.GetProperty("key").GetString();
-			var seq = f.GetProperty("seq").GetInt32();
+			GD.PrintErr("[SNAPSHOT][PARSE_FAIL]");
+			return;
+		}
 
-			if (seq < 0 || seq >= 20)
+		var data = jsonNode.Data.AsGodotDictionary();
+		var frames = data["frames"].AsGodotArray();
+
+		foreach (Variant f in frames)
+		{
+			var d = f.AsGodotDictionary();
+			int seq = d["seq"].AsInt32();
+			string key = d["key"].AsString();
+
+			if (seq < 0 || seq >= framesContainer.GetChildCount())
 			{
-				GD.PrintErr($"[SPAWNER][INVALID_SEQ] {seq}");
+				GD.PrintErr($"[SNAPSHOT] seq={seq} out of range (children={framesContainer.GetChildCount()})");
 				continue;
 			}
 
-			var target = _framesRoot.GetChild(seq + 1); // +1 por template base
-
-			var ft = target as FrameTemplate;
-			if (ft != null)
+			var frame = framesContainer.GetChild(seq) as FrameTemplate;
+			if (frame != null)
 			{
-				ft.SetKey(key);
-				GD.Print($"[SPAWNER][MAP] key={key} seq={seq}");
+				frame.SetKey(key);
+				GD.Print($"[SNAPSHOT][ASSIGN] seq={seq} key={key}");
+			}
+			else
+			{
+				GD.PrintErr($"[SNAPSHOT][SKIP] seq={seq} not a FrameTemplate");
 			}
 		}
 	}
@@ -498,14 +510,22 @@ public partial class Spawner : Node3D
 	{
 		var refreshPath = @"C:\Alexandria\data\bridge\refresh_now.txt";
 
+		_snapshotRefreshCheckTimer += delta;
+		if (_snapshotRefreshCheckTimer >= 1.0)
+		{
+			_snapshotRefreshCheckTimer = 0;
+			GD.Print("[SNAPSHOT][CHECK] looking for refresh...");
+			GD.Print($"[SNAPSHOT][CHECK] path={refreshPath} exists={System.IO.File.Exists(refreshPath)}");
+		}
+
 		if (System.IO.File.Exists(refreshPath))
 		{
-			GD.Print("[SPAWNER][REFRESH_DETECTED]");
+			GD.Print("[SNAPSHOT][REFRESH_DETECTED]");
 
 			System.IO.File.Delete(refreshPath);
 
 			_snapshotLoaded = false;
-			LoadSnapshot();
+			LoadSnapshotAndAssign();
 			_snapshotLoaded = true;
 
 
@@ -567,7 +587,8 @@ public partial class Spawner : Node3D
 	template.Visible = false;
 
 	var frame = (Node3D)template.Duplicate();
-	_framesRoot.AddChild(frame);
+	var framesHolder = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
+	(framesHolder ?? _framesRoot).AddChild(frame);
 
 	frame.Position = position;
 	frame.RotationDegrees = new Vector3(0, -90, 0);

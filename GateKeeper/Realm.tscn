@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" uid="uid://pt6w7jvlegsa" path="res://segment/WallScene.tscn" id="6_3apmv"]
 [ext_resource type="PackedScene" uid="uid://ddcoxrd1xwra4" path="res://segment/FloorScene.tscn" id="7_k2opp"]
 [ext_resource type="PackedScene" uid="uid://bd54f8ysatfvu" path="res://segment/CeilingScene.tscn" id="8_7bnhk"]
+[ext_resource type="Script" path="res://ViewerService.cs" id="9_viewer"]
 
 [node name="Realm" type="Node3D" unique_id=1916784824]
 
@@ -33,3 +34,7 @@ CeilingScene = ExtResource("8_7bnhk")
 
 [node name="RealmController" type="Node" parent="." unique_id=1373288692]
 script = ExtResource("3_rc")
+
+[node name="ViewerService" type="CanvasLayer" parent="."]
+layer = 100
+script = ExtResource("9_viewer")

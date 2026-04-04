@@ -22,10 +22,7 @@ public partial class FrameTemplate : Node3D
 		area.Monitoring = true;
 		area.InputEvent += OnInputEvent;
 
-		// [SCOPE:REALM_LINK]
-		// [FIX][A15] ruta correcta dentro de Realm
-		var realm = GetNode<RealmController>("/root/Realm/RealmController");
-		this.FrameSelected += realm.OnFrameSelected;
+		// FrameSelected se conecta desde Spawner por frame (evita doble OnFrameSelected).
 
 		GD.Print("[FRAME][READY] ClickArea active");
 	}
@@ -34,17 +31,12 @@ public partial class FrameTemplate : Node3D
 	{
 		if (@event is InputEventMouseButton mouse && mouse.Pressed)
 		{
+			// Un solo punto de decisión: RealmController (evita [FRAME][BLOCK] duplicado).
+			GD.Print(string.IsNullOrEmpty(_key)
+				? "[FRAME][CLICK] empty slot (forwarding to RC)"
+				: $"[FRAME][CLICK] key={_key}");
 
-			if (string.IsNullOrEmpty(_key))
-			{
-				GD.PrintErr("[FRAME][BLOCK] EMPTY CLICK");
-				return;
-			}
-
-			GD.Print($"[FRAME][CLICK] key={_key}");
-
-			EmitSignal(SignalName.FrameSelected, _key);
-
+			EmitSignal(SignalName.FrameSelected, _key ?? "");
 		}
 	}
 }

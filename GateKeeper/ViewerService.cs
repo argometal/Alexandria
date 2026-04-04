@@ -9,9 +9,22 @@ public partial class ViewerService : CanvasLayer
 {
 	private const string ViewerPath = @"C:\Alexandria\data\viewer\current.json";
 	private const string DataRoot = @"C:\Alexandria\data";
+	private const string BridgeDir = @"C:\Alexandria\data\bridge";
+
+	// Viewer Min — lectura (solo UI, sin lógica nueva)
+	private const int FontTitlePx = 20;
+	private const int FontBodyPx = 16;
+	private const int FontLinkPx = 16;
+	private const int BlockSeparationPx = 16;
+	private const int PanelMarginPx = 20;
+	private const int SectionSeparationPx = 12;
 
 	private string _lastKeyShown = "";
+	private long _lastVersionShown = 0;
 	private double _checkTimer;
+	/// Tras clic en frame: polls rápidos hasta que LB escribe viewer para la nueva key.
+	private double _burstRemainSec;
+	private double _burstAccumSec;
 	private PanelContainer _panel = null!;
 	private VBoxContainer _stack = null!;
 	private Label _titleLabel = null!;
@@ -31,14 +44,14 @@ public partial class ViewerService : CanvasLayer
 		AddChild(_panel);
 
 		var margin = new MarginContainer();
-		margin.AddThemeConstantOverride("margin_left", 12);
-		margin.AddThemeConstantOverride("margin_top", 12);
-		margin.AddThemeConstantOverride("margin_right", 12);
-		margin.AddThemeConstantOverride("margin_bottom", 12);
+		margin.AddThemeConstantOverride("margin_left", PanelMarginPx);
+		margin.AddThemeConstantOverride("margin_top", PanelMarginPx);
+		margin.AddThemeConstantOverride("margin_right", PanelMarginPx);
+		margin.AddThemeConstantOverride("margin_bottom", PanelMarginPx);
 		_panel.AddChild(margin);
 
 		var root = new VBoxContainer();
-		root.AddThemeConstantOverride("separation", 8);
+		root.AddThemeConstantOverride("separation", SectionSeparationPx);
 		margin.AddChild(root);
 
 		var header = new HBoxContainer();
@@ -47,26 +60,70 @@ public partial class ViewerService : CanvasLayer
 
 		_titleLabel = new Label();
 		_titleLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		_titleLabel.AddThemeFontSizeOverride("font_size", FontTitlePx);
+		_titleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		header.AddChild(_titleLabel);
 
 		var closeBtn = new Button();
-		closeBtn.Text = "Close";
+		closeBtn.Text = "×";
+		closeBtn.CustomMinimumSize = new Vector2(40, 40);
+		closeBtn.FocusMode = Control.FocusModeEnum.None;
+		closeBtn.TooltipText = "Cerrar";
 		closeBtn.Pressed += () => { _panel.Visible = false; };
 		header.AddChild(closeBtn);
 
 		var scroll = new ScrollContainer();
 		scroll.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
 		scroll.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		scroll.HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled;
+		scroll.VerticalScrollMode = ScrollContainer.ScrollMode.Auto;
+		scroll.ScrollDeadzone = 12;
 		root.AddChild(scroll);
 
 		_stack = new VBoxContainer();
 		_stack.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-		_stack.AddThemeConstantOverride("separation", 10);
+		_stack.AddThemeConstantOverride("separation", BlockSeparationPx);
 		scroll.AddChild(_stack);
+	}
+
+	/// <summary>Llamado desde RealmController al escribir open_key tras clic en frame.</summary>
+	public void NotifyFrameOpened(string key)
+	{
+		_lastKeyShown = "";
+		_lastVersionShown = -1;
+		_burstRemainSec = 3.0;
+		_burstAccumSec = 0;
+		_panel.Visible = true;
+		_titleLabel.Text = string.IsNullOrEmpty(key) ? "…" : key;
+		foreach (Node child in _stack.GetChildren())
+			child.QueueFree();
+		var sync = new RichTextLabel();
+		sync.BbcodeEnabled = false;
+		sync.FitContent = true;
+		sync.ScrollActive = false;
+		sync.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		sync.AddThemeFontSizeOverride("font_size", FontBodyPx);
+		sync.Text = "Sincronizando con LibraryBuild…";
+		sync.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		_stack.AddChild(sync);
+		GD.Print($"[VIEWER][OPEN] frame click key={key}");
+		CheckForContent();
 	}
 
 	public override void _Process(double delta)
 	{
+		if (_burstRemainSec > 0)
+		{
+			_burstRemainSec -= delta;
+			_burstAccumSec += delta;
+			if (_burstAccumSec >= 0.12)
+			{
+				_burstAccumSec = 0;
+				CheckForContent();
+			}
+			return;
+		}
+
 		_checkTimer += delta;
 		if (_checkTimer < 1.0)
 			return;
@@ -115,16 +172,34 @@ public partial class ViewerService : CanvasLayer
 		if (string.IsNullOrEmpty(key))
 			return;
 
-		if (key == _lastKeyShown)
+		long version = ReadViewerVersion(data);
+
+		if (key == _lastKeyShown && version == _lastVersionShown)
 			return;
 
+		Godot.Collections.Array body;
 		if (!data.ContainsKey("body"))
-			return;
+			body = new Godot.Collections.Array();
+		else
+			body = data["body"].AsGodotArray();
+		ShowContent(key, body);
 
 		_lastKeyShown = key;
+		_lastVersionShown = version;
+		GD.Print($"[VIEWER][REFRESH] key={key} version={version}");
+	}
 
-		var body = data["body"].AsGodotArray();
-		ShowContent(key, body);
+	private static long ReadViewerVersion(Godot.Collections.Dictionary data)
+	{
+		if (!data.ContainsKey("version"))
+			return 0;
+		var v = data["version"];
+		return v.VariantType switch
+		{
+			Variant.Type.Int => v.AsInt64(),
+			Variant.Type.Float => (long)v.AsDouble(),
+			_ => 0L,
+		};
 	}
 
 	private void ShowContent(string key, Godot.Collections.Array body)
@@ -134,6 +209,20 @@ public partial class ViewerService : CanvasLayer
 
 		_titleLabel.Text = key;
 		_panel.Visible = true;
+
+		if (body.Count == 0)
+		{
+			var emptyHint = new RichTextLabel();
+			emptyHint.BbcodeEnabled = false;
+			emptyHint.FitContent = true;
+			emptyHint.ScrollActive = false;
+			emptyHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+			emptyHint.AddThemeFontSizeOverride("font_size", FontBodyPx);
+			emptyHint.Text = "(Sin bloques en body — editar contenido en LB para esta key)";
+			emptyHint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			_stack.AddChild(emptyHint);
+			return;
+		}
 
 		foreach (Variant item in body)
 		{
@@ -165,18 +254,39 @@ public partial class ViewerService : CanvasLayer
 				continue;
 			}
 
+			if (type == "link")
+			{
+				var destKey = d.ContainsKey("key") ? d["key"].AsString().Trim() : "";
+				var linkText = d.ContainsKey("text") ? d["text"].AsString() : destKey;
+				if (string.IsNullOrEmpty(destKey))
+					continue;
+
+				var btn = new Button();
+				btn.Text = string.IsNullOrEmpty(linkText) ? destKey : linkText;
+				btn.Flat = true;
+				btn.Alignment = HorizontalAlignment.Left;
+				btn.AddThemeFontSizeOverride("font_size", FontLinkPx);
+				btn.AddThemeColorOverride("font_color", new Color(0.35f, 0.55f, 0.95f));
+				btn.AddThemeColorOverride("font_hover_color", new Color(0.55f, 0.72f, 1f));
+				btn.AddThemeColorOverride("font_pressed_color", new Color(0.25f, 0.4f, 0.85f));
+				var kNavigate = destKey;
+				btn.Pressed += () => NavigateToOpenKey(kNavigate);
+				btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+				_stack.AddChild(btn);
+				continue;
+			}
+
 			var txt = d.ContainsKey("text") ? d["text"].AsString() : "";
 			var lbl = new RichTextLabel();
 			lbl.BbcodeEnabled = false;
 			lbl.FitContent = true;
 			lbl.ScrollActive = false;
 			lbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+			lbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
 			lbl.Text = txt;
 			lbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(lbl);
 		}
-
-		GD.Print($"[VIEWER][SHOW] key={key} blocks={body.Count}");
 	}
 
 	private static string ResolveImagePath(string entryKey, string src)
@@ -194,5 +304,28 @@ public partial class ViewerService : CanvasLayer
 		return File.Exists(Path.Combine(DataRoot, src.TrimStart('/', '\\')))
 			? Path.Combine(DataRoot, src.TrimStart('/', '\\'))
 			: "";
+	}
+
+	/// <summary>
+	/// Navegación estructurada (bloque link): mismo contrato que selección de frame → bridge.
+	/// </summary>
+	private void NavigateToOpenKey(string destKey)
+	{
+		if (string.IsNullOrWhiteSpace(destKey))
+			return;
+		try
+		{
+			Directory.CreateDirectory(BridgeDir);
+			File.WriteAllText(Path.Combine(BridgeDir, "open_key.txt"), destKey);
+			File.WriteAllText(Path.Combine(BridgeDir, "active_key.txt"), destKey);
+			GD.Print($"[VIEWER][LINK] open_key={destKey}");
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[VIEWER][LINK_ERR] " + e.Message);
+			return;
+		}
+
+		NotifyFrameOpened(destKey.Trim());
 	}
 }

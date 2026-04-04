@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -46,6 +47,17 @@ class _LbHomeState extends State<LbHome> {
   List<Map<String, Object?>> _rows = [];
   Timer? _viewerPoll;
 
+  /// Última key para la que ya se ejecutó `runLibraryBuild()` (evita rebuild cada 2s).
+  String? _lastProcessedOpenKey;
+
+  /// Evita solapar `runLibraryBuild()` si dura más que el intervalo del timer.
+  bool _libraryBuildRunning = false;
+
+  /// Entry cuyo `body_text` se edita (icono notas en la fila).
+  String? _bodyEditKey;
+  final TextEditingController _bodyController = TextEditingController();
+  final TextEditingController _linkKeyController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -54,6 +66,7 @@ class _LbHomeState extends State<LbHome> {
     _loadChildren();
     _viewerPoll = Timer.periodic(const Duration(seconds: 2), (_) {
       syncViewerFromOpenKey();
+      _checkAndRunLibraryBuild();
     });
   }
 
@@ -61,6 +74,8 @@ class _LbHomeState extends State<LbHome> {
   void dispose() {
     _viewerPoll?.cancel();
     _titleController.dispose();
+    _bodyController.dispose();
+    _linkKeyController.dispose();
     _db?.dispose();
     super.dispose();
   }
@@ -98,6 +113,28 @@ CREATE TABLE IF NOT EXISTS entries (
     } catch (_) {}
   }
 
+  /// Cuando GK (u otro proceso) cambia `open_key.txt`, regenera snapshot + refresh para GateKeeper.
+  void _checkAndRunLibraryBuild() {
+    if (_libraryBuildRunning) return;
+    try {
+      final f = File(_openKeyPath);
+      if (!f.existsSync()) return;
+      final key = f.readAsStringSync().trim();
+      if (key.isEmpty) return;
+      if (key == _lastProcessedOpenKey) return;
+
+      _libraryBuildRunning = true;
+      try {
+        runLibraryBuild();
+        _lastProcessedOpenKey = key;
+      } finally {
+        _libraryBuildRunning = false;
+      }
+    } catch (_) {
+      _libraryBuildRunning = false;
+    }
+  }
+
   void _writeOpenKey(String key) {
     final f = File(_openKeyPath);
     f.parent.createSync(recursive: true);
@@ -128,6 +165,121 @@ CREATE TABLE IF NOT EXISTS entries (
     final t = row['title']?.toString().trim();
     if (t != null && t.isNotEmpty) return t;
     return row['key']?.toString() ?? '';
+  }
+
+  /// Convierte JSON de bloques guardado en DB a texto plano para el TextField.
+  String _plainBodyFromStored(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '';
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return raw;
+      final parts = <String>[];
+      for (final el in decoded) {
+        if (el is Map) {
+          final t = el['text'] ?? el['t'];
+          if (t != null) parts.add(t.toString());
+        }
+      }
+      return parts.isEmpty ? raw : parts.join('\n');
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  void _selectBodyEditor(String key) {
+    final d = _db;
+    if (d == null) return;
+    final rows = d.select(
+      'SELECT body_text FROM entries WHERE key = ? LIMIT 1',
+      [key],
+    );
+    final raw = rows.isEmpty ? null : rows.first['body_text'] as String?;
+    setState(() {
+      _bodyEditKey = key;
+      _loadBodyFromStoredIntoEditors(raw);
+    });
+  }
+
+  /// Carga un solo bloque `p` o `link`; listas más largas se aplastan a texto plano.
+  void _loadBodyFromStoredIntoEditors(String? raw) {
+    _linkKeyController.clear();
+    _bodyController.clear();
+    if (raw == null || raw.trim().isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List || decoded.isEmpty) {
+        _bodyController.text = raw;
+        return;
+      }
+      if (decoded.length == 1 && decoded.first is Map) {
+        final m = Map<String, dynamic>.from(
+          (decoded.first as Map).map((k, v) => MapEntry(k.toString(), v)),
+        );
+        final t = (m['t'] ?? m['type'] ?? 'p').toString();
+        if (t == 'link') {
+          _linkKeyController.text = (m['key'] ?? '').toString();
+          _bodyController.text = (m['text'] ?? '').toString();
+          return;
+        }
+        if (t == 'img') {
+          return;
+        }
+        _bodyController.text = (m['text'] ?? '').toString();
+        return;
+      }
+      _bodyController.text = _plainBodyFromStored(raw);
+    } catch (_) {
+      _bodyController.text = raw;
+    }
+  }
+
+  void _saveBody() {
+    final key = _bodyEditKey;
+    final d = _db;
+    if (key == null || key.isEmpty || d == null) return;
+
+    final text = _bodyController.text;
+    final linkDest = _linkKeyController.text.trim();
+
+    if (linkDest.isNotEmpty && text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Con Link Key hace falta texto visible en Body.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final String blocks;
+    if (linkDest.isNotEmpty) {
+      blocks = jsonEncode([
+        {'type': 'link', 'key': linkDest, 'text': text},
+      ]);
+    } else {
+      blocks = jsonEncode([
+        {'type': 'p', 'text': text},
+      ]);
+    }
+
+    d.execute(
+      'UPDATE entries SET body_text = ? WHERE key = ?',
+      [blocks, key],
+    );
+
+    try {
+      final f = File(_openKeyPath);
+      if (f.existsSync()) {
+        final openKey = f.readAsStringSync().trim();
+        if (openKey.isNotEmpty && openKey == key) {
+          ensureLibrarySchema(d);
+          writeViewerCurrentJson(d, key);
+        }
+      }
+    } catch (_) {}
+
+    print('[LB][BODY_SAVE] key=$key link=${linkDest.isNotEmpty}');
   }
 
   void _createEntry() {
@@ -188,6 +340,13 @@ CREATE TABLE IF NOT EXISTS entries (
 
   void _onRefresh() {
     runLibraryBuild();
+    try {
+      final f = File(_openKeyPath);
+      if (f.existsSync()) {
+        final k = f.readAsStringSync().trim();
+        if (k.isNotEmpty) _lastProcessedOpenKey = k;
+      }
+    } catch (_) {}
     _loadChildren();
   }
 
@@ -236,17 +395,69 @@ CREATE TABLE IF NOT EXISTS entries (
             ),
           ),
           Expanded(
+            flex: 3,
             child: ListView.builder(
               itemCount: _rows.length,
               itemBuilder: (context, i) {
                 final row = _rows[i];
                 final key = row['key'] as String;
+                final selected = _bodyEditKey == key;
                 return ListTile(
                   title: Text(_displayLabel(row)),
                   subtitle: Text('key=$key · seq=${row['seq']}'),
+                  selected: selected,
+                  trailing: IconButton(
+                    icon: const Icon(Icons.notes_outlined),
+                    tooltip: 'Editar body',
+                    onPressed: () => _selectBodyEditor(key),
+                  ),
                   onTap: () => _navigateInto(key),
                 );
               },
+            ),
+          ),
+          Material(
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    _bodyEditKey == null
+                        ? 'Body — pulsa el icono de notas en una fila'
+                        : 'Body · $_bodyEditKey',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _linkKeyController,
+                    decoration: const InputDecoration(
+                      labelText: 'Link Key (opcional)',
+                      hintText: 'KEY destino si este body es un enlace',
+                      border: OutlineInputBorder(),
+                    ),
+                    enabled: _bodyEditKey != null,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _bodyController,
+                    minLines: 4,
+                    maxLines: 10,
+                    decoration: const InputDecoration(
+                      labelText: 'Body (texto visible)',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    enabled: _bodyEditKey != null,
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton(
+                    onPressed: _bodyEditKey == null ? null : _saveBody,
+                    child: const Text('SAVE BODY'),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

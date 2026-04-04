@@ -10,13 +10,16 @@ public partial class RealmController : Node
 
 	// [SCOPE:CAMERA_CONTROL]
 	private CameraRig _camera;
+	private ViewerService _viewer;
 
 	public override void _Ready()
 	{
 		GD.Print("[RC][INIT]");
 
 		_camera = GetNode<CameraRig>("/root/Realm/CameraRig");
+		_viewer = GetNodeOrNull<ViewerService>("/root/Realm/ViewerService");
 		GD.Print(_camera == null ? "[RC][CAMERA NULL]" : "[RC][CAMERA OK]");
+		GD.Print(_viewer == null ? "[RC][VIEWER NULL] path=/root/Realm/ViewerService" : "[RC][VIEWER OK]");
 		Input.MouseMode = Input.MouseModeEnum.Captured;
 
 		SetProcess(true);
@@ -51,10 +54,9 @@ public partial class RealmController : Node
 		System.IO.File.WriteAllText(bridgePath + "active_key.txt", key);
 		System.IO.File.WriteAllText(bridgePath + "open_key.txt", key);
 
-		// [A15][REMOVED] GK no dispara refresh
+		GD.Print("[RC][BRIDGE_WRITE] open_key=" + key + " active_key=" + key);
 
-	
-
+		_viewer?.NotifyFrameOpened(key);
 
 		try
 		{
@@ -63,8 +65,6 @@ public partial class RealmController : Node
 
 			string active = System.IO.Path.Combine(bridge, "active_key.txt");
 			System.IO.File.WriteAllText(active, key);
-
-			GD.Print("[RC][BRIDGE_WRITE] active_key=" + key);
 		}
 		catch (Exception e)
 		{

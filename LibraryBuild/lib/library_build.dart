@@ -5,6 +5,36 @@ import 'package:sqlite3/sqlite3.dart';
 /// [Cambio 341] Evita re-escritura de viewer JSON si `open_key` no cambió.
 String? _lastViewerKey;
 
+const _refreshNowPath = r'C:\Alexandria\data\bridge\refresh_now.txt';
+
+/// True si [path] existe y el JSON tiene `frames` no vacío (Cambio 059).
+bool snapshotFileHasNonEmptyFrames(String path) {
+  try {
+    final f = File(path);
+    if (!f.existsSync()) return false;
+    final decoded = jsonDecode(f.readAsStringSync());
+    if (decoded is! Map) return false;
+    final frames = decoded['frames'];
+    if (frames is! List) return false;
+    return frames.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Contrato A15: GateKeeper hace polling de este archivo para volver a cargar el snapshot.
+/// Sin condiciones de estado LB — solo falla si el SO impide escribir.
+void _writeRefreshNowTrigger() {
+  try {
+    final refreshFlag = File(_refreshNowPath);
+    refreshFlag.parent.createSync(recursive: true);
+    refreshFlag.writeAsStringSync('1');
+    print('[LB][REFRESH_WRITE] $_refreshNowPath');
+  } catch (e) {
+    print('[LB][REFRESH_ERR] $_refreshNowPath $e');
+  }
+}
+
 /// Asegura columnas necesarias para viewer (body_text).
 void ensureLibrarySchema(Database db) {
   final info = db.select('PRAGMA table_info(entries)');
@@ -15,6 +45,7 @@ void ensureLibrarySchema(Database db) {
 }
 
 /// Parsea JSON de bloques (legacy `t`/`text`/`assetKey` o `type`/`text`/`src`).
+/// Conserva `img` y `link` (A15 / viewer GK); el resto → `p`.
 List<Map<String, dynamic>> parseBody(String? raw) {
   if (raw == null || raw.trim().isEmpty) return [];
   try {
@@ -27,13 +58,28 @@ List<Map<String, dynamic>> parseBody(String? raw) {
         el.map((k, v) => MapEntry(k.toString(), v)),
       );
       final t = (m['t'] ?? m['type'] ?? 'p').toString();
-      final type = t == 'img' ? 'img' : 'p';
-      if (type == 'img') {
+
+      if (t == 'img') {
         final src = (m['src'] ?? m['assetKey'] ?? '').toString();
         out.add({'type': 'img', 'src': src});
-      } else {
-        out.add({'type': 'p', 'text': (m['text'] ?? '').toString()});
+        continue;
       }
+
+      if (t == 'link') {
+        final linkKey = (m['key'] ?? '').toString();
+        final linkText = (m['text'] ?? '').toString();
+        if (linkKey.isNotEmpty && linkText.isNotEmpty) {
+          out.add({'type': 'link', 'key': linkKey, 'text': linkText});
+        } else {
+          out.add({
+            'type': 'p',
+            'text': linkText.isNotEmpty ? linkText : linkKey,
+          });
+        }
+        continue;
+      }
+
+      out.add({'type': 'p', 'text': (m['text'] ?? '').toString()});
     }
     return out;
   } catch (_) {
@@ -199,27 +245,45 @@ void runLibraryBuild() {
 
   final frames = raw;
 
-  final snapshot = {
-    "version": DateTime.now().millisecondsSinceEpoch,
-    "valid": true,
-    "frames": frames
-  };
+  final snapFile = File(snapshotPath);
+  snapFile.parent.createSync(recursive: true);
 
-  final file = File(snapshotPath);
-  file.parent.createSync(recursive: true);
-  file.writeAsStringSync(jsonEncode(snapshot));
+  if (frames.isEmpty) {
+    final keepPrevious =
+        snapFile.existsSync() && snapshotFileHasNonEmptyFrames(snapshotPath);
+    if (keepPrevious) {
+      print(
+        '[LB][SNAPSHOT_EMPTY] parent=$parent no children, keeping previous snapshot',
+      );
+    } else {
+      print('[LB][SNAPSHOT_WRITE_EMPTY] parent=$parent');
+      final snapshot = {
+        "version": DateTime.now().millisecondsSinceEpoch,
+        "valid": true,
+        "frames": frames,
+      };
+      snapFile.writeAsStringSync(jsonEncode(snapshot));
+      print('[LB][FRAMES_COUNT] ${frames.length}');
+      print('[LB][SNAPSHOT_WRITE] ' + snapshotPath);
+    }
+  } else {
+    final snapshot = {
+      "version": DateTime.now().millisecondsSinceEpoch,
+      "valid": true,
+      "frames": frames,
+    };
+    snapFile.writeAsStringSync(jsonEncode(snapshot));
+    print('[LB][FRAMES_COUNT] ${frames.length}');
+    print('[LB][SNAPSHOT_WRITE] ' + snapshotPath);
+  }
 
-  print('[LB][FRAMES_COUNT] ${frames.length}');
-  print('[LB][SNAPSHOT_WRITE] ' + snapshotPath);
-
-  writeViewerCurrentJson(db, parent);
-  _lastViewerKey = parent;
-
-  // [A15][REFRESH_TRIGGER]
-  final refreshFlag =
-      File(r'C:\Alexandria\data\bridge\refresh_now.txt');
-  refreshFlag.parent.createSync(recursive: true);
-  refreshFlag.writeAsStringSync('1');
+  try {
+    writeViewerCurrentJson(db, parent);
+    _lastViewerKey = parent;
+  } finally {
+    // A15: trigger GK reload; no depende de éxito del viewer (snapshot ya está en disco)
+    _writeRefreshNowTrigger();
+  }
 
   } finally {
     db.dispose();

@@ -440,6 +440,8 @@ public partial class Spawner : Node3D
 
 		// [SCOPE:REFRESH_WATCHER]
 		GD.Print("[SPAWNER][PROCESS_ENABLED]");
+		GD.Print("[SPAWNER][VERSION] A15 Cambio034 refresh polling + 1Hz tick");
+		GD.Print("[SPAWNER][REFRESH_PATH] " + @"C:\Alexandria\data\bridge\refresh_now.txt");
 	}
 	
 
@@ -495,7 +497,7 @@ public partial class Spawner : Node3D
 			if (frame != null)
 			{
 				frame.SetKey(key);
-				GD.Print($"[SNAPSHOT][ASSIGN] seq={seq} key={key}");
+				GD.Print($"[SNAPSHOT][ASSIGN] frame={seq} key={key}");
 			}
 			else
 			{
@@ -514,6 +516,7 @@ public partial class Spawner : Node3D
 		if (_snapshotRefreshCheckTimer >= 1.0)
 		{
 			_snapshotRefreshCheckTimer = 0;
+			GD.Print("[SPAWNER][PROCESS_TICK] Cambio034 1Hz — _Process ejecutándose");
 			GD.Print("[SNAPSHOT][CHECK] looking for refresh...");
 			GD.Print($"[SNAPSHOT][CHECK] path={refreshPath} exists={System.IO.File.Exists(refreshPath)}");
 		}

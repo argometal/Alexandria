@@ -37,39 +37,27 @@ public partial class RealmController : Node
 
 	private void HandleSelect(string key)
 	{
+		GD.Print($"[RC][ACTION] select key={(string.IsNullOrEmpty(key) ? "(empty)" : key)}");
 
-				
-		GD.Print($"[RC][ACTION] select key={key}");
-
-		if (string.IsNullOrEmpty(key))
-		{
-			GD.Print("[RC][BLOCK] EMPTY click ignored");
-			return;
-		}
-
-		// [A15][BRIDGE_WRITE]
-		var bridgePath = @"C:\Alexandria\data\bridge\";
-
-	
-		System.IO.File.WriteAllText(bridgePath + "active_key.txt", key);
-		System.IO.File.WriteAllText(bridgePath + "open_key.txt", key);
-
-		GD.Print("[RC][BRIDGE_WRITE] open_key=" + key + " active_key=" + key);
-
-		_viewer?.NotifyFrameOpened(key);
-
+		var bridge = @"C:\Alexandria\data\bridge";
 		try
 		{
-
-			string bridge = @"C:\Alexandria\data\bridge";
-
-			string active = System.IO.Path.Combine(bridge, "active_key.txt");
-			System.IO.File.WriteAllText(active, key);
+			System.IO.Directory.CreateDirectory(bridge);
+			var k = key ?? "";
+			System.IO.File.WriteAllText(System.IO.Path.Combine(bridge, "active_key.txt"), k);
+			System.IO.File.WriteAllText(System.IO.Path.Combine(bridge, "open_key.txt"), k);
 		}
 		catch (Exception e)
 		{
 			GD.PrintErr("[RC][BRIDGE_ERR] " + e.Message);
+			return;
 		}
+
+		GD.Print(string.IsNullOrEmpty(key)
+			? "[RC][BRIDGE_WRITE] open_key=(empty) active_key=(empty)"
+			: "[RC][BRIDGE_WRITE] open_key=" + key + " active_key=" + key);
+
+		_viewer?.NotifyFrameOpened(key ?? "");
 	}
 
 	

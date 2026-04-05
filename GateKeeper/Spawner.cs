@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 public partial class Spawner : Node3D
 {
@@ -364,6 +365,7 @@ public partial class Spawner : Node3D
 			if (f != null)
 			{
 				f.SetKey("");
+				f.SetSeq(seq);
 				f.FrameSelected += _rc.OnFrameSelected;
 			}
 
@@ -497,6 +499,7 @@ public partial class Spawner : Node3D
 			if (frame != null)
 			{
 				frame.SetKey(key);
+				frame.SetSeq(seq);
 				GD.Print($"[SNAPSHOT][ASSIGN] frame={seq} key={key}");
 			}
 			else
@@ -504,6 +507,52 @@ public partial class Spawner : Node3D
 				GD.PrintErr($"[SNAPSHOT][SKIP] seq={seq} not a FrameTemplate");
 			}
 		}
+
+		TryRestoreCameraAfterSnapshot();
+	}
+
+	/// <summary>
+	/// [Cambio 353] Si existe last_position.byKey[open_key], coloca la cámara frente a ese seq.
+	/// </summary>
+	private void TryRestoreCameraAfterSnapshot()
+	{
+		var cam = GetNodeOrNull<CameraRig>("/root/Realm/CameraRig");
+		if (cam == null)
+		{
+			GD.PrintErr("[SPAWNER][CAMERA_NULL] no CameraRig");
+			return;
+		}
+
+		string openKey = "";
+		try
+		{
+			var p = Path.Combine(BridgeSpatial.BridgeDir, "open_key.txt");
+			if (File.Exists(p))
+				openKey = File.ReadAllText(p).Trim();
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[SPAWNER][OPEN_KEY_READ] " + e.Message);
+			return;
+		}
+
+		if (string.IsNullOrEmpty(openKey))
+			return;
+
+		var saved = BridgeSpatial.ReadSavedSeqForOpenKey(openKey);
+		if (saved == null)
+			return;
+
+		int seq = saved.Value;
+		if (seq < 0)
+			seq = 0;
+		if (seq >= 20)
+			seq = 19;
+
+		Vector3 pos = GetPositionFromSeq(seq);
+		// Rig en Y=0: la altura de ojos viene del Camera3D hijo en la escena (no duplicar con pos.Y).
+		cam.GlobalPosition = new Vector3(pos.X, 0f, pos.Z);
+		GD.Print($"[SPAWNER][CAMERA_RESTORE] open_key={openKey} seq={seq} pos={cam.GlobalPosition}");
 	}
 
 
@@ -514,12 +563,7 @@ public partial class Spawner : Node3D
 
 		_snapshotRefreshCheckTimer += delta;
 		if (_snapshotRefreshCheckTimer >= 1.0)
-		{
 			_snapshotRefreshCheckTimer = 0;
-			GD.Print("[SPAWNER][PROCESS_TICK] Cambio034 1Hz — _Process ejecutándose");
-			GD.Print("[SNAPSHOT][CHECK] looking for refresh...");
-			GD.Print($"[SNAPSHOT][CHECK] path={refreshPath} exists={System.IO.File.Exists(refreshPath)}");
-		}
 
 		if (System.IO.File.Exists(refreshPath))
 		{
@@ -530,7 +574,6 @@ public partial class Spawner : Node3D
 			_snapshotLoaded = false;
 			LoadSnapshotAndAssign();
 			_snapshotLoaded = true;
-
 
 		}
 

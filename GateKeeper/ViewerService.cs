@@ -86,7 +86,7 @@ public partial class ViewerService : CanvasLayer
 		scroll.AddChild(_stack);
 	}
 
-	/// <summary>Llamado desde RealmController al escribir open_key tras clic en frame.</summary>
+	/// <summary>Abre panel y fuerza lectura de viewer/current.json (bridge dual: foco vía LB).</summary>
 	public void NotifyFrameOpened(string key)
 	{
 		_lastKeyShown = "";
@@ -94,9 +94,25 @@ public partial class ViewerService : CanvasLayer
 		_burstRemainSec = 3.0;
 		_burstAccumSec = 0;
 		_panel.Visible = true;
-		_titleLabel.Text = string.IsNullOrEmpty(key) ? "…" : key;
+		_titleLabel.Text = string.IsNullOrEmpty(key) ? "Hueco (sin KEY)" : key;
 		foreach (Node child in _stack.GetChildren())
 			child.QueueFree();
+
+		if (string.IsNullOrEmpty(key))
+		{
+			var hint = new RichTextLabel();
+			hint.BbcodeEnabled = false;
+			hint.FitContent = true;
+			hint.ScrollActive = false;
+			hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+			hint.AddThemeFontSizeOverride("font_size", FontBodyPx);
+			hint.Text = "Este slot no tiene KEY en el snapshot. Revisa seq en data/bridge/current_seq.txt.";
+			hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			_stack.AddChild(hint);
+			GD.Print("[VIEWER][OPEN] empty slot (no LB sync)");
+			return;
+		}
+
 		var sync = new RichTextLabel();
 		sync.BbcodeEnabled = false;
 		sync.FitContent = true;
@@ -169,10 +185,23 @@ public partial class ViewerService : CanvasLayer
 			return;
 
 		var key = data["key"].AsString();
-		if (string.IsNullOrEmpty(key))
-			return;
-
 		long version = ReadViewerVersion(data);
+
+		if (string.IsNullOrEmpty(key))
+		{
+			if (version == _lastVersionShown && string.IsNullOrEmpty(_lastKeyShown))
+				return;
+			Godot.Collections.Array bodyEmpty;
+			if (!data.ContainsKey("body"))
+				bodyEmpty = new Godot.Collections.Array();
+			else
+				bodyEmpty = data["body"].AsGodotArray();
+			ShowContent("", bodyEmpty);
+			_lastKeyShown = "";
+			_lastVersionShown = version;
+			GD.Print($"[VIEWER][REFRESH] key=(empty) version={version}");
+			return;
+		}
 
 		if (key == _lastKeyShown && version == _lastVersionShown)
 			return;
@@ -207,7 +236,7 @@ public partial class ViewerService : CanvasLayer
 		foreach (Node child in _stack.GetChildren())
 			child.QueueFree();
 
-		_titleLabel.Text = key;
+		_titleLabel.Text = string.IsNullOrEmpty(key) ? "Sin KEY de foco" : key;
 		_panel.Visible = true;
 
 		if (body.Count == 0)
@@ -218,7 +247,7 @@ public partial class ViewerService : CanvasLayer
 			emptyHint.ScrollActive = false;
 			emptyHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 			emptyHint.AddThemeFontSizeOverride("font_size", FontBodyPx);
-			emptyHint.Text = "(Sin bloques en body — editar contenido en LB para esta key)";
+			emptyHint.Text = "Sin contenido aún";
 			emptyHint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(emptyHint);
 			return;
@@ -316,9 +345,11 @@ public partial class ViewerService : CanvasLayer
 		try
 		{
 			Directory.CreateDirectory(BridgeDir);
+			// ORM-15V3 Fase 1: foco explícito + compat legacy (GK Fase 2 escribirá solo dual)
+			File.WriteAllText(Path.Combine(BridgeDir, "focus_key.txt"), destKey);
 			File.WriteAllText(Path.Combine(BridgeDir, "open_key.txt"), destKey);
 			File.WriteAllText(Path.Combine(BridgeDir, "active_key.txt"), destKey);
-			GD.Print($"[VIEWER][LINK] open_key={destKey}");
+			GD.Print($"[VIEWER][LINK] focus_key+open_key={destKey}");
 		}
 		catch (Exception e)
 		{

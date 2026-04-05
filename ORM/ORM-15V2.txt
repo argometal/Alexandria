@@ -376,6 +376,174 @@ ROOM ≠ capa estructural
 
 Es solo una lectura visual del usuario
 
+## ROOM (concepto en Alexandria / A15)
+
+Un **ROOM** no es una entidad del sistema.
+Es una **interpretación cognitiva de un LOCUS**.
+
+---
+
+## Definición
+
+```text
+ROOM = LOCUS que agrupa múltiples OBJECTS
+```
+
+---
+
+## Función cognitiva
+
+* Representa una **unidad espacial del palacio de memoria**
+* Sirve para **concentrar información relacionada** en un mismo punto
+* Permite manejar **densidad controlada** (≈10–20 objetos)
+
+---
+
+## Comportamiento
+
+* Se accede como cualquier LOCUS (un frame en GK)
+* Al abrirlo, el viewer muestra múltiples elementos (texto, links, imágenes)
+* No hay navegación interna adicional: todo ocurre dentro del mismo frame
+
+---
+
+## Restricciones (críticas)
+
+* No tiene identidad propia → usa el **KEY del LOCUS**
+* No crea jerarquía nueva
+* No modifica `seq`
+* No afecta snapshot
+* No introduce lógica en GK
+
+---
+
+## Diferencia con OBJECT
+
+```text
+ROOM → contenedor (LOCUS completo)
+OBJECT → elemento interno del LOCUS
+```
+
+---
+
+## Diferencia con PARCOUR
+
+```text
+PARCOUR → secuencia de loci
+ROOM → locus individual con alta densidad
+```
+
+---
+
+## Modelo final
+
+```text
+Realm nivel rootde GK
+  → Parcour  
+      → ROOM (frame)
+          → Objects (frames contenidos dentro de ROOM)
+```
+
+Algunos Locus funcionan como ROOM.
+
+---
+
+## Regla central
+
+```text
+Todo es LOCUS.
+ROOM es solo un rol que puede adoptar un LOCUS.
+```
+
+---
+
+## Uso práctico
+
+* Un ROOM se usa cuando:
+
+  * Hay múltiples ideas relacionadas
+  * Se quiere evitar fragmentación en muchos loci
+* Un LOCUS normal se usa cuando:
+
+  * La información es simple o puntual
+
+---
+
+## Conclusión
+
+El concepto de ROOM **no altera la arquitectura**,
+solo añade una **capa cognitiva para organizar contenido** dentro del mismo sistema A15.
+
+GateKeeper es la representación espacial; Library Build es el constructor de contenido y de la estructura lógica (`entries`) que el snapshot asigna a loci.
+
+---
+
+## PARCOUR / ROOM / OBJECT — roles cognitivos (no tipos en GK)
+
+En **base de datos** y **LB** existen `parentKey`, `seq`, títulos y jerarquía lógica del árbol de entries.
+
+En **GateKeeper** no hay tipos `Parcour | Room | Object` como clases o frames distintos: solo **N loci** con **seq** y **KEY** asignada por snapshot.
+
+| Término (UX / DB) | Rol | En GK |
+|-------------------|-----|--------|
+| **Parcour** | Conjunto de hijos (snapshot) bajo una KEY de recorrido | Misma rejilla de frames; cambia el mapping KEY → seq |
+| **Room** | Locus al que “entras”: nueva KEY = nuevo contexto activo | Un frame = un locus |
+| **Object** | Hoja o contenido denso en LB (misma fila `entries`) | Sigue siendo **asignación** KEY → seq, no un tipo de mesh |
+
+**Regla:** en el motor, todo es **LOCUS**. Parcour / Room / Object son **interpretaciones** del mismo mecanismo: **KEY activa → snapshot de hijos → mapping a seq**.
+
+---
+
+## Nivel jerárquico (organización en LB, no geometría en GK)
+
+* **Realm** agrupa macro-temas (vistas / datos en LB).
+* **Parcour** = secuencia lógica de hijos bajo una KEY (recorrido / “castillo” a nivel datos).
+* **Room** = un locus con hijos en el árbol (en datos: KEY con children).
+* **Object** = hoja o bloque de contenido bajo un KEY (según modelo de datos).
+
+Ninguno de estos niveles crea **tipos de frame** en Godot: solo cambia **qué KEY** es el **contexto activo** y qué hijos aporta el snapshot.
+
+---
+
+## Arquitectura lógica firme (Alexandria v1 · ref. #357)
+
+Semántica **Realm / Parcour / Room / Object** vive **solo en LB** (DB + UI). **GK no conoce** `cognitiveRole` ni nombres de nivel; solo **N loci**, **seq** y **KEY** vía snapshot.
+
+**Jerarquía de datos (LB):**
+
+* **REALM** — root lógico; puede tener **varios** hijos (no limitado a 20 a nivel REALM).
+* **PARCOUR** — nivel “frames” del recorrido: **exactamente 20 slots** lógicos (`seq` 0..19) para hijos directos.
+* **ROOM** — nivel contenido/agrupación: **exactamente 20 slots** (`seq` 0..19) para hijos directos.
+* **OBJECT** — hoja: **no tiene hijos** en el modelo; solo **body** (bloques en contenido). Tras ROOM no hay subniveles.
+
+**Invariantes:**
+
+| Regla | Detalle |
+|-------|---------|
+| Slots fijos | PARCOUR y ROOM: máximo **20** hijos por padre; `seq` **0..19**; duplicar `seq` o pasar de 20 rompe el mapping con GK (N=20). |
+| OBJECT sin hijos | En **LB (UI)**: no crear filas hijas si el padre tiene rol **object**. No triggers en DB; flexibilidad de datos preservada. |
+| Placeholders | **No** en DB. Solo en **snapshot JSON**: `frames` siempre longitud **20**; hueco sin fila → `key: ""` (EMPTY); GK ya trata EMPTY. |
+| DB | Solo filas reales; el “relleno” a 20 es **runtime** al generar snapshot. |
+
+**Preguntas cerradas (#357) — acuerdo:**
+
+1. Placeholders: `key = ""` — **no** claves mágicas tipo `__EMPTY_n`.
+2. Bloqueo OBJECT: **solo UI (LB)** — no triggers en DB.
+3. Slots 20: aplica a **hijos de** PARCOUR y ROOM en datos; REALM no está capado a 20; GK sigue con **N=20 fijo** para el espacio visible del contexto activo.
+
+**Herencia de `cognitiveRole` al crear un hijo (LB #365a):** el rol por defecto del hijo depende solo del rol del padre en DB (UI LB; GK no participa). Si no hay fila del padre, se asume padre **realm** (p. ej. contexto ROOT implícito). Tras crear, el rol puede corregirse en **LocusEditor** (`UPDATE` de `cognitiveRole` junto con `body_text`).
+
+| Rol del padre | Rol por defecto del hijo |
+|---------------|--------------------------|
+| `realm` | `parcour` |
+| `parcour` | `room` |
+| `room` | `object` |
+| `object` | no se crea hijo (bloqueo UI; no aplica INSERT) |
+
+Implementación de referencia: `defaultChildCognitiveRoleForParent` en `LibraryBuild/lib/library_build.dart`.
+
+---
+
 RENDER Y CICLO RUNTIME — BLOQUE EJECUTABLE
 
 CICLO DE EJECUCIÓN
@@ -728,6 +896,7 @@ Responsabilidades:
 - definir seq
 - generar snapshot
 - validar datos
+- (metadatos UX / jerarquía) `cognitiveRole`, títulos, etc. — **solo en LB/DB**; el snapshot hacia GK no expone rol cognitivo
 
 LB NO puede:
 
@@ -1322,10 +1491,25 @@ Cada frame:
 
 ---
 
+### Extensión LB — `frames` de longitud fija N (#357)
+
+Cuando **Library Build** materializa el snapshot de **hijos** del contexto activo (`open_key` / parentKey), el contrato de integración con GK (A15, N=20) exige:
+
+* `frames` es un **array de exactamente 20 elementos** (índices alineados a `seq` 0..19).
+* Cada elemento tiene `seq` y `key`; si no hay fila en DB para ese `seq`, `key` es **`""`** (EMPTY). **No** se insertan filas “fantasma” en DB para rellenar.
+* Validación LB (generación): `seq` entero en 0..19, sin duplicados; `key` no vacío **en DB** para filas que existen; claves vacías solo aparecen en el JSON como huecos.
+* **Export/import** de REALM completo (u otro ámbito) es dirección de producto: portable y replicable; el invariante de **20 × key/seq** por nivel de hijos se mantiene en el pipeline snapshot.
+
+**Nota:** Las propiedades siguientes (“parcial”, “vacío”) se refieren al **contenido** (cuántos loci reciben KEY distinta de EMPTY). Un snapshot con 20 frames y muchas `key: ""` sigue siendo “parcial” en ese sentido, aunque el **array** esté completo en longitud.
+
+**Asignación de `seq` en LB (iteración actual):** las nuevas filas hijas usan `seq = max(seq entre hermanos) + 1` bajo el mismo `parentKey`. No se reutilizan huecos dejados por borrados en esta iteración; el snapshot sigue emitiendo 20 frames y los slots sin fila quedan `key: ""`. La reutilización o compactación de `seq` queda **postergada**.
+
+---
+
 PROPIEDADES
 
 * snapshot puede estar vacío
-* snapshot puede ser parcial
+* snapshot puede ser parcial (muchas KEYS vacías / EMPTY)
 * snapshot nunca es obligatorio
 * snapshot no cubre necesariamente todos los loci
 
@@ -1335,8 +1519,10 @@ UNIVERSO DE VALIDEZ
 
 Para cada frame:
 
-* key debe existir en DB
+* si `key` no está vacío: key debe existir en DB
 * seq debe existir en GK
+* si `key` es `""`: representa slot EMPTY (sin contenido asignado)
+
 
 ---
 
@@ -1716,6 +1902,15 @@ Verificación
 
 ---
 
+NOTA DE IMPLEMENTACIÓN — CONTEXTO Y BRIDGE (coding)
+
+* **Contexto activo** en norma = **KEY**; en implementación, LB usa esa KEY como **`parentKey`** del snapshot (lista de hijos directos en `entries`).
+* **GK no** lee DB y **no** escribe filas en SQLite: aplica snapshot y reacciona a bridge / input.
+* **`open_key.txt`** (bridge): la **KEY destino** la escribe GK (y puede escribirse desde LB al navegar); LB observa el contrato A15 y regenera snapshot (y artefactos viewer según pipeline).
+* La jerarquía Realm → Parcour → … es **organización semántica y de datos en LB**; **no** es una capa estructural adicional dentro de GateKeeper (sin nuevos tipos de frame por “nivel cognitivo”).
+
+---
+
 EVENTO DE NAVEGACIÓN
 
 Click en locus con estado EXISTS:
@@ -1873,6 +2068,18 @@ Sistema inválido si:
 * navegación parcial sin rebuild
 * loci cambian al navegar
 * layout cambia al navegar
+
+---
+
+WARP — NAVEGACIÓN COGNITIVA
+
+**Definición:** “Warp” o salto (incluido transversal a una KEY no contigua en el árbol de datos) **no** es un segundo mecanismo de runtime distinto del click → contexto activo.
+
+**Regla:** toda navegación a una KEY destino **reutiliza el FLUJO ÚNICO** de este bloque (mismo contrato de bridge, mismo snapshot generado desde esa KEY como `parentKey`, misma aplicación sobre los N loci existentes).
+
+* Queda prohibido introducir **tipos de frame** en GK específicos para “warp”.
+* La navegación **no crea** loci ni cambia **N** ni layout.
+* La diferencia entre descender a un hijo, moverse lateralmente o saltar a una rama lejana es solo **qué KEY** pasa a ser contexto activo (y qué se escribe en `open_key`); el pipeline **LB → snapshot → GK** permanece **invariante**.
 
 ---
 
@@ -2504,8 +2711,68 @@ Este diseño:
 
 **¿Quieres que procedamos con el código exacto para `_mazeDirections` y `InitMazeDirections()`?**
 
+---
 
+# REALM LIBRARY — Contrato de superficie LB (15.23 · ref. #365a)
 
+## Tres superficies (arquitectura híbrida cerrada)
+
+| Superficie | Rol |
+|------------|-----|
+| **Realm Library** (home actual de LB) | Navegación + índice + seguimiento mínimo; **no** editor embebido; **no** estudio activo pesado. |
+| **LocusEditor** | Edición de contenido (`body_text`, etc.) — pantalla aparte. |
+| **LocusReader** | Estudio ligero / active recall — **pendiente de implementación**; postergado respecto a consolidar Realm Library. |
+| **GateKeeper** | Inmersión espacial; no lee `cognitiveRole`. |
+
+**Contrato útil:** LB navega e indexa; LocusEditor edita; GK recorre el espacio.
+
+---
+
+## Propósito de Realm Library
+
+La home de LB es un **índice visual y operativo** de realms / parcours / loci: selección, seguimiento y entrada rápida a otras superficies — **no** es el editor ni el módulo de repaso activo.
+
+## Elementos obligatorios (iteración #365a)
+
+| Elemento | Descripción | Fuente |
+|----------|-------------|--------|
+| Lista de entries | Índice bajo `parentKey` actual | `entries` (key, title, cognitiveRole, parentKey, seq) |
+| Badge de `cognitiveRole` | Etiqueta/icono (Realm / Parcour / Room / Object) | Solo lectura en esta iteración; **no** edición en lista |
+| Última revisión | Texto tipo “hace 2 días” / “nunca” | Columna `last_reviewed_at` (ISO 8601, nullable) — poblada después por LocusReader o acciones futuras (“Marcar revisado”) |
+| Micro hero | Miniatura 40×40 (aprox.) si existe | Resolución: (1) asset `hero` explícito si existe; (2) si no, primera imagen en `body_text` (bloque `type: "img"`); (3) si no, sin hero |
+| Botón Editar | Abre `LocusEditor` | Navegación ya definida en LB |
+| Tap en fila | Navega al hijo | `_navigateInto` → `open_key.txt` → snapshot |
+
+## Elementos excluidos en #365a
+
+* due / soon / fresh (requiere contrato de **review** aparte)
+* Historial D1/D3/D7 visual
+* Active recall en la home
+* Sugerencias automáticas “qué cargar después”
+* Editor embebido (fuera de alcance)
+
+## Esquema de datos (mínimo)
+
+```sql
+ALTER TABLE entries ADD COLUMN last_reviewed_at TEXT; -- ISO 8601, nullable
+```
+
+## Lagunas del insumo — estado
+
+| Laguna | Resolución en ORM |
+|--------|-------------------|
+| Orden de implementación | 1) Realm Library (cosmético + columna + lista) 2) contrato review 3) LocusReader |
+| `cognitiveRole` en lista | Se **muestra**; no se **edita** en Realm Library en #365a |
+| LocusReader escribe reviews | Sí en diseño futuro; `last_reviewed_at` prepara la métrica inicial |
+| OBJECT sin body | Comportamiento de UI: entrada válida; se muestra como vacío / sin hero — no bloqueo de fila |
+
+## Pendiente (#365b y siguientes)
+
+* Contrato de **review** (tabla `reviews` o `review_interval` + `last_reviewed_at`)
+* **LocusReader** (estudio ligero, active recall)
+* Métricas due/soon/fresh (spaced repetition)
+
+---
 
 # MAZE — Objetivos (A15 V2)
 

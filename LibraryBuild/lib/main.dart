@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -7,9 +6,21 @@ import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
 
 import 'library_build.dart';
+import 'locus_editor.dart';
 
 const _dbPath = r'C:\Alexandria\data\alexandria.db';
 const _openKeyPath = r'C:\Alexandria\data\bridge\open_key.txt';
+
+/// Raíz de assets por entry (ORM #365a: `assets/<key>/hero.*` o imágenes en body).
+const _kAssetsRoot = r'C:\Alexandria\data\assets';
+
+/// Etiquetas solo para UI (Cambio 351 — sin lógica de negocio).
+const _kCognitiveRoleLabels = <String, String>{
+  'realm': 'Realm',
+  'parcour': 'Parcour',
+  'room': 'Room',
+  'object': 'Object',
+};
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +34,7 @@ class LbMinimalApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'LB',
+      title: 'Realm Library',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
@@ -47,22 +58,18 @@ class _LbHomeState extends State<LbHome> {
   List<Map<String, Object?>> _rows = [];
   Timer? _viewerPoll;
 
-  /// Última key para la que ya se ejecutó `runLibraryBuild()` (evita rebuild cada 2s).
-  String? _lastProcessedOpenKey;
+  /// Firma context+focus para no repetir `runLibraryBuild()` cada 2s (ORM-15V3 dual bridge).
+  String? _lastProcessedBridgeSig;
 
   /// Evita solapar `runLibraryBuild()` si dura más que el intervalo del timer.
   bool _libraryBuildRunning = false;
-
-  /// Entry cuyo `body_text` se edita (icono notas en la fila).
-  String? _bodyEditKey;
-  final TextEditingController _bodyController = TextEditingController();
-  final TextEditingController _linkKeyController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _openDbAndSchema();
-    _syncParentFromOpenKey();
+    ensureDualBridgeBootstrapFromOpenKey();
+    _syncParentFromBridgeContext();
     _loadChildren();
     _viewerPoll = Timer.periodic(const Duration(seconds: 2), (_) {
       syncViewerFromOpenKey();
@@ -74,8 +81,6 @@ class _LbHomeState extends State<LbHome> {
   void dispose() {
     _viewerPoll?.cancel();
     _titleController.dispose();
-    _bodyController.dispose();
-    _linkKeyController.dispose();
     _db?.dispose();
     super.dispose();
   }
@@ -97,36 +102,41 @@ CREATE TABLE IF NOT EXISTS entries (
     if (!names.contains('title')) {
       d.execute('ALTER TABLE entries ADD COLUMN title TEXT');
     }
-    if (!names.contains('body_text')) {
-      d.execute('ALTER TABLE entries ADD COLUMN body_text TEXT');
-    }
+    ensureLibrarySchema(d);
   }
 
-  void _syncParentFromOpenKey() {
+  void _syncParentFromBridgeContext() {
     try {
-      final f = File(_openKeyPath);
-      if (!f.existsSync()) return;
-      final k = f.readAsStringSync().trim();
+      final k = readContextKeyWithFallback();
       if (k.isNotEmpty) {
         _currentParentKey = k;
       }
     } catch (_) {}
   }
 
-  /// Cuando GK (u otro proceso) cambia `open_key.txt`, regenera snapshot + refresh para GateKeeper.
+  /// Cuando cambia bridge (context o focus), alinea UI y ejecuta `runLibraryBuild()`.
   void _checkAndRunLibraryBuild() {
     if (_libraryBuildRunning) return;
     try {
-      final f = File(_openKeyPath);
-      if (!f.existsSync()) return;
-      final key = f.readAsStringSync().trim();
-      if (key.isEmpty) return;
-      if (key == _lastProcessedOpenKey) return;
+      ensureDualBridgeBootstrapFromOpenKey();
+      final contextKey = readContextKeyWithFallback();
+      final focusKey = readFocusKeyWithFallback();
+      if (contextKey.isEmpty) return;
+
+      if (contextKey != _currentParentKey) {
+        setState(() {
+          _currentParentKey = contextKey;
+        });
+        _loadChildren();
+      }
+
+      final sig = '$contextKey\x1e$focusKey';
+      if (sig == _lastProcessedBridgeSig) return;
 
       _libraryBuildRunning = true;
       try {
         runLibraryBuild();
-        _lastProcessedOpenKey = key;
+        _lastProcessedBridgeSig = sig;
       } finally {
         _libraryBuildRunning = false;
       }
@@ -146,7 +156,7 @@ CREATE TABLE IF NOT EXISTS entries (
     if (d == null) return;
 
     final result = d.select(
-      'SELECT key, seq, title FROM entries WHERE parentKey = ? ORDER BY seq ASC',
+      'SELECT key, seq, title, cognitiveRole, body_text, last_reviewed_at FROM entries WHERE parentKey = ? ORDER BY seq ASC',
       [_currentParentKey],
     );
 
@@ -156,6 +166,9 @@ CREATE TABLE IF NOT EXISTS entries (
                 'key': row['key'],
                 'seq': row['seq'],
                 'title': row['title'],
+                'cognitiveRole': row['cognitiveRole'],
+                'body_text': row['body_text'],
+                'last_reviewed_at': row['last_reviewed_at'],
               })
           .toList();
     });
@@ -167,119 +180,112 @@ CREATE TABLE IF NOT EXISTS entries (
     return row['key']?.toString() ?? '';
   }
 
-  /// Convierte JSON de bloques guardado en DB a texto plano para el TextField.
-  String _plainBodyFromStored(String? raw) {
-    if (raw == null || raw.trim().isEmpty) return '';
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return raw;
-      final parts = <String>[];
-      for (final el in decoded) {
-        if (el is Map) {
-          final t = el['text'] ?? el['t'];
-          if (t != null) parts.add(t.toString());
-        }
-      }
-      return parts.isEmpty ? raw : parts.join('\n');
-    } catch (_) {
-      return raw;
+  String _roleBadgeLabel(Object? roleRaw) {
+    final r = normalizeCognitiveRole(roleRaw);
+    const emoji = <String, String>{
+      'realm': '📁',
+      'parcour': '🔄',
+      'room': '🏠',
+      'object': '📄',
+    };
+    final e = emoji[r] ?? '📄';
+    final name = _kCognitiveRoleLabels[r] ?? r;
+    return '$e $name';
+  }
+
+  /// ISO 8601 nullable → "nunca" / "hoy" / "ayer" / "hace N días"…
+  String _formatLastReviewedAt(String? iso) {
+    if (iso == null || iso.trim().isEmpty) return 'nunca';
+    final dt = DateTime.tryParse(iso.trim());
+    if (dt == null) return 'nunca';
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(dt.year, dt.month, dt.day);
+    final diff = today.difference(d).inDays;
+    if (diff < 0) return 'próximo';
+    if (diff == 0) return 'hoy';
+    if (diff == 1) return 'ayer';
+    if (diff < 7) return 'hace $diff días';
+    if (diff < 30) return 'hace ${diff ~/ 7} sem.';
+    if (diff < 365) return 'hace ${diff ~/ 30} meses';
+    return 'hace ${diff ~/ 365} años';
+  }
+
+  /// Hero: `assets/<key>/hero.(png|jpg|jpeg|webp)`; si no, primera `img` en body_text.
+  String? _resolveMicroHeroPath(String entryKey, String? bodyText) {
+    final sep = Platform.pathSeparator;
+    final baseDir = Directory('$_kAssetsRoot$sep$entryKey');
+    for (final name in ['hero.png', 'hero.jpg', 'hero.jpeg', 'hero.webp']) {
+      final f = File('${baseDir.path}$sep$name');
+      if (f.existsSync()) return f.path;
     }
-  }
-
-  void _selectBodyEditor(String key) {
-    final d = _db;
-    if (d == null) return;
-    final rows = d.select(
-      'SELECT body_text FROM entries WHERE key = ? LIMIT 1',
-      [key],
-    );
-    final raw = rows.isEmpty ? null : rows.first['body_text'] as String?;
-    setState(() {
-      _bodyEditKey = key;
-      _loadBodyFromStoredIntoEditors(raw);
-    });
-  }
-
-  /// Carga un solo bloque `p` o `link`; listas más largas se aplastan a texto plano.
-  void _loadBodyFromStoredIntoEditors(String? raw) {
-    _linkKeyController.clear();
-    _bodyController.clear();
-    if (raw == null || raw.trim().isEmpty) return;
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List || decoded.isEmpty) {
-        _bodyController.text = raw;
-        return;
-      }
-      if (decoded.length == 1 && decoded.first is Map) {
-        final m = Map<String, dynamic>.from(
-          (decoded.first as Map).map((k, v) => MapEntry(k.toString(), v)),
-        );
-        final t = (m['t'] ?? m['type'] ?? 'p').toString();
-        if (t == 'link') {
-          _linkKeyController.text = (m['key'] ?? '').toString();
-          _bodyController.text = (m['text'] ?? '').toString();
-          return;
-        }
-        if (t == 'img') {
-          return;
-        }
-        _bodyController.text = (m['text'] ?? '').toString();
-        return;
-      }
-      _bodyController.text = _plainBodyFromStored(raw);
-    } catch (_) {
-      _bodyController.text = raw;
+    final blocks = parseBody(bodyText);
+    for (final b in blocks) {
+      if (b['type'] != 'img') continue;
+      final src = (b['src'] ?? '').toString().trim();
+      if (src.isEmpty) continue;
+      final direct = File(src);
+      if (direct.existsSync()) return src;
+      final underKey = File('${baseDir.path}$sep$src');
+      if (underKey.existsSync()) return underKey.path;
+      final underRoot = File('$_kAssetsRoot$sep$src');
+      if (underRoot.existsSync()) return underRoot.path;
     }
+    return null;
   }
 
-  void _saveBody() {
-    final key = _bodyEditKey;
-    final d = _db;
-    if (key == null || key.isEmpty || d == null) return;
-
-    final text = _bodyController.text;
-    final linkDest = _linkKeyController.text.trim();
-
-    if (linkDest.isNotEmpty && text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Con Link Key hace falta texto visible en Body.',
-          ),
+  Widget _microHeroLeading(String entryKey, String? bodyText, String roleKey) {
+    final path = _resolveMicroHeroPath(entryKey, bodyText);
+    if (path != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.file(
+          File(path),
+          width: 40,
+          height: 40,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => _microHeroPlaceholder(roleKey),
         ),
       );
-      return;
     }
+    return _microHeroPlaceholder(roleKey);
+  }
 
-    final String blocks;
-    if (linkDest.isNotEmpty) {
-      blocks = jsonEncode([
-        {'type': 'link', 'key': linkDest, 'text': text},
-      ]);
-    } else {
-      blocks = jsonEncode([
-        {'type': 'p', 'text': text},
-      ]);
-    }
-
-    d.execute(
-      'UPDATE entries SET body_text = ? WHERE key = ?',
-      [blocks, key],
+  Widget _microHeroPlaceholder(String roleKey) {
+    const emoji = <String, IconData>{
+      'realm': Icons.folder_outlined,
+      'parcour': Icons.route,
+      'room': Icons.home_outlined,
+      'object': Icons.article_outlined,
+    };
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
+      child: Icon(
+        emoji[roleKey] ?? Icons.description_outlined,
+        size: 22,
+      ),
     );
+  }
 
-    try {
-      final f = File(_openKeyPath);
-      if (f.existsSync()) {
-        final openKey = f.readAsStringSync().trim();
-        if (openKey.isNotEmpty && openKey == key) {
-          ensureLibrarySchema(d);
-          writeViewerCurrentJson(d, key);
-        }
-      }
-    } catch (_) {}
-
-    print('[LB][BODY_SAVE] key=$key link=${linkDest.isNotEmpty}');
+  Future<void> _openLocusEditor(BuildContext context, String key) async {
+    final d = _db;
+    if (d == null) return;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (ctx) => LocusEditorPage(
+          db: d,
+          entryKey: key,
+        ),
+      ),
+    );
+    if (saved == true && mounted) {
+      _loadChildren();
+    }
   }
 
   void _createEntry() {
@@ -289,8 +295,38 @@ CREATE TABLE IF NOT EXISTS entries (
     final title = _titleController.text.trim();
     if (title.isEmpty) return;
 
-    final key =
-        'LB_${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(99999)}';
+    // [#357] OBJECT no tiene hijos en el modelo (solo body); GK no lee esto — solo UI LB.
+    final parentRows = d.select(
+      'SELECT cognitiveRole FROM entries WHERE key = ? LIMIT 1',
+      [_currentParentKey],
+    );
+    if (parentRows.isNotEmpty) {
+      final roleRaw = parentRows.first['cognitiveRole'];
+      if (normalizeCognitiveRole(roleRaw) == 'object') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se pueden crear hijos bajo una entry con rol Object (solo contenido / body).',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+
+    final countRow = d.select(
+      'SELECT COUNT(*) AS c FROM entries WHERE parentKey = ?',
+      [_currentParentKey],
+    ).first;
+    final childCount = countRow['c'] as int;
+    if (childCount >= 20) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ya hay 20 hijos (slots 0–19 llenos).'),
+        ),
+      );
+      return;
+    }
 
     final maxRow = d
         .select(
@@ -299,10 +335,25 @@ CREATE TABLE IF NOT EXISTS entries (
         )
         .first;
     final nextSeq = (maxRow['m'] as int) + 1;
+    if (nextSeq > 19) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('seq máximo 19 (20 slots por nivel).'),
+        ),
+      );
+      return;
+    }
+
+    final newKey =
+        'LB_${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(99999)}';
+
+    final parentRoleRaw =
+        parentRows.isEmpty ? null : parentRows.first['cognitiveRole'];
+    final newRole = defaultChildCognitiveRoleForParent(parentRoleRaw);
 
     d.execute(
-      'INSERT INTO entries (key, parentKey, seq, title) VALUES (?, ?, ?, ?)',
-      [key, _currentParentKey, nextSeq, title],
+      'INSERT INTO entries (key, parentKey, seq, title, cognitiveRole) VALUES (?, ?, ?, ?, ?)',
+      [newKey, _currentParentKey, nextSeq, title, newRole],
     );
 
     _titleController.clear();
@@ -313,7 +364,7 @@ CREATE TABLE IF NOT EXISTS entries (
     setState(() {
       _currentParentKey = childKey;
     });
-    _writeOpenKey(childKey);
+    // open_key solo desde GateKeeper (clic en frame); LB no debe pisar el bridge al navegar.
     _loadChildren();
   }
 
@@ -341,11 +392,9 @@ CREATE TABLE IF NOT EXISTS entries (
   void _onRefresh() {
     runLibraryBuild();
     try {
-      final f = File(_openKeyPath);
-      if (f.existsSync()) {
-        final k = f.readAsStringSync().trim();
-        if (k.isNotEmpty) _lastProcessedOpenKey = k;
-      }
+      final ctx = readContextKeyWithFallback();
+      final foc = readFocusKeyWithFallback();
+      _lastProcessedBridgeSig = '$ctx\x1e$foc';
     } catch (_) {}
     _loadChildren();
   }
@@ -354,7 +403,19 @@ CREATE TABLE IF NOT EXISTS entries (
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('LB · $_currentParentKey'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Realm Library'),
+            Text(
+              _currentParentKey,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
         leading: _currentParentKey == 'ROOT'
             ? null
             : IconButton(
@@ -364,7 +425,7 @@ CREATE TABLE IF NOT EXISTS entries (
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'REFRESH',
+            tooltip: 'Regenerar snapshot / lista',
             onPressed: _onRefresh,
           ),
         ],
@@ -373,14 +434,15 @@ CREATE TABLE IF NOT EXISTS entries (
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _titleController,
                     decoration: const InputDecoration(
-                      labelText: 'Título (nuevo entry)',
+                      labelText: 'Nueva entrada (título)',
+                      hintText: 'Índice — no edita contenido aquí',
                       border: OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => _createEntry(),
@@ -395,70 +457,116 @@ CREATE TABLE IF NOT EXISTS entries (
             ),
           ),
           Expanded(
-            flex: 3,
-            child: ListView.builder(
-              itemCount: _rows.length,
-              itemBuilder: (context, i) {
-                final row = _rows[i];
-                final key = row['key'] as String;
-                final selected = _bodyEditKey == key;
-                return ListTile(
-                  title: Text(_displayLabel(row)),
-                  subtitle: Text('key=$key · seq=${row['seq']}'),
-                  selected: selected,
-                  trailing: IconButton(
-                    icon: const Icon(Icons.notes_outlined),
-                    tooltip: 'Editar body',
-                    onPressed: () => _selectBodyEditor(key),
-                  ),
-                  onTap: () => _navigateInto(key),
-                );
-              },
-            ),
-          ),
-          Material(
-            elevation: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    _bodyEditKey == null
-                        ? 'Body — pulsa el icono de notas en una fila'
-                        : 'Body · $_bodyEditKey',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _linkKeyController,
-                    decoration: const InputDecoration(
-                      labelText: 'Link Key (opcional)',
-                      hintText: 'KEY destino si este body es un enlace',
-                      border: OutlineInputBorder(),
+            child: _rows.isEmpty
+                ? Center(
+                    child: Text(
+                      'Sin entradas en este nivel.\nCrea una o vuelve atrás.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            color: Theme.of(context).colorScheme.outline,
+                          ),
                     ),
-                    enabled: _bodyEditKey != null,
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                    itemCount: _rows.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 4),
+                    itemBuilder: (context, i) {
+                      final row = _rows[i];
+                      final key = row['key'] as String;
+                      final roleKey = normalizeCognitiveRole(row['cognitiveRole']);
+                      final reviewed = _formatLastReviewedAt(
+                        row['last_reviewed_at'] as String?,
+                      );
+                      return Material(
+                        color: Theme.of(context).colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: () => _navigateInto(key),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Tooltip(
+                                  message: 'Rol (solo LB; GK no lo lee)',
+                                  child: _microHeroLeading(
+                                    key,
+                                    row['body_text'] as String?,
+                                    roleKey,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _displayLabel(row),
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Wrap(
+                                        spacing: 8,
+                                        runSpacing: 4,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          Text(
+                                            _roleBadgeLabel(row['cognitiveRole']),
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall,
+                                          ),
+                                          Text(
+                                            '·  Última revisión: $reviewed',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall
+                                                ?.copyWith(
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'key=$key  ·  seq=${row['seq']}',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .labelSmall
+                                            ?.copyWith(
+                                              fontFamily: 'monospace',
+                                              fontSize: 10,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .outline,
+                                            ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      _openLocusEditor(context, key),
+                                  child: const Text('Editar'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _bodyController,
-                    minLines: 4,
-                    maxLines: 10,
-                    decoration: const InputDecoration(
-                      labelText: 'Body (texto visible)',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    enabled: _bodyEditKey != null,
-                  ),
-                  const SizedBox(height: 8),
-                  FilledButton(
-                    onPressed: _bodyEditKey == null ? null : _saveBody,
-                    child: const Text('SAVE BODY'),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),

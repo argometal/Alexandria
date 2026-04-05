@@ -1,0 +1,96 @@
+[gd_scene format=3 uid="uid://bh4vdy0hakxjo"]
+
+[ext_resource type="Script" uid="uid://bxboc3jdki026" path="res://World.cs" id="1_c6gwx"]
+[ext_resource type="PackedScene" uid="uid://dwn7crtw253ba" path="res://env/raz_light_.tscn" id="2_bcbcq"]
+[ext_resource type="Script" uid="uid://dhe4valuxgubn" path="res://CameraRig.cs" id="2_eu7l1"]
+[ext_resource type="Environment" uid="uid://c6rf5ntanj50u" path="res://env/raz_environment.tres" id="3_js7pq"]
+[ext_resource type="Script" uid="uid://btcmv0uwifou2" path="res://Frame01.cs" id="3_p1v5b"]
+[ext_resource type="Script" uid="uid://bfgfxjojwyrmn" path="res://CorridorSpawner.cs" id="4_js7pq"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_c6gwx"]
+size = Vector2(6, 60)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_2dftf"]
+size = Vector2(6, 60)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_bcbcq"]
+size = Vector2(3.2, 60)
+
+[sub_resource type="BoxMesh" id="BoxMesh_c6gwx"]
+size = Vector3(2, 2, 0.2)
+subdivide_width = 2
+subdivide_height = 2
+subdivide_depth = 1
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_2dftf"]
+size = Vector3(2, 2, 0.2)
+
+[node name="Wolrd" type="Node3D" unique_id=1484887785]
+script = ExtResource("1_c6gwx")
+
+[node name="Corridor" type="Node3D" parent="." unique_id=925529549]
+
+[node name="Floor" type="MeshInstance3D" parent="Corridor" unique_id=352303347]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 30)
+mesh = SubResource("PlaneMesh_c6gwx")
+
+[node name="Ceiling" type="MeshInstance3D" parent="Corridor" unique_id=1269967150]
+transform = Transform3D(1, 0, 0, 0, -1, 8.742278e-08, 0, -8.742278e-08, -1, 0, 3.2, 30)
+mesh = SubResource("PlaneMesh_2dftf")
+
+[node name="WallPath" type="MeshInstance3D" parent="Corridor" unique_id=532350362]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, 3, 1.6, 30)
+mesh = SubResource("PlaneMesh_bcbcq")
+
+[node name="CameraRig" type="Node3D" parent="." unique_id=935897412]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+script = ExtResource("2_eu7l1")
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig" unique_id=959951847]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+current = true
+near = 0.1
+far = 200.0
+
+[node name="OmniLight3D" type="OmniLight3D" parent="CameraRig" unique_id=2129198367]
+light_energy = 8.0
+omni_range = 40.0
+
+[node name="Frames" type="Node3D" parent="." unique_id=663598738]
+
+[node name="Frame01" type="Node3D" parent="Frames" unique_id=2023863113]
+script = ExtResource("3_p1v5b")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Frames/Frame01" unique_id=975196330]
+mesh = SubResource("BoxMesh_c6gwx")
+
+[node name="ClickArea" type="Area3D" parent="Frames/Frame01" unique_id=1455169463]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Frames/Frame01/ClickArea" unique_id=990422781]
+shape = SubResource("BoxShape3D_2dftf")
+
+[node name="CoverSprite3D" type="Sprite3D" parent="Frames/Frame01" unique_id=1836304609]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.11)
+
+[node name="DirectionalLight3D" parent="." unique_id=76564974 instance=ExtResource("2_bcbcq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -60, 45, 0)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=755977448]
+environment = ExtResource("3_js7pq")
+
+[node name="CorridorSpawner" type="Node3D" parent="." unique_id=904765858]
+script = ExtResource("4_js7pq")
+
+FramesRootPath = NodePath("Frames")
+FrameTemplatePath = NodePath("Frames/Frame01")
+WallTemplatePath = NodePath("Corridor/WallPath")
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=40450581]
+
+[node name="GlobalMenu" type="MenuButton" parent="CanvasLayer" unique_id=1951555031]
+offset_right = 8.0
+offset_bottom = 8.0
+theme_override_font_sizes/font_size = 38
+text = "≡"
+item_count = 1
+popup/item_0/id = 0

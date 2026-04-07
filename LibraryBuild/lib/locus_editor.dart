@@ -1,13 +1,25 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
+import 'package:super_clipboard/super_clipboard.dart';
 
 import 'library_build.dart'
-    show ensureLibrarySchema, writeViewerCurrentJson, kCognitiveRoles, normalizeCognitiveRole;
+    show
+        buildViewerForKey,
+        ensureLibrarySchema,
+        kCognitiveRoles,
+        normalizeCognitiveRole,
+        readFocusKeyWithFallback,
+        writeViewerCurrentJson;
 
-const _openKeyPath = r'C:\Alexandria\data\bridge\open_key.txt';
+const _assetsRoot = r'C:\Alexandria\data\assets';
 
 const _kCognitiveRoleLabels = <String, String>{
   'realm': 'Realm',
@@ -16,7 +28,39 @@ const _kCognitiveRoleLabels = <String, String>{
   'object': 'Object',
 };
 
-/// Editor de contenido por locus (bloques `p` y `link`). Reemplaza el panel inferior de main.
+const _heroExts = ['png', 'jpg', 'jpeg', 'webp'];
+
+Future<Uint8List?> _readClipboardFile(DataReader reader, FileFormat format) async {
+  final c = Completer<Uint8List?>();
+  final progress = reader.getFile(
+    format,
+    (file) async {
+      try {
+        final all = await file.readAll();
+        if (!c.isCompleted) c.complete(all);
+      } catch (_) {
+        if (!c.isCompleted) c.complete(null);
+      }
+    },
+    onError: (_) {
+      if (!c.isCompleted) c.complete(null);
+    },
+  );
+  if (progress == null && !c.isCompleted) c.complete(null);
+  return c.future;
+}
+
+String _extForClipboardImageFormat(FileFormat fmt) {
+  if (fmt == Formats.png) return 'png';
+  if (fmt == Formats.jpeg) return 'jpg';
+  if (fmt == Formats.webp) return 'webp';
+  if (fmt == Formats.gif) return 'gif';
+  if (fmt == Formats.bmp) return 'bmp';
+  if (fmt == Formats.tiff) return 'tiff';
+  return 'png';
+}
+
+/// Editor de contenido por locus (bloques `p`, `link`, `img`). Reemplaza el panel inferior de main.
 class LocusEditorPage extends StatefulWidget {
   const LocusEditorPage({
     super.key,
@@ -34,19 +78,207 @@ class LocusEditorPage extends StatefulWidget {
 class _LocusEditorPageState extends State<LocusEditorPage> {
   final List<_BlockDraft> _blocks = [];
   String _cognitiveRole = 'object';
+  /// Bloque `img` seleccionado para Ctrl/Cmd+H (portada marco GK).
+  int? _focusedImageBlockIndex;
 
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_handleHardwareKey);
     _loadFromDb();
   }
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
     for (final b in _blocks) {
       b.dispose();
     }
     super.dispose();
+  }
+
+  Directory _assetsDir() =>
+      Directory('$_assetsRoot${Platform.pathSeparator}${widget.entryKey}');
+
+  void _deleteHeroAssetFiles() {
+    final dir = _assetsDir();
+    if (!dir.existsSync()) return;
+    for (final ext in _heroExts) {
+      final p = File('${dir.path}${Platform.pathSeparator}hero.$ext');
+      if (p.existsSync()) p.deleteSync();
+    }
+  }
+
+  bool _isPrimaryFocusInEditableText() {
+    final ctx = FocusManager.instance.primaryFocus?.context;
+    if (ctx == null) return false;
+    return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  bool _handleHardwareKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final ctrl = pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight);
+    final meta = pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight);
+    final mod = ctrl || meta;
+    if (event.logicalKey == LogicalKeyboardKey.keyV && mod) {
+      if (_isPrimaryFocusInEditableText()) return false;
+      _pasteFromClipboard();
+      return true;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyH && mod) {
+      _heroShortcut();
+      return true;
+    }
+    return false;
+  }
+
+  Future<void> _pasteFromClipboard() async {
+    final clipboard = SystemClipboard.instance;
+    if (clipboard == null) return;
+    try {
+      final reader = await clipboard.read();
+      const formats = [
+        Formats.png,
+        Formats.jpeg,
+        Formats.webp,
+        Formats.gif,
+        Formats.bmp,
+        Formats.tiff,
+      ];
+      for (final fmt in formats) {
+        if (!reader.canProvide(fmt)) continue;
+        final bytes = await _readClipboardFile(reader, fmt);
+        if (bytes != null && bytes.isNotEmpty) {
+          await _writePastedBytes(bytes, _extForClipboardImageFormat(fmt));
+          return;
+        }
+      }
+      final text = await reader.readValue<String>(Formats.plainText);
+      final t = text?.trim() ?? '';
+      if (t.isEmpty) return;
+      if (!mounted) return;
+      setState(() {
+        _blocks.add(_BlockDraft.p(text: t));
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _writePastedBytes(Uint8List bytes, String ext) async {
+    final dir = _assetsDir();
+    dir.createSync(recursive: true);
+    final name = 'paste_${DateTime.now().microsecondsSinceEpoch}.$ext';
+    final f = File('${dir.path}${Platform.pathSeparator}$name');
+    await f.writeAsBytes(bytes);
+    if (!mounted) return;
+    setState(() {
+      _blocks.add(_BlockDraft.img(src: name));
+    });
+  }
+
+  void _heroShortcut() {
+    final i = _focusedImageBlockIndex;
+    if (i == null || i < 0 || i >= _blocks.length) return;
+    if (!_blocks[i].isImage) return;
+    _promoteBlockToHero(i);
+  }
+
+  Future<void> _promoteBlockToHero(int i) async {
+    final b = _blocks[i];
+    if (!b.isImage) return;
+    final srcName = b.srcCtrl!.text.trim();
+    if (srcName.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Indica un archivo en el bloque imagen')),
+      );
+      return;
+    }
+    final dir = _assetsDir();
+    dir.createSync(recursive: true);
+    final srcPath = '${dir.path}${Platform.pathSeparator}$srcName';
+    final srcFile = File(srcPath);
+    if (!srcFile.existsSync()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No existe: $srcPath')),
+      );
+      return;
+    }
+    _deleteHeroAssetFiles();
+    final lower = srcName.toLowerCase();
+    var ext = 'png';
+    for (final e in _heroExts) {
+      if (lower.endsWith('.$e')) {
+        ext = e;
+        break;
+      }
+    }
+    final destPath = '${dir.path}${Platform.pathSeparator}hero.$ext';
+    await srcFile.copy(destPath);
+    if (!mounted) return;
+    setState(() {
+      for (var j = 0; j < _blocks.length; j++) {
+        if (_blocks[j].isImage) {
+          _blocks[j].imgRole = j == i ? 'hero' : 'img';
+        }
+      }
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Portada del marco (hero) actualizada')),
+    );
+  }
+
+  Future<void> _ingestFileFromDisk(String path, {String? suggestedName}) async {
+    final srcFile = File(path);
+    if (!srcFile.existsSync()) return;
+    var baseName = (suggestedName ?? '').trim();
+    if (baseName.isEmpty) {
+      baseName = srcFile.uri.pathSegments.isNotEmpty
+          ? srcFile.uri.pathSegments.last
+          : 'image.png';
+    }
+    final dir = _assetsDir();
+    dir.createSync(recursive: true);
+    var destPath = '${dir.path}${Platform.pathSeparator}$baseName';
+    if (File(destPath).existsSync()) {
+      final dot = baseName.lastIndexOf('.');
+      final stem = dot > 0 ? baseName.substring(0, dot) : baseName;
+      final ext = dot > 0 && dot < baseName.length - 1
+          ? baseName.substring(dot + 1)
+          : 'png';
+      baseName = '${stem}_${DateTime.now().microsecondsSinceEpoch}.$ext';
+      destPath = '${dir.path}${Platform.pathSeparator}$baseName';
+    }
+    await srcFile.copy(destPath);
+    if (!mounted) return;
+    setState(() {
+      _blocks.add(_BlockDraft.img(src: baseName));
+    });
+  }
+
+  bool _useDesktopDrop() =>
+      !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+
+  Future<void> _onDropDone(DropDoneDetails details) async {
+    for (final item in details.files) {
+      final path = item.path;
+      if (path.isEmpty) continue;
+      final low = path.toLowerCase();
+      const ok = <String>['.png', '.jpg', '.jpeg', '.webp'];
+      var allowed = false;
+      for (final s in ok) {
+        if (low.endsWith(s)) {
+          allowed = true;
+          break;
+        }
+      }
+      if (!allowed) continue;
+      await _ingestFileFromDisk(path, suggestedName: item.name);
+    }
   }
 
   void _loadFromDb() {
@@ -98,17 +330,30 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         }
         if (t == 'img') {
           final src = (m['src'] ?? m['assetKey'] ?? '').toString();
-          out.add(
-            _BlockDraft.p(
-              text: src.isNotEmpty ? '[img: $src]' : '[img]',
-            ),
-          );
+          var role = (m['role'] ?? 'img').toString();
+          if (role != 'hero') role = 'img';
+          out.add(_BlockDraft.img(src: src, role: role));
           continue;
         }
-        out.add(_BlockDraft.p(text: (m['text'] ?? '').toString()));
+        final plain = (m['text'] ?? '').toString().trim();
+        final imgLegacy = RegExp(r'^\[img:\s*(.+?)\]\s*$').firstMatch(plain);
+        if (imgLegacy != null) {
+          out.add(_BlockDraft.img(src: imgLegacy.group(1)!.trim()));
+        } else {
+          out.add(_BlockDraft.p(text: plain));
+        }
       }
       if (out.isEmpty) {
         return [_BlockDraft.p(text: raw.trim())];
+      }
+      var heroSeen = false;
+      for (final b in out) {
+        if (b.isImage && b.imgRole == 'hero') {
+          if (heroSeen) {
+            b.imgRole = 'img';
+          }
+          heroSeen = true;
+        }
       }
       return out;
     } catch (_) {
@@ -128,10 +373,40 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     });
   }
 
+  Future<void> _addImage() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
+    );
+    if (result == null || result.files.isEmpty) return;
+    final picked = result.files.single;
+    final path = picked.path;
+    if (path == null || path.isEmpty) return;
+    var baseName = picked.name.trim();
+    if (baseName.isEmpty) {
+      final srcFile = File(path);
+      baseName = srcFile.uri.pathSegments.isNotEmpty
+          ? srcFile.uri.pathSegments.last
+          : 'image.webp';
+    }
+    await _ingestFileFromDisk(path, suggestedName: baseName);
+  }
+
   void _removeAt(int i) {
+    final b = _blocks[i];
+    if (b.isImage && b.imgRole == 'hero') {
+      _deleteHeroAssetFiles();
+    }
     setState(() {
-      final b = _blocks.removeAt(i);
+      _blocks.removeAt(i);
       b.dispose();
+      if (_focusedImageBlockIndex != null) {
+        if (_focusedImageBlockIndex == i) {
+          _focusedImageBlockIndex = null;
+        } else if (_focusedImageBlockIndex! > i) {
+          _focusedImageBlockIndex = _focusedImageBlockIndex! - 1;
+        }
+      }
     });
   }
 
@@ -140,6 +415,11 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     setState(() {
       final b = _blocks.removeAt(i);
       _blocks.insert(i - 1, b);
+      if (_focusedImageBlockIndex == i) {
+        _focusedImageBlockIndex = i - 1;
+      } else if (_focusedImageBlockIndex == i - 1) {
+        _focusedImageBlockIndex = i;
+      }
     });
   }
 
@@ -148,6 +428,11 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     setState(() {
       final b = _blocks.removeAt(i);
       _blocks.insert(i + 1, b);
+      if (_focusedImageBlockIndex == i) {
+        _focusedImageBlockIndex = i + 1;
+      } else if (_focusedImageBlockIndex == i + 1) {
+        _focusedImageBlockIndex = i;
+      }
     });
   }
 
@@ -155,12 +440,18 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     final payload = <Map<String, dynamic>>[];
     for (final b in _blocks) {
       if (b.isLink) {
-        final k = b.linkKeyCtrl.text.trim();
-        final t = b.textCtrl.text.trim();
+        final k = b.linkKeyCtrl!.text.trim();
+        final t = b.textCtrl!.text.trim();
         if (k.isEmpty) continue;
         payload.add({'type': 'link', 'key': k, 'text': t});
+      } else if (b.isImage) {
+        final s = b.srcCtrl!.text.trim();
+        if (s.isEmpty) continue;
+        final row = <String, dynamic>{'type': 'img', 'src': s};
+        if (b.imgRole == 'hero') row['role'] = 'hero';
+        payload.add(row);
       } else {
-        final t = b.textCtrl.text.trim();
+        final t = b.textCtrl!.text.trim();
         if (t.isEmpty) continue;
         payload.add({'type': 'p', 'text': t});
       }
@@ -175,14 +466,12 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     );
 
     try {
-      final f = File(_openKeyPath);
-      if (f.existsSync()) {
-        final openKey = f.readAsStringSync().trim();
-        if (openKey.isNotEmpty && openKey == widget.entryKey) {
-          ensureLibrarySchema(widget.db);
-          writeViewerCurrentJson(widget.db, widget.entryKey);
-        }
+      ensureLibrarySchema(widget.db);
+      final focus = readFocusKeyWithFallback();
+      if (focus == widget.entryKey) {
+        writeViewerCurrentJson(widget.db, widget.entryKey);
       }
+      buildViewerForKey(widget.entryKey);
     } catch (_) {}
 
     if (!mounted) return;
@@ -253,86 +542,200 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                   icon: const Icon(Icons.link),
                   label: const Text('Enlace'),
                 ),
+                OutlinedButton.icon(
+                  onPressed: _addImage,
+                  icon: const Icon(Icons.image_outlined),
+                  label: const Text('Imagen'),
+                ),
               ],
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text(
+              'Pegar imagen o texto: Ctrl+V / Cmd+V (con el foco fuera de un campo de texto). '
+              'Portada del marco GK: botón «Portada» o clic en la imagen y Ctrl/Cmd+H. '
+              'En escritorio: suelta aquí archivos .png / .jpg / .webp.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
           Expanded(
-            child: _blocks.isEmpty
-                ? const Center(
-                    child: Text(
-                      'Sin bloques. Añade párrafo o enlace.',
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: _blocks.length,
-                    itemBuilder: (context, i) {
-                      final b = _blocks[i];
-                      final last = i == _blocks.length - 1;
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
+            child: Builder(
+              builder: (context) {
+                Widget core = _blocks.isEmpty
+                    ? Center(
                         child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                children: [
-                                  Chip(
-                                    label: Text(
-                                      b.isLink ? 'link' : 'p',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                  const Spacer(),
-                                  IconButton(
-                                    icon: const Icon(Icons.arrow_upward),
-                                    tooltip: 'Subir',
-                                    onPressed:
-                                        i == 0 ? null : () => _moveUp(i),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.arrow_downward),
-                                    tooltip: 'Bajar',
-                                    onPressed:
-                                        last ? null : () => _moveDown(i),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete_outline),
-                                    tooltip: 'Eliminar',
-                                    onPressed: () => _removeAt(i),
-                                  ),
-                                ],
-                              ),
-                              if (b.isLink) ...[
-                                TextField(
-                                  controller: b.linkKeyCtrl,
-                                  decoration: const InputDecoration(
-                                    labelText: 'KEY destino',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                              ],
-                              TextField(
-                                controller: b.textCtrl,
-                                minLines: b.isLink ? 2 : 3,
-                                maxLines: 8,
-                                decoration: InputDecoration(
-                                  labelText: b.isLink
-                                      ? 'Texto visible del enlace'
-                                      : 'Texto',
-                                  border: const OutlineInputBorder(),
-                                ),
-                              ),
-                            ],
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'Sin bloques. Añade párrafo, enlace o imagen, '
+                            'o pega / arrastra una imagen.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyLarge,
                           ),
                         ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: _blocks.length,
+                        itemBuilder: (context, i) {
+                          final b = _blocks[i];
+                          final last = i == _blocks.length - 1;
+                          final imgFocused =
+                              b.isImage && _focusedImageBlockIndex == i;
+                          final tagLabel = b.isLink
+                              ? 'link'
+                              : b.isImage
+                                  ? (b.imgRole == 'hero' ? 'HERO' : 'IMG')
+                                  : 'p';
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            color: imgFocused
+                                ? Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer
+                                    .withValues(alpha: 0.35)
+                                : null,
+                            shape: b.isImage
+                                ? RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    side: BorderSide(
+                                      color: b.imgRole == 'hero'
+                                          ? const Color(0xFF1565C0)
+                                          : Colors.grey.shade600,
+                                      width: 2,
+                                    ),
+                                  )
+                                : null,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: b.isImage
+                                  ? () => setState(
+                                        () => _focusedImageBlockIndex = i,
+                                      )
+                                  : () => setState(
+                                        () => _focusedImageBlockIndex = null,
+                                      ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Chip(
+                                          label: Text(
+                                            tagLabel,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          visualDensity: VisualDensity.compact,
+                                          backgroundColor: b.isImage
+                                              ? (b.imgRole == 'hero'
+                                                  ? Colors.blue.shade100
+                                                  : Colors.grey.shade300)
+                                              : null,
+                                        ),
+                                        if (imgFocused) ...[
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'foco · Ctrl/Cmd+H',
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelSmall,
+                                          ),
+                                        ],
+                                        const Spacer(),
+                                        IconButton(
+                                          icon: const Icon(Icons.arrow_upward),
+                                          tooltip: 'Subir',
+                                          onPressed: i == 0
+                                              ? null
+                                              : () => _moveUp(i),
+                                        ),
+                                        IconButton(
+                                          icon:
+                                              const Icon(Icons.arrow_downward),
+                                          tooltip: 'Bajar',
+                                          onPressed:
+                                              last ? null : () => _moveDown(i),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                          ),
+                                          tooltip: 'Eliminar',
+                                          onPressed: () => _removeAt(i),
+                                        ),
+                                      ],
+                                    ),
+                                    if (b.isLink) ...[
+                                      TextField(
+                                        controller: b.linkKeyCtrl!,
+                                        decoration: const InputDecoration(
+                                          labelText: 'KEY destino',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    if (b.isImage) ...[
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: FilledButton.tonalIcon(
+                                          onPressed: () =>
+                                              _promoteBlockToHero(i),
+                                          icon: const Icon(Icons.star_outline),
+                                          label: const Text(
+                                            'Portada (marco GK)',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: b.srcCtrl!,
+                                        decoration: InputDecoration(
+                                          labelText:
+                                              'Archivo en assets/${widget.entryKey}/',
+                                          hintText: 'ej. foto.png',
+                                          border: const OutlineInputBorder(),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      _ImagePreviewTile(
+                                        entryKey: widget.entryKey,
+                                        srcController: b.srcCtrl!,
+                                      ),
+                                    ] else
+                                      TextField(
+                                        controller: b.textCtrl!,
+                                        minLines: b.isLink ? 2 : 3,
+                                        maxLines: 8,
+                                        decoration: InputDecoration(
+                                          labelText: b.isLink
+                                              ? 'Texto visible del enlace'
+                                              : 'Texto',
+                                          border: const OutlineInputBorder(),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       );
-                    },
-                  ),
+                if (_useDesktopDrop()) {
+                  core = DropTarget(
+                    onDragDone: _onDropDone,
+                    child: core,
+                  );
+                }
+                return core;
+              },
+            ),
           ),
         ],
       ),
@@ -340,43 +743,122 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
   }
 }
 
+enum _BlockKind { paragraph, link, image }
+
 class _BlockDraft {
-  _BlockDraft._({
-    required this.isLink,
-    required this.textCtrl,
-    TextEditingController? linkKeyCtrl,
-  }) : _linkKeyCtrl = linkKeyCtrl;
+  _BlockDraft._paragraph(this.textCtrl)
+      : kind = _BlockKind.paragraph,
+        linkKeyCtrl = null,
+        srcCtrl = null,
+        imgRole = 'img';
+
+  _BlockDraft._link(this.textCtrl, this.linkKeyCtrl)
+      : kind = _BlockKind.link,
+        srcCtrl = null,
+        imgRole = 'img';
+
+  _BlockDraft._image(this.srcCtrl, {String role = 'img'})
+      : kind = _BlockKind.image,
+        textCtrl = null,
+        linkKeyCtrl = null,
+        imgRole = role == 'hero' ? 'hero' : 'img';
 
   factory _BlockDraft.p({String text = ''}) {
-    return _BlockDraft._(
-      isLink: false,
-      textCtrl: TextEditingController(text: text),
-      linkKeyCtrl: null,
-    );
+    return _BlockDraft._paragraph(TextEditingController(text: text));
   }
 
   factory _BlockDraft.link({String destKey = '', String text = ''}) {
-    return _BlockDraft._(
-      isLink: true,
-      textCtrl: TextEditingController(text: text),
-      linkKeyCtrl: TextEditingController(text: destKey),
+    return _BlockDraft._link(
+      TextEditingController(text: text),
+      TextEditingController(text: destKey),
     );
   }
 
-  final bool isLink;
-  final TextEditingController textCtrl;
-  final TextEditingController? _linkKeyCtrl;
-
-  TextEditingController get linkKeyCtrl {
-    final k = _linkKeyCtrl;
-    if (!isLink || k == null) {
-      throw StateError('not link');
-    }
-    return k;
+  factory _BlockDraft.img({String src = '', String role = 'img'}) {
+    return _BlockDraft._image(
+      TextEditingController(text: src),
+      role: role,
+    );
   }
 
+  final _BlockKind kind;
+  final TextEditingController? textCtrl;
+  final TextEditingController? linkKeyCtrl;
+  final TextEditingController? srcCtrl;
+
+  /// Solo bloques `img`: `hero` = portada copiada a `assets/<key>/hero.*` para GK.
+  String imgRole;
+
+  bool get isLink => kind == _BlockKind.link;
+  bool get isImage => kind == _BlockKind.image;
+
   void dispose() {
-    textCtrl.dispose();
-    _linkKeyCtrl?.dispose();
+    textCtrl?.dispose();
+    linkKeyCtrl?.dispose();
+    srcCtrl?.dispose();
+  }
+}
+
+/// Miniatura local del archivo `src` bajo `assets/<entryKey>/`.
+class _ImagePreviewTile extends StatefulWidget {
+  const _ImagePreviewTile({
+    required this.entryKey,
+    required this.srcController,
+  });
+
+  final String entryKey;
+  final TextEditingController srcController;
+
+  @override
+  State<_ImagePreviewTile> createState() => _ImagePreviewTileState();
+}
+
+class _ImagePreviewTileState extends State<_ImagePreviewTile> {
+  @override
+  void initState() {
+    super.initState();
+    widget.srcController.addListener(_onSrcChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.srcController.removeListener(_onSrcChanged);
+    super.dispose();
+  }
+
+  void _onSrcChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.srcController.text.trim();
+    if (name.isEmpty) {
+      return Text(
+        'Vista previa: indica un nombre de archivo',
+        style: Theme.of(context).textTheme.bodySmall,
+      );
+    }
+    final path =
+        '$_assetsRoot${Platform.pathSeparator}${widget.entryKey}${Platform.pathSeparator}$name';
+    final f = File(path);
+    if (!f.existsSync()) {
+      return Text(
+        'No encontrado: $path',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.file(
+        f,
+        height: 160,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) =>
+            const Text('No se pudo cargar la imagen'),
+      ),
+    );
   }
 }

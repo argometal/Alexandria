@@ -7,7 +7,7 @@ using System.IO;
 /// </summary>
 public partial class ViewerService : CanvasLayer
 {
-	private const string ViewerPath = @"C:\Alexandria\data\viewer\current.json";
+	private const string ViewerCurrentPath = @"C:\Alexandria\data\viewer\current.json";
 	private const string DataRoot = @"C:\Alexandria\data";
 	private const string BridgeDir = @"C:\Alexandria\data\bridge";
 
@@ -21,12 +21,15 @@ public partial class ViewerService : CanvasLayer
 
 	private string _lastKeyShown = "";
 	private long _lastVersionShown = 0;
+	private bool _lastHasChildrenShown;
 	private double _checkTimer;
 	/// Tras clic en frame: polls rápidos hasta que LB escribe viewer para la nueva key.
 	private double _burstRemainSec;
 	private double _burstAccumSec;
 	private PanelContainer _panel = null!;
 	private VBoxContainer _stack = null!;
+	/// Fuera del scroll: siempre visible aunque el body sea largo (frames 1..19).
+	private Control _enterButtonHost = null!;
 	private Label _titleLabel = null!;
 
 	public override void _Ready()
@@ -84,6 +87,12 @@ public partial class ViewerService : CanvasLayer
 		_stack.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		_stack.AddThemeConstantOverride("separation", BlockSeparationPx);
 		scroll.AddChild(_stack);
+
+		_enterButtonHost = new HBoxContainer();
+		_enterButtonHost.Name = "EnterButtonHost";
+		_enterButtonHost.Visible = false;
+		_enterButtonHost.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		root.AddChild(_enterButtonHost);
 	}
 
 	/// <summary>Abre panel y fuerza lectura de viewer/current.json (bridge dual: foco vía LB).</summary>
@@ -91,12 +100,14 @@ public partial class ViewerService : CanvasLayer
 	{
 		_lastKeyShown = "";
 		_lastVersionShown = -1;
+		_lastHasChildrenShown = false;
 		_burstRemainSec = 3.0;
 		_burstAccumSec = 0;
 		_panel.Visible = true;
 		_titleLabel.Text = string.IsNullOrEmpty(key) ? "Hueco (sin KEY)" : key;
 		foreach (Node child in _stack.GetChildren())
 			child.QueueFree();
+		ClearEnterButtonHost();
 
 		if (string.IsNullOrEmpty(key))
 		{
@@ -158,15 +169,44 @@ public partial class ViewerService : CanvasLayer
 		}
 	}
 
+	/// <summary>Fase 2 GK: warp de nivel — solo RealmController escribe bridge.</summary>
+	public event Action<string> EnterLevelRequested;
+
+	/// <summary>Fase BACK: subir nivel al parent de la entry enfocada.</summary>
+	public event Action<string> BackLevelRequested;
+
+	/// <summary>Fase 2 GK: navegación tipo “link” / foco — mismo contrato que clic en frame (sin warp).</summary>
+	public event Action<string> FocusKeyNavigationRequested;
+
+	public void ClosePanel()
+	{
+		_panel.Visible = false;
+	}
+
 	private void CheckForContent()
 	{
-		if (!File.Exists(ViewerPath))
-			return;
+		var focusKey = BridgeSpatial.ReadFocusKey();
+		var viewerPath = string.IsNullOrEmpty(focusKey)
+			? ViewerCurrentPath
+			: $@"C:\Alexandria\data\viewer\{focusKey}.json";
+		if (!File.Exists(viewerPath))
+		{
+			if (viewerPath != ViewerCurrentPath && File.Exists(ViewerCurrentPath))
+			{
+				GD.Print($"[VIEWER][FALLBACK] missing={viewerPath} using=current.json");
+				viewerPath = ViewerCurrentPath;
+			}
+			else
+			{
+				GD.Print($"[VIEWER][MISS] {viewerPath}");
+				return;
+			}
+		}
 
 		string text;
 		try
 		{
-			text = File.ReadAllText(ViewerPath);
+			text = File.ReadAllText(viewerPath);
 		}
 		catch
 		{
@@ -186,24 +226,29 @@ public partial class ViewerService : CanvasLayer
 
 		var key = data["key"].AsString();
 		long version = ReadViewerVersion(data);
+		var hasChildren = ReadViewerHasChildren(data);
+		var parentKey = ReadViewerParentKey(data);
 
 		if (string.IsNullOrEmpty(key))
 		{
-			if (version == _lastVersionShown && string.IsNullOrEmpty(_lastKeyShown))
+			if (version == _lastVersionShown &&
+			    string.IsNullOrEmpty(_lastKeyShown) &&
+			    !_lastHasChildrenShown)
 				return;
 			Godot.Collections.Array bodyEmpty;
 			if (!data.ContainsKey("body"))
 				bodyEmpty = new Godot.Collections.Array();
 			else
 				bodyEmpty = data["body"].AsGodotArray();
-			ShowContent("", bodyEmpty);
+			ShowContent("", bodyEmpty, false, "");
 			_lastKeyShown = "";
 			_lastVersionShown = version;
+			_lastHasChildrenShown = false;
 			GD.Print($"[VIEWER][REFRESH] key=(empty) version={version}");
 			return;
 		}
 
-		if (key == _lastKeyShown && version == _lastVersionShown)
+		if (key == _lastKeyShown && version == _lastVersionShown && hasChildren == _lastHasChildrenShown)
 			return;
 
 		Godot.Collections.Array body;
@@ -211,11 +256,12 @@ public partial class ViewerService : CanvasLayer
 			body = new Godot.Collections.Array();
 		else
 			body = data["body"].AsGodotArray();
-		ShowContent(key, body);
+		ShowContent(key, body, hasChildren, parentKey);
 
 		_lastKeyShown = key;
 		_lastVersionShown = version;
-		GD.Print($"[VIEWER][REFRESH] key={key} version={version}");
+		_lastHasChildrenShown = hasChildren;
+		GD.Print($"[VIEWER][REFRESH] key={key} version={version} hasChildren={hasChildren}");
 	}
 
 	private static long ReadViewerVersion(Godot.Collections.Dictionary data)
@@ -231,10 +277,43 @@ public partial class ViewerService : CanvasLayer
 		};
 	}
 
-	private void ShowContent(string key, Godot.Collections.Array body)
+	private static bool ReadViewerHasChildren(Godot.Collections.Dictionary data)
+	{
+		if (!data.ContainsKey("hasChildren"))
+			return false;
+		var h = data["hasChildren"];
+		return h.VariantType switch
+		{
+			Variant.Type.Bool => h.AsBool(),
+			Variant.Type.Int => h.AsInt32() != 0,
+			Variant.Type.Float => Math.Abs(h.AsDouble()) > 1e-9,
+			Variant.Type.String =>
+				string.Equals(h.AsString(), "true", StringComparison.OrdinalIgnoreCase)
+				|| h.AsString().Trim() == "1",
+			_ => false,
+		};
+	}
+
+	private static string ReadViewerParentKey(Godot.Collections.Dictionary data)
+	{
+		if (!data.ContainsKey("parentKey"))
+			return "";
+		var p = data["parentKey"];
+		return p.VariantType == Variant.Type.String ? p.AsString().Trim() : "";
+	}
+
+	private void ClearEnterButtonHost()
+	{
+		foreach (Node child in _enterButtonHost.GetChildren())
+			child.QueueFree();
+		_enterButtonHost.Visible = false;
+	}
+
+	private void ShowContent(string key, Godot.Collections.Array body, bool hasChildren, string parentKey)
 	{
 		foreach (Node child in _stack.GetChildren())
 			child.QueueFree();
+		ClearEnterButtonHost();
 
 		_titleLabel.Text = string.IsNullOrEmpty(key) ? "Sin KEY de foco" : key;
 		_panel.Visible = true;
@@ -250,9 +329,9 @@ public partial class ViewerService : CanvasLayer
 			emptyHint.Text = "Sin contenido aún";
 			emptyHint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(emptyHint);
-			return;
 		}
-
+		else
+		{
 		foreach (Variant item in body)
 		{
 			if (item.VariantType != Variant.Type.Dictionary)
@@ -299,7 +378,7 @@ public partial class ViewerService : CanvasLayer
 				btn.AddThemeColorOverride("font_hover_color", new Color(0.55f, 0.72f, 1f));
 				btn.AddThemeColorOverride("font_pressed_color", new Color(0.25f, 0.4f, 0.85f));
 				var kNavigate = destKey;
-				btn.Pressed += () => NavigateToOpenKey(kNavigate);
+				btn.Pressed += () => RequestFocusNavigation(kNavigate);
 				btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 				_stack.AddChild(btn);
 				continue;
@@ -316,6 +395,39 @@ public partial class ViewerService : CanvasLayer
 			lbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(lbl);
 		}
+		}
+
+		var hasBack = !string.IsNullOrEmpty(parentKey);
+		var hasEnter = hasChildren && !string.IsNullOrEmpty(key);
+		if (!hasBack && !hasEnter)
+			return;
+
+		var row = new HBoxContainer();
+		row.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+		row.AddThemeConstantOverride("separation", 8);
+
+		if (hasBack)
+		{
+			var backBtn = new Button();
+			backBtn.Text = "← Back";
+			var backTarget = parentKey;
+			backBtn.Pressed += () => BackLevelRequested?.Invoke(backTarget);
+			backBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			row.AddChild(backBtn);
+		}
+
+		if (hasEnter)
+		{
+			var enterBtn = new Button();
+			enterBtn.Text = "→ Entrar";
+			var warpKey = key;
+			enterBtn.Pressed += () => EnterLevelRequested?.Invoke(warpKey);
+			enterBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			row.AddChild(enterBtn);
+		}
+
+		_enterButtonHost.AddChild(row);
+		_enterButtonHost.Visible = true;
 	}
 
 	private static string ResolveImagePath(string entryKey, string src)
@@ -335,28 +447,12 @@ public partial class ViewerService : CanvasLayer
 			: "";
 	}
 
-	/// <summary>
-	/// Navegación estructurada (bloque link): mismo contrato que selección de frame → bridge.
-	/// </summary>
-	private void NavigateToOpenKey(string destKey)
+	/// <summary>Bloque link: solo evento — RealmController escribe foco (sin warp de contexto).</summary>
+	private void RequestFocusNavigation(string destKey)
 	{
 		if (string.IsNullOrWhiteSpace(destKey))
 			return;
-		try
-		{
-			Directory.CreateDirectory(BridgeDir);
-			// ORM-15V3 Fase 1: foco explícito + compat legacy (GK Fase 2 escribirá solo dual)
-			File.WriteAllText(Path.Combine(BridgeDir, "focus_key.txt"), destKey);
-			File.WriteAllText(Path.Combine(BridgeDir, "open_key.txt"), destKey);
-			File.WriteAllText(Path.Combine(BridgeDir, "active_key.txt"), destKey);
-			GD.Print($"[VIEWER][LINK] focus_key+open_key={destKey}");
-		}
-		catch (Exception e)
-		{
-			GD.PrintErr("[VIEWER][LINK_ERR] " + e.Message);
-			return;
-		}
-
-		NotifyFrameOpened(destKey.Trim());
+		GD.Print($"[VIEWER][LINK] request focus navigation key={destKey}");
+		FocusKeyNavigationRequested?.Invoke(destKey.Trim());
 	}
 }

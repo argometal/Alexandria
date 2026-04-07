@@ -11,6 +11,7 @@ El documento queda estructurado así:
 8 — Contract Closure
 Appendix A — Historical Context
 Appendix B — Development Workflow
+Appendix C — Legacy Alexandria (consolidado operativo, 2026-04-07)
 
 SECTION 0 — DOCUMENT EDITING RULES
 
@@ -10239,3 +10240,96 @@ Regla activa:
 Estado:
 - Se mantiene por compatibilidad.
 - Puede eliminarse en futura reconstrucción de ORM.
+
+
+================================================================================
+APPENDIX C — LEGACY ALEXANDRIA (CONSOLIDADO OPERATIVO)
+================================================================================
+Fecha de consolidación: 2026-04-07
+Propósito: una sola lectura de “qué era y qué hacía” la línea legacy, sin sustituir el resto de este ORM (archivo histórico / multi-RAZ).
+
+---
+
+## C.1 — Qué era Legacy Alexandria
+
+Sistema **Alexandria** en la era **RAZ 12–14**:
+
+* **Builder / datos:** aplicación **Flutter (Dart)** — en el repo de referencia: **RAZ12** — autoridad para crear/editar **entries**, **assets**, **body** y semántica de Parcour / Locus / Object.
+* **Viewer / espacio:** **Godot 4 + C#** — **Gatekeeper** — corredor 3D, frames clicables, **ViewerMin** para contenido.
+* **Verdad de datos:** **SQLite** (`alexandria.db`) + carpeta **assets** bajo raíz de runtime unificada (p. ej. `C:\Alexandria\data\`).
+* **Bus entre procesos:** archivos en **`data/bridge`** (`open_key.txt`, `refresh_now.txt`, etc.) — sin HTTP obligatorio en el núcleo.
+
+La norma **vigente** del proyecto evoluciona en **ORM-15V2 / ORM-15V3** (A15); este apéndice **solo** describe legacy.
+
+---
+
+## C.2 — Ubicación de código de referencia en el repo actual
+
+Carpeta (solo referencia, no runtime obligatorio):
+
+```text
+C:\Alexandria\Legacy-Reference only\legacy-Reference only\legacy-Reference only\
+```
+
+Archivos C# / Dart representativos (Godot + Builder):
+
+| Archivo | Rol resumido |
+|---------|----------------|
+| `legacy-World-14.cs` | Escena / mundo corredor; watcher de refresh; orquestación con spawner. |
+| `legacy-LocusSpawner-14.cs` | Genera **N frames** (p. ej. 20) desde DB: `parentKey`, `seq`, keys reales o **`parentKey__SLOT_NN`**; spacing dinámico según assets **parcour**; muros/paneles del corredor. |
+| `legacy-CorridorSpawner-14.cs` | Construcción / reconstrucción del corredor (layout, paneles); iteraciones RAZ 14.10+ experimentan **layout sin DB** para aislar fallos. |
+| `legacy-Frame01-14.cs` | Frame individual: **Area3D** clic; escribe **open_key**; **ViewerMin.ShowKey**; lectura DB para body/cover/hero; arranque RAZ12 opcional; reglas **seed** / corridor slot. |
+| `legacy-ViewerMin-14.cs` | UI en Godot: contenido desde **DB** por KEY; menú navegación (parcour, parent, etc.). |
+| `legacy-CameraRig-14.cs` | Cámara primera persona / rig. |
+| `legacy-AlexandriaPaths-14.cs` | Rutas unificadas a `data`, bridge, db, assets. |
+| `legacy-main-14.dart` | Entrada Flutter legacy; migraciones / UI builder (varía según commit de referencia). |
+
+---
+
+## C.3 — Modelo lógico que implementaba legacy
+
+* **Entries:** `key`, `parentKey`, `seq` (+ título, body, etc. según migraciones).
+* **Jerarquía cognitiva documentada:** **Parcour → Room (locus) → Object**; en DB como árbol por **parentKey**, no como “tipos” obligatorios en Godot.
+* **Locus (regla ORM en este archivo):** identidad **espacial** del frame en Godot; no es un nivel extra inventado solo en renderer sin fila en DB (salvo placeholders **`__SLOT_`** explícitos).
+* **Assets:** roles **`hero`** (portada de frame), **`parcour`** (paneles / collages del corredor), etc.; el **spacing** del corredor podía depender del **conteo** de assets parcour por entry.
+* **Seeds:** filas o pseudo-keys **`PARCOUR_MAIN__SLOT_XX`** / slots bajo locus; reglas distintas si el slot es “corredor vacío” vs “objeto editable”.
+
+---
+
+## C.4 — Flujo operativo típico (legacy)
+
+1. Usuario abre **Godot** → carga escena **World** / corredor.
+2. **LocusSpawner / CorridorSpawner** leen **DB** (y a veces bridge) → instancian **frames** y segmentos de muro con **keys** asignadas por slot.
+3. Clic en frame → **Frame01** escribe **`open_key.txt`** → puede abrir **ViewerMin** con **`ShowKey(locus_key)`** leyendo **body_text** y assets desde SQLite.
+4. **Flutter (RAZ12)** edita datos → toca DB y/o bridge → **`refresh_now.txt`** → Godot **refresca** corredor / habitación según implementación vigente en esa iteración.
+
+---
+
+## C.5 — Qué el propio ORM 14 ya documenta (punteros internos)
+
+* **Spacing dinámico / collages:** secciones sobre paneles que se superponen, `CountParcourAssets`, `ZSpacing`, collage **experimental** o incompleto.
+* **Fallo de render tras delete:** bloques **HANDOFF — RAZ14 COLLAGE RENDER FAILURE** y **Corridor Reconstruction**: **clear + rebuild** no determinista; `QueueFree` no inmediato; riesgo de nodos vivos / textura cache.
+* **Reglas de commit / edición del ORM:** **SECTION 0** (antes de este apéndice).
+
+No duplicar aquí el detalle técnico completo: este apéndice es **mapa de lectura**.
+
+---
+
+## C.6 — Lección archivada (por qué se abandonó como línea principal)
+
+Motivación de producto/engineering (consensada con ORM-15V3):
+
+* El pipeline **collage / paneles** en Godot **no garantizaba** re-render coherente tras **borrar** o **recreate** assets/filas: **estado visual ≠ DB**.
+* Acoplar **geometría del corredor** a **conteo dinámico en DB** sin contrato fuerte de **invalidación** generó deuda imposible de cerrar sin reescribir spawner/render.
+
+La línea **A15** separa: **GK sin DB**, **snapshot + viewer JSON**, bridge dual en evolución — ver **ORM-15V3**.
+
+---
+
+## C.7 — Uso de este documento hoy
+
+* **14-Legacy.txt** = archivo **histórico / forense** (muchas iteraciones RAZ superpuestas).
+* Para contrato **actual** del repositorio Alexandria: **`ORM/ORM-15V3.txt`** (y derivados).
+* Para **código** legacy solo consulta: carpeta **Legacy-Reference only** indicada en **C.2**.
+
+FIN APPENDIX C

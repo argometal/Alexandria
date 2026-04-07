@@ -11,30 +11,38 @@ String _lastBridgeParentKey = '';
 const _refreshNowPath = r'C:\Alexandria\data\bridge\refresh_now.txt';
 const _bridgeCurrentSeqPath = r'C:\Alexandria\data\bridge\current_seq.txt';
 const _bridgeLastPositionPath = r'C:\Alexandria\data\bridge\last_position.json';
-const _openKeyPath = r'C:\Alexandria\data\bridge\open_key.txt';
 const _contextKeyPath = r'C:\Alexandria\data\bridge\context_key.txt';
 const _focusKeyPath = r'C:\Alexandria\data\bridge\focus_key.txt';
+const _snapshotRoot = r'C:\Alexandria\data\snapshot';
+const _viewerRoot = r'C:\Alexandria\data\viewer';
 
-/// Fase 1 ORM-15V3: si solo existe `open_key.txt`, copia a `context_key` y `focus_key` (convivencia).
-void ensureDualBridgeBootstrapFromOpenKey() {
+/// Fase 3 ORM-15V3: asegura `context_key.txt` y `focus_key.txt` sin leer `open_key.txt`.
+/// Si falta context → `ROOT`; si falta focus → archivo vacío.
+void ensureDualBridgeDefaults() {
   try {
-    final open = File(_openKeyPath);
-    if (!open.existsSync()) return;
-    final v = open.readAsStringSync();
     final ctx = File(_contextKeyPath);
+    ctx.parent.createSync(recursive: true);
+    if (!ctx.existsSync()) {
+      ctx.writeAsStringSync('ROOT');
+      print('[LB][NO_CONTEXT_KEY] context_key.txt ausente → creado ROOT');
+    } else {
+      final t = ctx.readAsStringSync().trim();
+      if (t.isEmpty) {
+        ctx.writeAsStringSync('ROOT');
+        print('[LB][NO_CONTEXT_KEY] context_key vacío → ROOT');
+      }
+    }
     final foc = File(_focusKeyPath);
-    if (!ctx.existsSync() && !foc.existsSync()) {
-      ctx.parent.createSync(recursive: true);
-      ctx.writeAsStringSync(v);
-      foc.writeAsStringSync(v);
-      print('[LB][BRIDGE_BOOT] context_key + focus_key ← open_key (migración inicial)');
+    if (!foc.existsSync()) {
+      foc.writeAsStringSync('');
+      print('[LB][BRIDGE_DEFAULT] focus_key.txt creado vacío');
     }
   } catch (e) {
-    print('[LB][BRIDGE_BOOT_ERR] $e');
+    print('[LB][BRIDGE_DEFAULT_ERR] $e');
   }
 }
 
-/// Precedencia: `context_key.txt` → `open_key.txt`
+/// Solo `context_key.txt`. Sin `open_key`. Ausente o vacío → lógica `ROOT` (snapshot parent).
 String readContextKeyWithFallback() {
   try {
     final c = File(_contextKeyPath);
@@ -42,24 +50,31 @@ String readContextKeyWithFallback() {
       final t = c.readAsStringSync().trim();
       if (t.isNotEmpty) return t;
     }
-    final o = File(_openKeyPath);
-    if (!o.existsSync()) return '';
-    return o.readAsStringSync().trim();
+    return 'ROOT';
+  } catch (_) {
+    return 'ROOT';
+  }
+}
+
+/// Solo `focus_key.txt`. Sin `open_key`. Ausente → `""`.
+String readFocusKeyWithFallback() {
+  try {
+    final f = File(_focusKeyPath);
+    if (f.existsSync()) return f.readAsStringSync().trim();
+    return '';
   } catch (_) {
     return '';
   }
 }
 
-/// Precedencia: `focus_key.txt` → `open_key.txt` (puede ser `""` si el archivo existe vacío).
-String readFocusKeyWithFallback() {
+/// LB escribe contexto al navegar atrás en la UI (Fase 3 — no usa open_key).
+void writeBridgeContextKey(String key) {
   try {
-    final f = File(_focusKeyPath);
-    if (f.existsSync()) return f.readAsStringSync().trim();
-    final o = File(_openKeyPath);
-    if (!o.existsSync()) return '';
-    return o.readAsStringSync().trim();
-  } catch (_) {
-    return '';
+    final f = File(_contextKeyPath);
+    f.parent.createSync(recursive: true);
+    f.writeAsStringSync(key);
+  } catch (e) {
+    print('[LB][CONTEXT_WRITE_ERR] $e');
   }
 }
 
@@ -193,12 +208,54 @@ List<Map<String, dynamic>> parseBody(String? raw) {
   }
 }
 
-/// Escribe viewer JSON para [focusKey]. Si está vacío (EMPTY / sin fila), payload mínimo coherente con ACUERDO v3.
-void writeViewerForFocusKey(Database db, String focusKey) {
-  const viewerPath = r'C:\Alexandria\data\viewer\current.json';
+/// COUNT(*) puede venir como int, int64 u otros tipos según plataforma/driver.
+int _sqliteCountToInt(Object? cVal) {
+  if (cVal == null) return 0;
+  if (cVal is int) return cVal;
+  if (cVal is num) return cVal.toInt();
+  return int.tryParse(cVal.toString()) ?? 0;
+}
+
+List<Map<String, dynamic>> _buildFramesForContext(Database db, String contextKey) {
+  final result = db.select(
+    'SELECT key, seq FROM entries WHERE parentKey = ? ORDER BY seq ASC',
+    [contextKey],
+  );
+  final bySeq = <int, String>{};
+  for (final row in result) {
+    final seq = row['seq'];
+    final key = row['key'];
+    if (seq == null || seq is! int) {
+      throw StateError('seq inválido');
+    }
+    if (seq < 0 || seq > 19) {
+      throw StateError('seq fuera de rango 0..19');
+    }
+    final k = key?.toString() ?? '';
+    if (k.isEmpty) {
+      throw StateError('key vacío en DB');
+    }
+    if (bySeq.containsKey(seq)) {
+      throw StateError('seq duplicado');
+    }
+    bySeq[seq] = k;
+  }
+
+  final frames = <Map<String, dynamic>>[];
+  for (var s = 0; s < 20; s++) {
+    frames.add({
+      'key': bySeq.containsKey(s) ? bySeq[s]! : '',
+      'seq': s,
+    });
+  }
+  return frames;
+}
+
+Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
   if (focusKey.isEmpty) {
-    final payload = {
+    return {
       'key': '',
+      'parentKey': '',
       'body': <Map<String, dynamic>>[
         {
           'type': 'p',
@@ -207,13 +264,9 @@ void writeViewerForFocusKey(Database db, String focusKey) {
         },
       ],
       'assets': <Map<String, dynamic>>[],
+      'hasChildren': false,
       'version': DateTime.now().millisecondsSinceEpoch,
     };
-    final f = File(viewerPath);
-    f.parent.createSync(recursive: true);
-    f.writeAsStringSync(jsonEncode(payload));
-    print('[LB][VIEWER_WRITE] $viewerPath key=(empty) [BRIDGE_DUAL]');
-    return;
   }
 
   final rows = db.select(
@@ -246,12 +299,36 @@ void writeViewerForFocusKey(Database db, String focusKey) {
     }
   } catch (_) {}
 
-  final payload = {
+  final childCountRows = db.select(
+    'SELECT COUNT(*) AS c FROM entries WHERE parentKey = ?',
+    [focusKey],
+  );
+  final cVal = childCountRows.isNotEmpty ? childCountRows.first['c'] : 0;
+  final childCount = _sqliteCountToInt(cVal);
+  final hasChildren = childCount > 0;
+  String parentKey = '';
+  final parentRows = db.select(
+    'SELECT parentKey FROM entries WHERE key = ? LIMIT 1',
+    [focusKey],
+  );
+  if (parentRows.isNotEmpty && parentRows.first['parentKey'] != null) {
+    parentKey = parentRows.first['parentKey'].toString();
+  }
+
+  return {
     'key': focusKey,
+    'parentKey': parentKey,
     'body': body,
     'assets': assetsList,
+    'hasChildren': hasChildren,
     'version': DateTime.now().millisecondsSinceEpoch,
   };
+}
+
+/// Escribe viewer JSON para [focusKey]. Si está vacío (EMPTY / sin fila), payload mínimo coherente con ACUERDO v3.
+void writeViewerForFocusKey(Database db, String focusKey) {
+  const viewerPath = r'C:\Alexandria\data\viewer\current.json';
+  final payload = _buildViewerPayload(db, focusKey);
 
   final f = File(viewerPath);
   f.parent.createSync(recursive: true);
@@ -259,18 +336,88 @@ void writeViewerForFocusKey(Database db, String focusKey) {
   print('[LB][VIEWER_WRITE] $viewerPath key=$focusKey');
 }
 
+void buildViewerForKey(String key) {
+  const dbPath = r'C:\Alexandria\data\alexandria.db';
+  if (!File(dbPath).existsSync()) return;
+  final db = sqlite3.open(dbPath);
+  try {
+    ensureLibrarySchema(db);
+    final payload = _buildViewerPayload(db, key);
+    final outPath = '$_viewerRoot\\$key.json';
+    final f = File(outPath);
+    f.parent.createSync(recursive: true);
+    f.writeAsStringSync(jsonEncode(payload));
+  } finally {
+    db.dispose();
+  }
+}
+
+void buildSnapshotForContext(String contextKey) {
+  const dbPath = r'C:\Alexandria\data\alexandria.db';
+  if (!File(dbPath).existsSync()) return;
+  final db = sqlite3.open(dbPath);
+  try {
+    ensureLibrarySchema(db);
+    final frames = _buildFramesForContext(db, contextKey);
+    final outPath = '$_snapshotRoot\\$contextKey.json';
+    final f = File(outPath);
+    f.parent.createSync(recursive: true);
+    final snapshot = {
+      'version': DateTime.now().millisecondsSinceEpoch,
+      'valid': true,
+      'frames': frames,
+    };
+    f.writeAsStringSync(jsonEncode(snapshot));
+  } finally {
+    db.dispose();
+  }
+}
+
+void buildAll() {
+  const dbPath = r'C:\Alexandria\data\alexandria.db';
+  final db = sqlite3.open(dbPath);
+  try {
+    ensureLibrarySchema(db);
+    final keys = <String>{'ROOT'};
+    final rows = db.select('SELECT key FROM entries');
+    for (final row in rows) {
+      final key = row['key']?.toString() ?? '';
+      if (key.isNotEmpty) keys.add(key);
+    }
+    for (final key in keys) {
+      try {
+        final frames = _buildFramesForContext(db, key);
+        final snapshotFile = File('$_snapshotRoot\\$key.json');
+        snapshotFile.parent.createSync(recursive: true);
+        snapshotFile.writeAsStringSync(jsonEncode({
+          'version': DateTime.now().millisecondsSinceEpoch,
+          'valid': true,
+          'frames': frames,
+        }));
+      } catch (_) {}
+
+      final viewerFile = File('$_viewerRoot\\$key.json');
+      viewerFile.parent.createSync(recursive: true);
+      viewerFile.writeAsStringSync(jsonEncode(_buildViewerPayload(db, key)));
+    }
+    print('[LB][BUILD_ALL] Completado. keys=${keys.length}');
+  } finally {
+    db.dispose();
+  }
+}
+
 /// Compat: LocusEditor y scripts; delega en [writeViewerForFocusKey].
 void writeViewerCurrentJson(Database db, String key) {
   writeViewerForFocusKey(db, key);
 }
 
-/// Polling liviano: precedencia `focus_key.txt` → `open_key.txt` (ACUERDO v3).
-void syncViewerFromOpenKey() {
+/// Polling liviano: solo `focus_key.txt` (Fase 3 — sin open_key).
+void syncViewerFromFocusKey() {
   const dbPath = r'C:\Alexandria\data\alexandria.db';
 
   if (!File(dbPath).existsSync()) return;
 
-  ensureDualBridgeBootstrapFromOpenKey();
+  ensureDualBridgeDefaults();
 
   final focusKey = readFocusKeyWithFallback();
   final dedupe = focusKey.isEmpty ? '\u0000EMPTY' : focusKey;
@@ -345,59 +492,16 @@ void runLibraryBuild() {
 
   ensureLibrarySchema(db);
 
-  ensureDualBridgeBootstrapFromOpenKey();
+  ensureDualBridgeDefaults();
 
   final contextKey = readContextKeyWithFallback();
   final focusKey = readFocusKeyWithFallback();
 
-  if (contextKey.isEmpty) {
-    print('[LB][SNAPSHOT_ABORT] context_key vacío (sin fallback)');
-    return;
-  }
-
-  print('[LB][SNAPSHOT_PARENT] context_key=$contextKey (dual bridge)');
+  print('[LB][SNAPSHOT_PARENT] context_key=$contextKey (solo context_key.txt)');
   print('[LB][VIEWER_FOCUS] focus_key=${focusKey.isEmpty ? "(empty)" : focusKey}');
 
-  final result = db.select(
-    'SELECT key, seq FROM entries WHERE parentKey = ? ORDER BY seq ASC',
-    [contextKey],
-  );
-
-  print('[LB][ROWS] ${result.length}');
-
-  // [#357] DB = solo filas reales; snapshot = siempre 20 slots (0..19), huecos con key "").
-  final bySeq = <int, String>{};
-  for (final row in result) {
-    final seq = row['seq'];
-    final key = row['key'];
-    if (seq == null || seq is! int) {
-      print('[LB][SNAPSHOT_INVALID] seq inválido');
-      return;
-    }
-    final s = seq;
-    if (s < 0 || s > 19) {
-      print('[LB][SNAPSHOT_INVALID] seq fuera de rango 0..19');
-      return;
-    }
-    final k = key?.toString() ?? '';
-    if (k.isEmpty) {
-      print('[LB][SNAPSHOT_INVALID] key vacío en DB');
-      return;
-    }
-    if (bySeq.containsKey(s)) {
-      print('[LB][SNAPSHOT_INVALID] seq duplicado');
-      return;
-    }
-    bySeq[s] = k;
-  }
-
-  final frames = <Map<String, dynamic>>[];
-  for (var s = 0; s < 20; s++) {
-    frames.add({
-      'key': bySeq.containsKey(s) ? bySeq[s]! : '',
-      'seq': s,
-    });
-  }
+  final frames = _buildFramesForContext(db, contextKey);
+  print('[LB][ROWS] ${frames.where((e) => (e['key'] as String).isNotEmpty).length}');
 
   final snapFile = File(snapshotPath);
   snapFile.parent.createSync(recursive: true);
@@ -411,9 +515,21 @@ void runLibraryBuild() {
   print('[LB][FRAMES_COUNT] ${frames.length} (fijo #357)');
   print('[LB][SNAPSHOT_FRAMES] count=${frames.length}');
   print('[LB][SNAPSHOT_WRITE] $snapshotPath');
+  final keyedSnapshotPath = '$_snapshotRoot\\$contextKey.json';
+  final keyedSnapshotFile = File(keyedSnapshotPath);
+  keyedSnapshotFile.parent.createSync(recursive: true);
+  keyedSnapshotFile.writeAsStringSync(jsonEncode(snapshot));
+  print('[LB][SNAPSHOT_WRITE] $keyedSnapshotPath');
 
   try {
     writeViewerForFocusKey(db, focusKey);
+    if (focusKey.isNotEmpty) {
+      final keyedViewerPath = '$_viewerRoot\\$focusKey.json';
+      final keyedViewer = File(keyedViewerPath);
+      keyedViewer.parent.createSync(recursive: true);
+      keyedViewer.writeAsStringSync(jsonEncode(_buildViewerPayload(db, focusKey)));
+      print('[LB][VIEWER_WRITE] $keyedViewerPath');
+    }
     _lastViewerKey = focusKey.isEmpty ? '\u0000EMPTY' : focusKey;
   } finally {
     // A15: trigger GK reload; no depende de éxito del viewer (snapshot ya está en disco)

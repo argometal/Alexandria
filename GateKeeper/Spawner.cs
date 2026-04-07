@@ -49,6 +49,34 @@ public partial class Spawner : Node3D
 	// [Cambio 273] diagnóstico refresh — evitar spam (1 Hz)
 	private double _snapshotRefreshCheckTimer = 0;
 
+	// --- Corredor recto Z: QuadMesh Size=(PanelHeight,PanelWidth); con rot -90°Y la extensión en +Z es PanelHeight. ---
+	private const int FrameSlotCount = 20;
+	private const float PanelWidth = 3.32f;
+	private const float PanelHeight = 4.33f;
+	/// <summary>Metros del panel a lo largo del corredor (eje Z tras rotar el quad).</summary>
+	private const float PanelExtentAlongCorridorZ = PanelHeight;
+	/// <summary>Mínimo entre bordes de dos fotos consecutivas en la misma pared (centros = extent + esto).</summary>
+	private const float MinMetersBetweenWallPhotosZ = 0.25f;
+	private static float PanelCenterStepAlongZ => PanelExtentAlongCorridorZ + MinMetersBetweenWallPhotosZ;
+	private const float SafetyMargin = 1.45f;
+	private const float MinSegmentGap = 6.0f;
+	/// <summary>Margen Z entre el collage de un tramo y el marco siguiente (el collage queda más hacia -Z).</summary>
+	private const float CollageClearBeforeNextFrameZ = -0.60f;
+	/// <summary>Separación marco ↔ fin del collage en su propio tramo (empuja paneles hacia -Z, lejos del locus).</summary>
+	private const float ParcourOffset = 1.1f;
+	/// <summary>Centro del pasillo en X (cámara); el marco sigue en <see cref="MarcoStartX"/>.</summary>
+	private const float CorridorCameraRigX = 0f;
+	private const float WallWidthConst = 3.2f;
+	private const float FloorCeilingExtraLengthMeters = 3.5f;
+	/// <summary>Plano de pared en X (coincide con ancho de panel en eje X tras rotación -90°).</summary>
+	private const float WallPlaneX = 3.2f;
+	private const float MarcoStartX = 2.8f;
+	private const float MarcoStartY = 1.6f;
+	private const float MarcoStartZ = 10.0f;
+
+	private readonly float[] _frameZPositions = new float[FrameSlotCount];
+	private bool _corridorLayoutBuilt;
+
 	// [SCOPE:MAZE_OVERRIDE]
 	private Dictionary<int, Vector3> _mazeDirections = new Dictionary<int, Vector3>();
 
@@ -64,38 +92,279 @@ public partial class Spawner : Node3D
 	// [SCOPE:LAYOUT_MODE]
 	private string GetLayoutMode()
 	{
-		return "MAZE"; // activar giros
+		return "CORRIDOR_Z";
 	}
 
-
-
-	// [SCOPE:LAYOUT_CORE]
-	// seq → posición acumulativa (path)
-	private Vector3 GetPositionFromSeq(int seq)
+	private static string[] EmptyKeysCorridor()
 	{
-		float step = 6f;
-		float y = 1.6f;
+		var a = new string[FrameSlotCount];
+		for (var i = 0; i < FrameSlotCount; i++)
+			a[i] = "";
+		return a;
+	}
 
-		var mode = GetLayoutMode();
+	/// <summary>Longitud Z ocupada por los paneles (borde del primero → borde del último).</summary>
+	private static float TotalZSpanForPanels(int count)
+	{
+		if (count <= 0)
+			return 0f;
+		return PanelExtentAlongCorridorZ + Mathf.Max(0, count - 1) * PanelCenterStepAlongZ;
+	}
 
-		if (mode == "LINE")
+	/// <summary>Gaps entre marcos: paneles + márgenes + hueco para no invadir el marco anterior (quad ~2 m en Z).</summary>
+	private static float ComputeSegmentGap(int imageCount)
+	{
+		if (imageCount == 0)
+			return MinSegmentGap;
+		var span = TotalZSpanForPanels(imageCount) + 2f * SafetyMargin + CollageClearBeforeNextFrameZ;
+		return Mathf.Max(MinSegmentGap, span);
+	}
+
+	private void RebuildCorridorZLayout(string[] keysBySeq)
+	{
+		_frameZPositions[0] = MarcoStartZ;
+		for (var i = 1; i < FrameSlotCount; i++)
 		{
-			return new Vector3(0, y, seq * step);
+			var k = i < keysBySeq.Length ? keysBySeq[i] : "";
+			var n = AlexandriaAssets.ListWallGalleryImagePaths(k).Count;
+			_frameZPositions[i] = _frameZPositions[i - 1] + ComputeSegmentGap(n);
 		}
 
-		if (mode == "MAZE")
+		_corridorLayoutBuilt = true;
+	}
+
+	private bool TryReadSnapshotKeysFromDisk(string[] keysBySeq)
+	{
+		for (var i = 0; i < keysBySeq.Length; i++)
+			keysBySeq[i] = "";
+		var contextKey = BridgeSpatial.ReadContextKey();
+		var path = string.IsNullOrEmpty(contextKey)
+			? @"C:\Alexandria\snapshot\current.json"
+			: $@"C:\Alexandria\data\snapshot\{contextKey}.json";
+		var fallbackPath = @"C:\Alexandria\snapshot\current.json";
+		if (!File.Exists(path))
 		{
-			Vector3 pos = Vector3.Zero;
+			if (path != fallbackPath && File.Exists(fallbackPath))
+				path = fallbackPath;
+			else
+				return false;
+		}
 
-			for (int i = 0; i < seq; i++)
+		try
+		{
+			var jsonText = File.ReadAllText(path);
+			var jsonNode = new Json();
+			if (jsonNode.Parse(jsonText) != Error.Ok)
+				return false;
+			var data = jsonNode.Data.AsGodotDictionary();
+			if (!data.ContainsKey("frames"))
+				return false;
+			var frames = data["frames"].AsGodotArray();
+			foreach (Variant f in frames)
 			{
-				Vector3 dir;
-
-			dir = GetPersistentDirection(i);
-
-				pos += dir * step;
+				var d = f.AsGodotDictionary();
+				var seq = d["seq"].AsInt32();
+				var key = d["key"].AsString();
+				if (seq >= 0 && seq < keysBySeq.Length)
+					keysBySeq[seq] = key;
 			}
 
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private string[] GatherKeysFromFrames()
+	{
+		var arr = EmptyKeysCorridor();
+		var fc = _framesRoot?.GetNodeOrNull<Node3D>("FramesContainer");
+		if (fc == null)
+			return arr;
+		var n = Mathf.Min(FrameSlotCount, fc.GetChildCount());
+		for (var i = 0; i < n; i++)
+		{
+			if (fc.GetChild(i) is FrameTemplate ft)
+				arr[i] = ft.GetLocusKey() ?? "";
+		}
+
+		return arr;
+	}
+
+	private static void ClearContainerChildren(Node3D container)
+	{
+		if (container == null)
+			return;
+		var list = new List<Node>();
+		foreach (var c in container.GetChildren())
+			list.Add(c);
+		foreach (var c in list)
+			c.QueueFree();
+	}
+
+	private static ImageTexture LoadWallPanelAlbedo(string path)
+	{
+		var img = AlexandriaAssets.TryLoadImage(path);
+		if (img == null)
+			return null;
+		img.Convert(Image.Format.Rgba8);
+		return ImageTexture.CreateFromImage(img);
+	}
+
+	private bool TryComputePanelBounds(float zA, float zB, int requestedCount, out int fittedCount, out float startZ, out float endZ)
+	{
+		fittedCount = Mathf.Max(0, requestedCount);
+		while (fittedCount > 0)
+		{
+			var totalReserved = TotalZSpanForPanels(fittedCount);
+			endZ = zB - ParcourOffset;
+			startZ = endZ - totalReserved;
+			if (startZ >= zA - 0.001f)
+				return true;
+			fittedCount--;
+		}
+
+		startZ = zA;
+		endZ = zA;
+		return false;
+	}
+
+	private void BuildPanelsForTramo(Node3D wallsContainer, float zA, float zB, List<string> images, string segmentName)
+	{
+		var segmentLength = Mathf.Max(0.01f, zB - zA);
+		var backing = new MeshInstance3D { Name = segmentName + "_Backing" };
+		var quadBack = new QuadMesh();
+		quadBack.Size = new Vector2(WallWidthConst, segmentLength);
+		backing.Mesh = quadBack;
+		backing.Position = new Vector3(WallPlaneX, MarcoStartY, (zA + zB) * 0.5f);
+		backing.RotationDegrees = new Vector3(0f, -90f, 0f);
+		backing.Visible = false;
+		wallsContainer.AddChild(backing);
+
+		var working = new List<string>(images);
+		if (!TryComputePanelBounds(zA, zB, working.Count, out var fittedCount, out var startZ, out var endZ))
+			return;
+		if (fittedCount < working.Count)
+			working.RemoveRange(fittedCount, working.Count - fittedCount);
+
+		if (working.Count == 0)
+			return;
+
+		if (working.Count < images.Count)
+			GD.PrintErr($"[PANEL_TRIM] {segmentName} trimmed {images.Count - working.Count} images (overflow)");
+
+		var cursorZ = startZ + PanelExtentAlongCorridorZ * 0.5f;
+		for (var i = 0; i < working.Count; i++)
+		{
+			var panel = new MeshInstance3D { Name = $"{segmentName}_Panel_{i:00}" };
+			var q = new QuadMesh();
+			q.Size = new Vector2(PanelHeight, PanelWidth);
+			panel.Mesh = q;
+			panel.Position = new Vector3(WallPlaneX, MarcoStartY, cursorZ);
+			panel.RotationDegrees = new Vector3(0f, -90f, 0f);
+			var tex = LoadWallPanelAlbedo(working[i]);
+			if (tex != null)
+			{
+				var mat = new StandardMaterial3D();
+				mat.AlbedoTexture = tex;
+				mat.AlbedoColor = Colors.White;
+				mat.ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded;
+				mat.CullMode = BaseMaterial3D.CullModeEnum.Disabled;
+				panel.MaterialOverride = mat;
+			}
+
+			wallsContainer.AddChild(panel);
+			cursorZ += PanelCenterStepAlongZ;
+		}
+	}
+
+	private void SpawnFloorCeilingSegment(PackedScene scene, Node3D container, string nodeName, float y, float zA,
+		float zB)
+	{
+		if (scene == null || container == null)
+			return;
+		var seg = scene.Instantiate<Node3D>();
+		seg.Name = nodeName;
+		container.AddChild(seg);
+		var midZ = (zA + zB) * 0.5f;
+		var len = Mathf.Max(0.01f, (zB - zA) + FloorCeilingExtraLengthMeters);
+		seg.Position = new Vector3(0f, y, midZ);
+		var s = len / 6f;
+		seg.Scale = new Vector3(1f, 1f, s);
+		GD.Print($"[SPAWNER][FLOOR_CEIL] {nodeName} zA={zA} zB={zB} len={len}");
+	}
+
+	private void BuildAllCorridorSegments(string[] keysBySeq, Node3D walls, Node3D floors, Node3D ceilings)
+	{
+		if (walls == null)
+			return;
+		for (var dest = 0; dest < FrameSlotCount; dest++)
+		{
+			var zB = _frameZPositions[dest];
+			var k = dest < keysBySeq.Length ? keysBySeq[dest] : "";
+			var n = AlexandriaAssets.ListWallGalleryImagePaths(k).Count;
+			var zA = dest == 0 ? zB - ComputeSegmentGap(n) : _frameZPositions[dest - 1];
+			var images = AlexandriaAssets.ListWallGalleryImagePaths(k);
+			BuildPanelsForTramo(walls, zA, zB, images, $"Seg_{dest}");
+			var floorA = zA;
+			var floorB = zB;
+			if (TryComputePanelBounds(zA, zB, images.Count, out _, out var panelStartZ, out var panelEndZ))
+			{
+				floorA = panelStartZ;
+				floorB = panelEndZ;
+			}
+			SpawnFloorCeilingSegment(FloorScene, floors, $"FloorSeg_{dest}", 0f, floorA, floorB);
+			SpawnFloorCeilingSegment(CeilingScene, ceilings, $"CeilingSeg_{dest}", 3.2f, floorA, floorB);
+		}
+	}
+
+	private void ApplyCorridorGeometryAfterSnapshot()
+	{
+		if (_framesRoot == null)
+			return;
+		var keys = GatherKeysFromFrames();
+		RebuildCorridorZLayout(keys);
+		var fc = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
+		var walls = _framesRoot.GetNodeOrNull<Node3D>("WallsContainer");
+		var floors = _framesRoot.GetNodeOrNull<Node3D>("FloorsContainer");
+		var ceilings = _framesRoot.GetNodeOrNull<Node3D>("CeilingsContainer");
+		if (fc == null || walls == null)
+			return;
+		for (var i = 0; i < FrameSlotCount && i < fc.GetChildCount(); i++)
+		{
+			if (fc.GetChild(i) is Node3D n)
+				n.Position = new Vector3(MarcoStartX, MarcoStartY, _frameZPositions[i]);
+		}
+
+		ClearContainerChildren(walls);
+		ClearContainerChildren(floors);
+		ClearContainerChildren(ceilings);
+		BuildAllCorridorSegments(keys, walls, floors, ceilings);
+	}
+
+	// [SCOPE:LAYOUT_CORE]
+	// seq → posición (CORRIDOR_Z: solo Z acumulativo; MAZE/LINE reservado)
+	private Vector3 GetPositionFromSeq(int seq)
+	{
+		if (GetLayoutMode() == "CORRIDOR_Z")
+		{
+			if (!_corridorLayoutBuilt)
+				RebuildCorridorZLayout(EmptyKeysCorridor());
+			var s = Mathf.Clamp(seq, 0, FrameSlotCount - 1);
+			return new Vector3(MarcoStartX, MarcoStartY, _frameZPositions[s]);
+		}
+
+		float step = 6f;
+		float y = 1.6f;
+		if (GetLayoutMode() == "LINE")
+			return new Vector3(0, y, seq * step);
+		if (GetLayoutMode() == "MAZE")
+		{
+			Vector3 pos = Vector3.Zero;
+			for (int i = 0; i < seq; i++)
+				pos += GetPersistentDirection(i) * step;
 			return new Vector3(pos.X, y, pos.Z);
 		}
 
@@ -106,7 +375,7 @@ public partial class Spawner : Node3D
 	// [SCOPE:MAZE_CONTROL]
 	public void SetDirection(int seq, Vector3 dir)
 	{
-		if (seq < 0 || seq >= 20) return;
+		if (seq < 0 || seq >= FrameSlotCount) return;
 
 		// normalizar a direcciones válidas (cardinales)
 		if (dir == new Vector3(0, 0, 1) ||
@@ -250,193 +519,48 @@ public partial class Spawner : Node3D
 
 		GD.Print("[SPAWNER][INIT]");
 
-		// [MAZE]
+		// [MAZE] (corredor Z: sin giros)
 		InitMaze();
 
-		// [A15][INIT_FIXED_LOCI]
-	
-		int N = 20;
-		float spacing = 6f;
-		float startY = 1.6f;
+		var initKeys = EmptyKeysCorridor();
+		TryReadSnapshotKeysFromDisk(initKeys);
+		RebuildCorridorZLayout(initKeys);
 
 		var template = _framesRoot.GetNode<Node3D>("FrameTemplate");
 		template.Visible = false;
 
 		var framesContainer = GetOrCreateContainer(_framesRoot, "FramesContainer");
-		var wallsContainer = GetOrCreateContainer(_framesRoot, "WallsContainer");
-		var floorsContainer = GetOrCreateContainer(_framesRoot, "FloorsContainer");
-		var ceilingsContainer = GetOrCreateContainer(_framesRoot, "CeilingsContainer");
+		_ = GetOrCreateContainer(_framesRoot, "WallsContainer");
+		_ = GetOrCreateContainer(_framesRoot, "FloorsContainer");
+		_ = GetOrCreateContainer(_framesRoot, "CeilingsContainer");
 
-		for (int seq = 0; seq < N; seq++)
+		for (var seq = 0; seq < FrameSlotCount; seq++)
 		{
-			Vector3 basePos = GetPositionFromSeq(seq);
-
-			// WALL
-
-			var sf = GetSegmentFrameFromSeq(seq);
-
-			GD.Print($"[SIDE_DEBUG_BEFORE] seq={seq} _currentSide={_currentSide}");
-			Vector3 debugSide = GetCurrentSide(seq);
-			GD.Print($"[SIDE_DEBUG_AFTER] seq={seq} debugSide={debugSide} _currentSide={_currentSide}");
-
-			var wall = WallScene.Instantiate<Node3D>();
-			wallsContainer.AddChild(wall);
-
-			// detectar esquina (cuando cambia dirección respecto al anterior)
-			Vector3 dirNow = GetDirectionFromSeq(seq);
-			Vector3 dirPrev = seq > 0 ? GetDirectionFromSeq(seq - 1) : dirNow;
-
-			bool isCorner = dirNow != dirPrev;
-
-	
-			float cornerOffset = 0f;
-
-			Vector3 side = GetCurrentSide(seq);
-			GD.Print($"[SIDE_DEBUG] seq={seq} side={side} currentSide={_currentSide}");
-			wall.Position = sf.Position + side * 3.5f;
-
-			// OFFSET EN GIROS - desplazar wall en nueva dirección
-			if (seq > 0 && GetPersistentDirection(seq) != GetPersistentDirection(seq - 1))
-			{
-				wall.Position += GetPersistentDirection(seq) * 3f;
-			}
-
-			float angleWall = 0f;
-			if (sf.Forward == new Vector3(0, 0, 1)) angleWall = -90f;
-			if (sf.Forward == new Vector3(1, 0, 0)) angleWall = 0f;
-			if (sf.Forward == new Vector3(-1, 0, 0)) angleWall = 180f;
-			if (sf.Forward == new Vector3(0, 0, -1)) angleWall = 90f;
-
-			// Detectar giro izquierda (cross > 0)
-			bool isLeftTurn = false;
-			if (seq > 0)
-			{
-				Vector3 prevDir = GetPersistentDirection(seq - 1);
-				Vector3 nowDir = GetPersistentDirection(seq);
-				float cross = prevDir.X * nowDir.Z - prevDir.Z * nowDir.X;
-				isLeftTurn = cross > 0;
-			}
-
-			float wallRotation = angleWall + 90f;
-			if (isLeftTurn)
-			{
-				wallRotation += 180f;
-			}
-			wall.RotationDegrees = new Vector3(0, wallRotation, 0);
-
-			// FLOOR
-			SpawnPiece(FloorScene, new Vector3(basePos.X, 0f, basePos.Z), floorsContainer);
-
-			// CEILING
-			SpawnPiece(CeilingScene, new Vector3(basePos.X, 3.2f, basePos.Z), ceilingsContainer);
-
-			// FRAME
+			var basePos = GetPositionFromSeq(seq);
 			var frame = (Node3D)template.Duplicate();
 			framesContainer.AddChild(frame);
 			frame.Name = $"Frame_{seq}";
-
-			float frameOffsetX = side.X * 2.8f;
-			frame.Position = basePos + new Vector3(frameOffsetX, 0f, 2.5f);
-
-			// OFFSET EN GIROS - desplazar frame en nueva dirección
-			if (seq > 0 && GetPersistentDirection(seq) != GetPersistentDirection(seq - 1))
-			{
-				frame.Position += GetPersistentDirection(seq) * 3f;
-			}
-
-			Vector3 dir = GetPersistentDirection(seq);
-
-			float angle = 0f;
-			if (dir == new Vector3(0, 0, 1)) angle = -90f;
-			if (dir == new Vector3(1, 0, 0)) angle = 0f;
-			if (dir == new Vector3(-1, 0, 0)) angle = 180f;
-			if (dir == new Vector3(0, 0, -1)) angle = 90f;
-
-			float frameRotation = angle;
-			if (isLeftTurn)
-			{
-				frameRotation += 180f;
-			}
-			frame.RotationDegrees = new Vector3(0, frameRotation, 0);
+			frame.Position = basePos;
+			frame.RotationDegrees = new Vector3(0f, -90f, 0f);
 			frame.Visible = true;
 
-
-			var f = frame as FrameTemplate;
-			if (f != null)
+			if (frame is FrameTemplate f)
 			{
-				f.SetKey("");
+				var k = seq < initKeys.Length ? initKeys[seq] : "";
+				f.SetKey(k);
 				f.SetSeq(seq);
 				f.FrameSelected += _rc.OnFrameSelected;
 			}
 
-
-			GD.Print($"[SF] seq={seq} pos={sf.Position} fwd={sf.Forward} right={sf.Right}");
-
-/* 
-			// [SCOPE:CORNER_PIECE]
-			Vector3 dirNowCorner = GetDirectionFromSeq(seq);
-			Vector3 dirPrevCorner = seq > 0 ? GetDirectionFromSeq(seq - 1) : dirNowCorner;
-
-			bool isCornerCorner = seq > 0 && dirNowCorner != dirPrevCorner;
-
-		if (isCornerCorner)
-		{
-			var tempCorner = new MeshInstance3D();
-			tempCorner.Mesh = new BoxMesh();
-
-			// tamaño aproximado de wall (ajústalo si tu mesh real difiere)
-			tempCorner.Scale = new Vector3(0.5f, 3.2f, 5.0f);
-
-			var mat = new StandardMaterial3D();
-			mat.AlbedoColor = Colors.Gray;
-			tempCorner.MaterialOverride = mat;
-
-			_framesRoot.AddChild(tempCorner);
-
-			Vector3 prevPos = GetPositionFromSeq(seq - 1);
-			Vector3 dirPrevCornerPos = GetDirectionFromSeq(seq - 1);
-			Vector3 rightPrev = new Vector3(-dirPrevCornerPos.Z, 0, dirPrevCornerPos.X);
-
-			float step = 6f;
-
-			// posición base (centro de la esquina)
-						
-			Vector3 currPos = GetPositionFromSeq(seq);
-
-			// Cubo Separacion y alineacion de wall, a justar el F 
-			Vector3 cornerBase = currPos + dirPrevCornerPos * (step * 0.625f);
-
-
-
-			// corner -plicar mismo offset lateral que walls (3.5 original )
-			tempCorner.Position = cornerBase - rightPrev * 6.0f;
-
-			// rotación consistente con wall
-			float angleCorner = 0f;
-			if (dirPrevCornerPos == new Vector3(0, 0, 1)) angleCorner = -90f;
-			if (dirPrevCornerPos == new Vector3(1, 0, 0)) angleCorner = 0f;
-			if (dirPrevCornerPos == new Vector3(-1, 0, 0)) angleCorner = 180f;
-			if (dirPrevCornerPos == new Vector3(0, 0, -1)) angleCorner = 90f;
-
-			tempCorner.RotationDegrees = new Vector3(0, angleCorner + 180f, 0);
-
-
-
-
-			GD.Print($"[CORNER_DEBUG] seq={seq}");
-		}
-
- */
-			GD.Print($"[SPAWNER][INIT_LOCUS] seq={seq}");
-
-
+			GD.Print($"[SPAWNER][CORRIDOR_Z] seq={seq} pos={basePos}");
 		}
 
 		if (!_snapshotLoaded)
-		{
 			LoadSnapshotAndAssign();
-			_snapshotLoaded = true;
-		}
+
+		ApplyCorridorGeometryAfterSnapshot();
+		TryRestoreCameraAfterSnapshot();
+		_snapshotLoaded = true;
 
 		SetProcess(true);
 
@@ -453,12 +577,23 @@ public partial class Spawner : Node3D
 	/// </summary>
 	private void LoadSnapshotAndAssign()
 	{
-		var path = @"C:\Alexandria\snapshot\current.json";
-
+		var contextKey = BridgeSpatial.ReadContextKey();
+		var path = string.IsNullOrEmpty(contextKey)
+			? @"C:\Alexandria\snapshot\current.json"
+			: $@"C:\Alexandria\data\snapshot\{contextKey}.json";
+		var fallbackPath = @"C:\Alexandria\snapshot\current.json";
 		if (!System.IO.File.Exists(path))
 		{
-			GD.Print("[SNAPSHOT][MISS]");
-			return;
+			if (path != fallbackPath && System.IO.File.Exists(fallbackPath))
+			{
+				GD.Print($"[SNAPSHOT][FALLBACK] missing={path} using={fallbackPath}");
+				path = fallbackPath;
+			}
+			else
+			{
+				GD.Print($"[SNAPSHOT][MISS] {path}");
+				return;
+			}
 		}
 
 		if (_framesRoot == null)
@@ -507,12 +642,10 @@ public partial class Spawner : Node3D
 				GD.PrintErr($"[SNAPSHOT][SKIP] seq={seq} not a FrameTemplate");
 			}
 		}
-
-		TryRestoreCameraAfterSnapshot();
 	}
 
 	/// <summary>
-	/// [Cambio 353] Si existe last_position.byKey[open_key], coloca la cámara frente a ese seq.
+	/// Fase 4: last_position.byKey[context_key] si existe; si no, current_seq.txt del bridge.
 	/// </summary>
 	private void TryRestoreCameraAfterSnapshot()
 	{
@@ -523,36 +656,26 @@ public partial class Spawner : Node3D
 			return;
 		}
 
-		string openKey = "";
-		try
-		{
-			var p = Path.Combine(BridgeSpatial.BridgeDir, "open_key.txt");
-			if (File.Exists(p))
-				openKey = File.ReadAllText(p).Trim();
-		}
-		catch (Exception e)
-		{
-			GD.PrintErr("[SPAWNER][OPEN_KEY_READ] " + e.Message);
-			return;
-		}
-
-		if (string.IsNullOrEmpty(openKey))
+		var contextKey = BridgeSpatial.ReadContextKey();
+		int? seqNullable = string.IsNullOrEmpty(contextKey)
+			? null
+			: BridgeSpatial.ReadSavedSeqForOpenKey(contextKey);
+		if (seqNullable == null)
+			seqNullable = BridgeSpatial.ReadCurrentSeqOrNull();
+		if (seqNullable == null)
 			return;
 
-		var saved = BridgeSpatial.ReadSavedSeqForOpenKey(openKey);
-		if (saved == null)
-			return;
-
-		int seq = saved.Value;
+		int seq = seqNullable.Value;
 		if (seq < 0)
 			seq = 0;
-		if (seq >= 20)
-			seq = 19;
+		if (seq >= FrameSlotCount)
+			seq = FrameSlotCount - 1;
 
 		Vector3 pos = GetPositionFromSeq(seq);
 		// Rig en Y=0: la altura de ojos viene del Camera3D hijo en la escena (no duplicar con pos.Y).
-		cam.GlobalPosition = new Vector3(pos.X, 0f, pos.Z);
-		GD.Print($"[SPAWNER][CAMERA_RESTORE] open_key={openKey} seq={seq} pos={cam.GlobalPosition}");
+		var camX = GetLayoutMode() == "CORRIDOR_Z" ? CorridorCameraRigX : pos.X;
+		cam.GlobalPosition = new Vector3(camX, 0f, pos.Z);
+		GD.Print($"[SPAWNER][CAMERA_RESTORE] context_key={contextKey} seq={seq} pos={cam.GlobalPosition}");
 	}
 
 
@@ -573,6 +696,8 @@ public partial class Spawner : Node3D
 
 			_snapshotLoaded = false;
 			LoadSnapshotAndAssign();
+			ApplyCorridorGeometryAfterSnapshot();
+			TryRestoreCameraAfterSnapshot();
 			_snapshotLoaded = true;
 
 		}

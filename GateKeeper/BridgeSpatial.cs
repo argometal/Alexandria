@@ -28,8 +28,88 @@ public static class BridgeSpatial
 		}
 	}
 
+	/// <summary>ORM-15V3 Fase 2: nivel / snapshot parent (solo RealmController).</summary>
+	public static void WriteContextKey(string key)
+	{
+		try
+		{
+			Directory.CreateDirectory(BridgeDir);
+			File.WriteAllText(Path.Combine(BridgeDir, "context_key.txt"), key ?? "");
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[BRIDGE][CONTEXT_WRITE] " + e.Message);
+		}
+	}
+
+	/// <summary>ORM-15V3 Fase 2: entrada mostrada en viewer (solo RealmController).</summary>
+	public static void WriteFocusKey(string key)
+	{
+		try
+		{
+			Directory.CreateDirectory(BridgeDir);
+			File.WriteAllText(Path.Combine(BridgeDir, "focus_key.txt"), key ?? "");
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[BRIDGE][FOCUS_WRITE] " + e.Message);
+		}
+	}
+
+	/// <summary>Fase 4: lectura de context_key (sin open_key).</summary>
+	public static string ReadContextKey()
+	{
+		try
+		{
+			var p = Path.Combine(BridgeDir, "context_key.txt");
+			if (!File.Exists(p))
+				return "";
+			return File.ReadAllText(p).Trim();
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[BRIDGE][CONTEXT_READ] " + e.Message);
+			return "";
+		}
+	}
+
+	/// <summary>Lectura de focus_key para resolver viewer por KEY (standalone runtime).</summary>
+	public static string ReadFocusKey()
+	{
+		try
+		{
+			var p = Path.Combine(BridgeDir, "focus_key.txt");
+			if (!File.Exists(p))
+				return "";
+			return File.ReadAllText(p).Trim();
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[BRIDGE][FOCUS_READ] " + e.Message);
+			return "";
+		}
+	}
+
+	/// <summary>Último seq escrito por FrameTemplate (0..19 típico).</summary>
+	public static int? ReadCurrentSeqOrNull()
+	{
+		try
+		{
+			if (!File.Exists(CurrentSeqPath))
+				return null;
+			if (!int.TryParse(File.ReadAllText(CurrentSeqPath).Trim(), out var s))
+				return null;
+			return s;
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[BRIDGE][SEQ_READ] " + e.Message);
+			return null;
+		}
+	}
+
 	/// <summary>
-	/// Lee last_position.json → seq guardado para [key], o null si no hay.
+	/// Lee last_position.json → seq guardado para [key] (p. ej. context_key al cambiar de nivel).
 	/// Formato: { "byKey": { "KEY": 3 } }
 	/// </summary>
 	public static int? ReadSavedSeqForOpenKey(string key)

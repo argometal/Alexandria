@@ -9,7 +9,6 @@ import 'library_build.dart';
 import 'locus_editor.dart';
 
 const _dbPath = r'C:\Alexandria\data\alexandria.db';
-const _openKeyPath = r'C:\Alexandria\data\bridge\open_key.txt';
 
 /// Raíz de assets por entry (ORM #365a: `assets/<key>/hero.*` o imágenes en body).
 const _kAssetsRoot = r'C:\Alexandria\data\assets';
@@ -68,11 +67,11 @@ class _LbHomeState extends State<LbHome> {
   void initState() {
     super.initState();
     _openDbAndSchema();
-    ensureDualBridgeBootstrapFromOpenKey();
+    ensureDualBridgeDefaults();
     _syncParentFromBridgeContext();
     _loadChildren();
     _viewerPoll = Timer.periodic(const Duration(seconds: 2), (_) {
-      syncViewerFromOpenKey();
+      syncViewerFromFocusKey();
       _checkAndRunLibraryBuild();
     });
   }
@@ -118,10 +117,9 @@ CREATE TABLE IF NOT EXISTS entries (
   void _checkAndRunLibraryBuild() {
     if (_libraryBuildRunning) return;
     try {
-      ensureDualBridgeBootstrapFromOpenKey();
+      ensureDualBridgeDefaults();
       final contextKey = readContextKeyWithFallback();
       final focusKey = readFocusKeyWithFallback();
-      if (contextKey.isEmpty) return;
 
       if (contextKey != _currentParentKey) {
         setState(() {
@@ -143,12 +141,6 @@ CREATE TABLE IF NOT EXISTS entries (
     } catch (_) {
       _libraryBuildRunning = false;
     }
-  }
-
-  void _writeOpenKey(String key) {
-    final f = File(_openKeyPath);
-    f.parent.createSync(recursive: true);
-    f.writeAsStringSync(key);
   }
 
   void _loadChildren() {
@@ -364,7 +356,7 @@ CREATE TABLE IF NOT EXISTS entries (
     setState(() {
       _currentParentKey = childKey;
     });
-    // open_key solo desde GateKeeper (clic en frame); LB no debe pisar el bridge al navegar.
+    // Navegación en árbol LB: no escribe bridge; snapshot sigue gobernado por context_key (GK / atrás).
     _loadChildren();
   }
 
@@ -385,7 +377,7 @@ CREATE TABLE IF NOT EXISTS entries (
     setState(() {
       _currentParentKey = next;
     });
-    _writeOpenKey(_currentParentKey);
+    writeBridgeContextKey(_currentParentKey);
     _loadChildren();
   }
 

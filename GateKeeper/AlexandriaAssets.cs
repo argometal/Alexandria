@@ -10,7 +10,26 @@ using Godot;
 /// </summary>
 public static class AlexandriaAssets
 {
+	public class WallManifestImage
+	{
+		public string Filename { get; set; } = "";
+		public string Hash { get; set; } = "";
+	}
+
+	public class WallManifestData
+	{
+		public long Version { get; set; }
+		public List<WallManifestImage> Images { get; set; } = new List<WallManifestImage>();
+	}
+
+	public class CollageGroup
+	{
+		public List<string> ImagePaths { get; set; } = new List<string>();
+	}
+
 	public const string Root = @"C:\Alexandria\data\assets";
+	private const string WallManifestRoot = @"C:\Alexandria\data\manifests\wall";
+	private static readonly bool AllowFolderScanFallback = OS.IsDebugBuild();
 
 	private static readonly string[] HeroNames =
 	{
@@ -106,13 +125,16 @@ public static class AlexandriaAssets
 		return pick ?? "";
 	}
 
-	/// <summary>Marco (legacy): <c>hero.*</c> → <c>cover.*</c> → sin textura.</summary>
+	/// <summary>Marco (legacy): <c>hero.*</c> → <c>cover.*</c> → primera imagen en carpeta (objetos LB_* a menudo sin hero nominal).</summary>
 	public static string FindFrameDisplayImagePath(string key)
 	{
 		var hero = FindHeroPath(key);
 		if (!string.IsNullOrEmpty(hero))
 			return hero;
-		return FindCoverPath(key);
+		var cover = FindCoverPath(key);
+		if (!string.IsNullOrEmpty(cover))
+			return cover;
+		return FindFirstImageInFolder(key);
 	}
 
 	public static Image TryLoadImage(string path)
@@ -163,10 +185,66 @@ public static class AlexandriaAssets
 		return ImageTexture.CreateFromImage(canvas);
 	}
 
+	private static string GetWallManifestPath(string key) =>
+		Path.Combine(WallManifestRoot, (key ?? "").Trim() + ".json");
+
+	private static bool TryReadWallManifest(string key, out WallManifestData data)
+	{
+		data = null;
+		if (string.IsNullOrWhiteSpace(key))
+			return false;
+		var manifestPath = GetWallManifestPath(key);
+		if (!File.Exists(manifestPath))
+			return false;
+
+		try
+		{
+			var text = File.ReadAllText(manifestPath);
+			var json = new Json();
+			if (json.Parse(text) != Error.Ok || json.Data.VariantType != Variant.Type.Dictionary)
+				return false;
+			var root = json.Data.AsGodotDictionary();
+			var parsed = new WallManifestData();
+			if (root.ContainsKey("version"))
+			{
+				var v = root["version"];
+				parsed.Version = v.VariantType switch
+				{
+					Variant.Type.Int => v.AsInt64(),
+					Variant.Type.Float => (long)v.AsDouble(),
+					_ => 0L
+				};
+			}
+
+			if (root.ContainsKey("images"))
+			{
+				var arr = root["images"].AsGodotArray();
+				foreach (var item in arr)
+				{
+					if (item.VariantType != Variant.Type.Dictionary)
+						continue;
+					var d = item.AsGodotDictionary();
+					var filename = d.ContainsKey("filename") ? d["filename"].AsString().Trim() : "";
+					var hash = d.ContainsKey("hash") ? d["hash"].AsString().Trim() : "";
+					if (string.IsNullOrEmpty(filename))
+						continue;
+					parsed.Images.Add(new WallManifestImage { Filename = filename, Hash = hash });
+				}
+			}
+
+			data = parsed;
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
 	/// <summary>
-	/// Rutas de galería de pared (mismos filtros que collage), orden determinista, sin tope de 4.
+	/// Fallback legacy: escaneo de carpeta (solo debug).
 	/// </summary>
-	public static List<string> ListWallGalleryImagePaths(string key)
+	private static List<string> ListWallGalleryImagePathsFromFolder(string key)
 	{
 		var result = new List<string>();
 		if (string.IsNullOrWhiteSpace(key))
@@ -214,6 +292,105 @@ public static class AlexandriaAssets
 	}
 
 	/// <summary>
+	/// Rutas de pared válidas para GK. Prioriza manifest explícito LB.
+	/// Fallback a escaneo de carpeta solo en debug.
+	/// </summary>
+	public static List<string> GetWallImagePaths(string key)
+	{
+		var result = new List<string>();
+		if (string.IsNullOrWhiteSpace(key))
+			return result;
+
+		if (TryReadWallManifest(key, out var manifest))
+		{
+			var baseDir = Path.Combine(Root, key.Trim());
+			foreach (var img in manifest.Images)
+			{
+				// Contrato: rutas relativas a data/assets/{key}/
+				var full = Path.Combine(baseDir, img.Filename);
+				if (File.Exists(full))
+					result.Add(full);
+			}
+			return result
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.ToList();
+		}
+
+		if (!AllowFolderScanFallback)
+			return result;
+
+		GD.PrintErr($"[WALL][MANIFEST_MISS] key={key} fallback=folder_scan(debug_only)");
+		return ListWallGalleryImagePathsFromFolder(key);
+	}
+
+	/// <summary>
+	/// Firma de fuente visual de pared para invalidación runtime.
+	/// </summary>
+	public static string GetWallSourceSignature(string key)
+	{
+		if (string.IsNullOrWhiteSpace(key))
+			return "";
+
+		if (TryReadWallManifest(key, out var manifest))
+		{
+			var imageSig = string.Join("|", manifest.Images.Select(i => $"{i.Filename}:{i.Hash}"));
+			return $"manifest:{manifest.Version}:{imageSig}";
+		}
+
+		if (!AllowFolderScanFallback)
+			return "manifest:missing";
+
+		var fromFolder = ListWallGalleryImagePathsFromFolder(key);
+		var mtimeSig = string.Join("|", fromFolder.Select(p =>
+		{
+			try { return $"{p}:{File.GetLastWriteTimeUtc(p).Ticks}"; }
+			catch { return p; }
+		}));
+		return $"folder:{mtimeSig}";
+	}
+
+	/// <summary>
+	/// Unidad lógica de pared: collage group.
+	/// Fallback seguro inicial: 1 imagen = 1 grupo.
+	/// </summary>
+	public static List<CollageGroup> GetWallCollageGroups(string key)
+	{
+		var images = GetWallImagePaths(key);
+		var groups = new List<CollageGroup>();
+		foreach (var img in images)
+		{
+			groups.Add(new CollageGroup
+			{
+				ImagePaths = new List<string> { img }
+			});
+		}
+
+		return groups;
+	}
+
+	/// <summary>
+	/// Construye una textura de panel para un grupo de collage.
+	/// 1 imagen: se comporta como panel individual.
+	/// N imágenes: composición horizontal en una sola textura.
+	/// </summary>
+	public static ImageTexture BuildCollageTexture(List<string> imagePaths)
+	{
+		if (imagePaths == null || imagePaths.Count == 0)
+			return null;
+
+		if (imagePaths.Count == 1)
+		{
+			var img = TryLoadImage(imagePaths[0]);
+			if (img == null)
+				return null;
+			img.Convert(Image.Format.Rgba8);
+			return ImageTexture.CreateFromImage(img);
+		}
+
+		return BuildHorizontalStrip512(imagePaths);
+	}
+
+	/// <summary>
 	/// Pared: hasta 4 fotos (sin hero ni cover ni duplicados por hash). Si no hay galería: hero o cover a pantalla completa.
 	/// </summary>
 	public static ImageTexture TryBuildWallCollageTexture(string key)
@@ -224,41 +401,9 @@ public static class AlexandriaAssets
 		if (!Directory.Exists(dir))
 			return null;
 
-		var all = new List<string>();
-		foreach (var ext in ImageExtensions)
-		{
-			try
-			{
-				all.AddRange(Directory.GetFiles(dir, "*" + ext, SearchOption.TopDirectoryOnly));
-			}
-			catch
-			{
-				// ignore
-			}
-		}
-
+		var gallery = GetWallImagePaths(key).Take(4).ToList();
 		var hero = FindHeroPath(key);
-		var heroHash = TryComputeMd5Hex(hero);
 		var cover = FindCoverPath(key);
-		var coverHash = TryComputeMd5Hex(cover);
-
-		var gallery = all
-			.Distinct(StringComparer.OrdinalIgnoreCase)
-			.Where(f => !IsHeroFileName(Path.GetFileName(f)))
-			.Where(f => !IsCoverFileName(Path.GetFileName(f)))
-			.Where(f =>
-			{
-				var hash = TryComputeMd5Hex(f);
-				if (!string.IsNullOrEmpty(heroHash) && string.Equals(hash, heroHash, StringComparison.OrdinalIgnoreCase))
-					return false;
-				if (!string.IsNullOrEmpty(coverHash) && string.Equals(hash, coverHash, StringComparison.OrdinalIgnoreCase))
-					return false;
-				return true;
-			})
-			.OrderBy(f => File.GetLastWriteTimeUtc(f))
-			.ThenBy(f => f, StringComparer.OrdinalIgnoreCase)
-			.Take(4)
-			.ToList();
 
 		if (gallery.Count == 0)
 		{

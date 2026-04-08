@@ -10,6 +10,8 @@ public partial class ViewerService : CanvasLayer
 	private const string ViewerCurrentPath = @"C:\Alexandria\data\viewer\current.json";
 	private const string DataRoot = @"C:\Alexandria\data";
 	private const string BridgeDir = @"C:\Alexandria\data\bridge";
+	private const string RealmKey = "ROOT";
+	private const string ParcourKey = "PARCOUR_MAIN";
 
 	// Viewer Min — lectura (solo UI, sin lógica nueva)
 	private const int FontTitlePx = 20;
@@ -31,6 +33,13 @@ public partial class ViewerService : CanvasLayer
 	/// Fuera del scroll: siempre visible aunque el body sea largo (frames 1..19).
 	private Control _enterButtonHost = null!;
 	private Label _titleLabel = null!;
+
+	/// <summary>
+	/// El panel solo debe actualizarse / mostrarse tras un clic en marco o enlace (NotifyFrameOpened).
+	/// Sin esto, el poll 1 Hz llama a ShowContent y vuelve a abrir el panel con current.json viejo (p. ej. ROOT)
+	/// aunque el usuario lo hubiera cerrado — el síntoma: viewer Realm al entrar en parcour sin clic.
+	/// </summary>
+	private bool _viewerOpenByUser;
 
 	public override void _Ready()
 	{
@@ -72,7 +81,7 @@ public partial class ViewerService : CanvasLayer
 		closeBtn.CustomMinimumSize = new Vector2(40, 40);
 		closeBtn.FocusMode = Control.FocusModeEnum.None;
 		closeBtn.TooltipText = "Cerrar";
-		closeBtn.Pressed += () => { _panel.Visible = false; };
+		closeBtn.Pressed += DismissPanel;
 		header.AddChild(closeBtn);
 
 		var scroll = new ScrollContainer();
@@ -98,6 +107,7 @@ public partial class ViewerService : CanvasLayer
 	/// <summary>Abre panel y fuerza lectura de viewer/current.json (bridge dual: foco vía LB).</summary>
 	public void NotifyFrameOpened(string key)
 	{
+		_viewerOpenByUser = true;
 		_lastKeyShown = "";
 		_lastVersionShown = -1;
 		_lastHasChildrenShown = false;
@@ -139,6 +149,9 @@ public partial class ViewerService : CanvasLayer
 
 	public override void _Process(double delta)
 	{
+		if (!_viewerOpenByUser)
+			return;
+
 		if (_burstRemainSec > 0)
 		{
 			_burstRemainSec -= delta;
@@ -164,7 +177,7 @@ public partial class ViewerService : CanvasLayer
 			return;
 		if (@event is InputEventKey k && k.Pressed && !k.Echo && k.Keycode == Key.Escape)
 		{
-			_panel.Visible = false;
+			DismissPanel();
 			GetViewport().SetInputAsHandled();
 		}
 	}
@@ -180,21 +193,35 @@ public partial class ViewerService : CanvasLayer
 
 	public void ClosePanel()
 	{
+		DismissPanel();
+	}
+
+	private void DismissPanel()
+	{
+		_viewerOpenByUser = false;
+		_burstRemainSec = 0;
+		_burstAccumSec = 0;
+		_checkTimer = 0;
 		_panel.Visible = false;
 	}
 
 	private void CheckForContent()
 	{
+		if (!_viewerOpenByUser)
+			return;
+
 		var focusKey = BridgeSpatial.ReadFocusKey();
 		var viewerPath = string.IsNullOrEmpty(focusKey)
 			? ViewerCurrentPath
 			: $@"C:\Alexandria\data\viewer\{focusKey}.json";
+		var usedCurrentJsonFallback = false;
 		if (!File.Exists(viewerPath))
 		{
 			if (viewerPath != ViewerCurrentPath && File.Exists(ViewerCurrentPath))
 			{
 				GD.Print($"[VIEWER][FALLBACK] missing={viewerPath} using=current.json");
 				viewerPath = ViewerCurrentPath;
+				usedCurrentJsonFallback = true;
 			}
 			else
 			{
@@ -228,6 +255,19 @@ public partial class ViewerService : CanvasLayer
 		long version = ReadViewerVersion(data);
 		var hasChildren = ReadViewerHasChildren(data);
 		var parentKey = ReadViewerParentKey(data);
+		var recallScore = ReadViewerNumber(data, "recallScore");
+		var stabilityDays = ReadViewerNumber(data, "stabilityDays");
+		var memoryStrength = ReadViewerNumber(data, "memoryStrength");
+		var reviewCount = ReadViewerInt(data, "reviewCount");
+
+		// Si caemos en current.json pero el foco pide otra KEY, el parentKey sería el de otra fila
+		// (p. ej. ROOT) y ← Back saltaría a realm sin pasar por parcour. No pintar hasta alinear LB.
+		if (usedCurrentJsonFallback && !string.IsNullOrEmpty(focusKey) &&
+		    !string.Equals(key.Trim(), focusKey.Trim(), StringComparison.Ordinal))
+		{
+			GD.Print($"[VIEWER][STALE] focusKey={focusKey} jsonKey={key} — esperando viewer keyed");
+			return;
+		}
 
 		if (string.IsNullOrEmpty(key))
 		{
@@ -240,7 +280,7 @@ public partial class ViewerService : CanvasLayer
 				bodyEmpty = new Godot.Collections.Array();
 			else
 				bodyEmpty = data["body"].AsGodotArray();
-			ShowContent("", bodyEmpty, false, "");
+			ShowContent("", bodyEmpty, false, "", 0, 0, 0, 0);
 			_lastKeyShown = "";
 			_lastVersionShown = version;
 			_lastHasChildrenShown = false;
@@ -256,7 +296,7 @@ public partial class ViewerService : CanvasLayer
 			body = new Godot.Collections.Array();
 		else
 			body = data["body"].AsGodotArray();
-		ShowContent(key, body, hasChildren, parentKey);
+		ShowContent(key, body, hasChildren, parentKey, recallScore, stabilityDays, memoryStrength, reviewCount);
 
 		_lastKeyShown = key;
 		_lastVersionShown = version;
@@ -302,6 +342,34 @@ public partial class ViewerService : CanvasLayer
 		return p.VariantType == Variant.Type.String ? p.AsString().Trim() : "";
 	}
 
+	private static double ReadViewerNumber(Godot.Collections.Dictionary data, string key)
+	{
+		if (!data.ContainsKey(key))
+			return 0;
+		var v = data[key];
+		return v.VariantType switch
+		{
+			Variant.Type.Int => v.AsInt64(),
+			Variant.Type.Float => v.AsDouble(),
+			Variant.Type.String => double.TryParse(v.AsString(), out var d) ? d : 0d,
+			_ => 0d,
+		};
+	}
+
+	private static int ReadViewerInt(Godot.Collections.Dictionary data, string key)
+	{
+		if (!data.ContainsKey(key))
+			return 0;
+		var v = data[key];
+		return v.VariantType switch
+		{
+			Variant.Type.Int => v.AsInt32(),
+			Variant.Type.Float => (int)v.AsDouble(),
+			Variant.Type.String => int.TryParse(v.AsString(), out var i) ? i : 0,
+			_ => 0,
+		};
+	}
+
 	private void ClearEnterButtonHost()
 	{
 		foreach (Node child in _enterButtonHost.GetChildren())
@@ -309,7 +377,7 @@ public partial class ViewerService : CanvasLayer
 		_enterButtonHost.Visible = false;
 	}
 
-	private void ShowContent(string key, Godot.Collections.Array body, bool hasChildren, string parentKey)
+	private void ShowContent(string key, Godot.Collections.Array body, bool hasChildren, string parentKey, double recallScore, double stabilityDays, double memoryStrength, int reviewCount)
 	{
 		foreach (Node child in _stack.GetChildren())
 			child.QueueFree();
@@ -317,6 +385,19 @@ public partial class ViewerService : CanvasLayer
 
 		_titleLabel.Text = string.IsNullOrEmpty(key) ? "Sin KEY de foco" : key;
 		_panel.Visible = true;
+
+		if (!string.IsNullOrEmpty(key) && reviewCount > 0)
+		{
+			var stats = new RichTextLabel();
+			stats.BbcodeEnabled = false;
+			stats.FitContent = true;
+			stats.ScrollActive = false;
+			stats.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+			stats.AddThemeFontSizeOverride("font_size", FontBodyPx - 1);
+			stats.Text = $"Recall score {recallScore:0.00} · Stability {stabilityDays:0.0}d · Strength {memoryStrength:0.00} · Reviews {reviewCount}";
+			stats.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			_stack.AddChild(stats);
+		}
 
 		if (body.Count == 0)
 		{
@@ -397,9 +478,12 @@ public partial class ViewerService : CanvasLayer
 		}
 		}
 
-		var hasBack = !string.IsNullOrEmpty(parentKey);
+		var backTarget = ResolveBackTargetForNavigation(key, parentKey);
+		var hasBack = !string.IsNullOrEmpty(backTarget);
+		var hasRealmBack = !string.IsNullOrEmpty(key) &&
+			!string.Equals(key.Trim(), RealmKey, StringComparison.OrdinalIgnoreCase);
 		var hasEnter = hasChildren && !string.IsNullOrEmpty(key);
-		if (!hasBack && !hasEnter)
+		if (!hasBack && !hasRealmBack && !hasEnter)
 			return;
 
 		var row = new HBoxContainer();
@@ -409,11 +493,21 @@ public partial class ViewerService : CanvasLayer
 		if (hasBack)
 		{
 			var backBtn = new Button();
-			backBtn.Text = "← Back";
-			var backTarget = parentKey;
+			backBtn.Text = string.Equals(backTarget, ParcourKey, StringComparison.OrdinalIgnoreCase)
+				? "← Parcour"
+				: "← Back";
 			backBtn.Pressed += () => BackLevelRequested?.Invoke(backTarget);
 			backBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			row.AddChild(backBtn);
+		}
+
+		if (hasRealmBack)
+		{
+			var realmBtn = new Button();
+			realmBtn.Text = "⇤ Realm";
+			realmBtn.Pressed += () => BackLevelRequested?.Invoke("ROOT");
+			realmBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			row.AddChild(realmBtn);
 		}
 
 		if (hasEnter)
@@ -428,6 +522,19 @@ public partial class ViewerService : CanvasLayer
 
 		_enterButtonHost.AddChild(row);
 		_enterButtonHost.Visible = true;
+	}
+
+	private static string ResolveBackTargetForNavigation(string key, string parentKey)
+	{
+		var k = (key ?? "").Trim();
+		var p = (parentKey ?? "").Trim();
+		if (string.IsNullOrEmpty(k))
+			return "";
+		if (string.Equals(k, RealmKey, StringComparison.OrdinalIgnoreCase))
+			return "";
+		if (string.Equals(k, ParcourKey, StringComparison.OrdinalIgnoreCase))
+			return string.IsNullOrEmpty(p) ? RealmKey : p;
+		return ParcourKey;
 	}
 
 	private static string ResolveImagePath(string entryKey, string src)

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
@@ -17,7 +16,6 @@ const _kAssetsRoot = r'C:\Alexandria\data\assets';
 const _kCognitiveRoleLabels = <String, String>{
   'realm': 'Realm',
   'parcour': 'Parcour',
-  'room': 'Room',
   'object': 'Object',
 };
 
@@ -53,7 +51,6 @@ class LbHome extends StatefulWidget {
 class _LbHomeState extends State<LbHome> {
   Database? _db;
   String _currentParentKey = 'ROOT';
-  final TextEditingController _titleController = TextEditingController();
   List<Map<String, Object?>> _rows = [];
   Timer? _viewerPoll;
 
@@ -79,7 +76,6 @@ class _LbHomeState extends State<LbHome> {
   @override
   void dispose() {
     _viewerPoll?.cancel();
-    _titleController.dispose();
     _db?.dispose();
     super.dispose();
   }
@@ -148,7 +144,7 @@ CREATE TABLE IF NOT EXISTS entries (
     if (d == null) return;
 
     final result = d.select(
-      'SELECT key, seq, title, cognitiveRole, body_text, last_reviewed_at FROM entries WHERE parentKey = ? ORDER BY seq ASC',
+      'SELECT key, seq, title, cognitiveRole, body_text, last_reviewed_at, next_review_at, memory_strength, stability_days, recall_score, review_count, success_count, failure_count FROM entries WHERE parentKey = ? ORDER BY seq ASC',
       [_currentParentKey],
     );
 
@@ -161,15 +157,31 @@ CREATE TABLE IF NOT EXISTS entries (
                 'cognitiveRole': row['cognitiveRole'],
                 'body_text': row['body_text'],
                 'last_reviewed_at': row['last_reviewed_at'],
+                'next_review_at': row['next_review_at'],
+                'memory_strength': row['memory_strength'],
+                'stability_days': row['stability_days'],
+                'recall_score': row['recall_score'],
+                'review_count': row['review_count'],
+                'success_count': row['success_count'],
+                'failure_count': row['failure_count'],
               })
           .toList();
     });
   }
 
+  /// ORM `LAYERS_REALM_PARCOUR_OBJECT.md`: `R1` realm, `P1..P20` parcours; `ROOT` / `PARCOUR_MAIN` son claves operativas con etiqueta ORM.
   String _displayLabel(Map<String, Object?> row) {
     final t = row['title']?.toString().trim();
     if (t != null && t.isNotEmpty) return t;
-    return row['key']?.toString() ?? '';
+    final k = row['key']?.toString() ?? '';
+    if (k == 'ROOT') return 'R1';
+    if (k == 'PARCOUR_MAIN') return 'Parcours (R1)';
+    return k;
+  }
+
+  String _parentBreadcrumbLabel(String parentKey) {
+    if (parentKey == 'ROOT') return 'R1';
+    return parentKey;
   }
 
   String _roleBadgeLabel(Object? roleRaw) {
@@ -177,7 +189,6 @@ CREATE TABLE IF NOT EXISTS entries (
     const emoji = <String, String>{
       'realm': '📁',
       'parcour': '🔄',
-      'room': '🏠',
       'object': '📄',
     };
     final e = emoji[r] ?? '📄';
@@ -185,22 +196,45 @@ CREATE TABLE IF NOT EXISTS entries (
     return '$e $name';
   }
 
-  /// ISO 8601 nullable → "nunca" / "hoy" / "ayer" / "hace N días"…
+  /// ISO 8601 nullable -> "never" / "today" / "yesterday" / "N days ago"...
   String _formatLastReviewedAt(String? iso) {
-    if (iso == null || iso.trim().isEmpty) return 'nunca';
+    if (iso == null || iso.trim().isEmpty) return 'never';
     final dt = DateTime.tryParse(iso.trim());
-    if (dt == null) return 'nunca';
+    if (dt == null) return 'never';
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final d = DateTime(dt.year, dt.month, dt.day);
     final diff = today.difference(d).inDays;
-    if (diff < 0) return 'próximo';
-    if (diff == 0) return 'hoy';
-    if (diff == 1) return 'ayer';
-    if (diff < 7) return 'hace $diff días';
-    if (diff < 30) return 'hace ${diff ~/ 7} sem.';
-    if (diff < 365) return 'hace ${diff ~/ 30} meses';
-    return 'hace ${diff ~/ 365} años';
+    if (diff < 0) return 'upcoming';
+    if (diff == 0) return 'today';
+    if (diff == 1) return 'yesterday';
+    if (diff < 7) return '$diff days ago';
+    if (diff < 30) return '${diff ~/ 7} weeks ago';
+    if (diff < 365) return '${diff ~/ 30} months ago';
+    return '${diff ~/ 365} years ago';
+  }
+
+  String _formatDueTag(String? iso) {
+    if (iso == null || iso.trim().isEmpty) return 'new';
+    final dt = DateTime.tryParse(iso.trim());
+    if (dt == null) return 'new';
+    final now = DateTime.now();
+    final diffHours = dt.toLocal().difference(now).inHours;
+    if (diffHours <= 0) return 'due';
+    if (diffHours < 24) return 'in ${diffHours}h';
+    final days = (diffHours / 24).floor();
+    return 'in ${days}d';
+  }
+
+  void _reviewEntry(String key, int grade) {
+    final d = _db;
+    if (d == null) return;
+    try {
+      ensureLibrarySchema(d);
+      recordRecallReview(d, key, grade);
+      _loadChildren();
+      runLibraryBuild();
+    } catch (_) {}
   }
 
   /// Hero: `assets/<key>/hero.(png|jpg|jpeg|webp)`; si no, primera `img` en body_text.
@@ -247,7 +281,6 @@ CREATE TABLE IF NOT EXISTS entries (
     const emoji = <String, IconData>{
       'realm': Icons.folder_outlined,
       'parcour': Icons.route,
-      'room': Icons.home_outlined,
       'object': Icons.article_outlined,
     };
     return Container(
@@ -278,78 +311,6 @@ CREATE TABLE IF NOT EXISTS entries (
     if (saved == true && mounted) {
       _loadChildren();
     }
-  }
-
-  void _createEntry() {
-    final d = _db;
-    if (d == null) return;
-
-    final title = _titleController.text.trim();
-    if (title.isEmpty) return;
-
-    // [#357] OBJECT no tiene hijos en el modelo (solo body); GK no lee esto — solo UI LB.
-    final parentRows = d.select(
-      'SELECT cognitiveRole FROM entries WHERE key = ? LIMIT 1',
-      [_currentParentKey],
-    );
-    if (parentRows.isNotEmpty) {
-      final roleRaw = parentRows.first['cognitiveRole'];
-      if (normalizeCognitiveRole(roleRaw) == 'object') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'No se pueden crear hijos bajo una entry con rol Object (solo contenido / body).',
-            ),
-          ),
-        );
-        return;
-      }
-    }
-
-    final countRow = d.select(
-      'SELECT COUNT(*) AS c FROM entries WHERE parentKey = ?',
-      [_currentParentKey],
-    ).first;
-    final childCount = countRow['c'] as int;
-    if (childCount >= 20) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ya hay 20 hijos (slots 0–19 llenos).'),
-        ),
-      );
-      return;
-    }
-
-    final maxRow = d
-        .select(
-          'SELECT COALESCE(MAX(seq), -1) AS m FROM entries WHERE parentKey = ?',
-          [_currentParentKey],
-        )
-        .first;
-    final nextSeq = (maxRow['m'] as int) + 1;
-    if (nextSeq > 19) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('seq máximo 19 (20 slots por nivel).'),
-        ),
-      );
-      return;
-    }
-
-    final newKey =
-        'LB_${DateTime.now().microsecondsSinceEpoch}_${Random().nextInt(99999)}';
-
-    final parentRoleRaw =
-        parentRows.isEmpty ? null : parentRows.first['cognitiveRole'];
-    final newRole = defaultChildCognitiveRoleForParent(parentRoleRaw);
-
-    d.execute(
-      'INSERT INTO entries (key, parentKey, seq, title, cognitiveRole) VALUES (?, ?, ?, ?, ?)',
-      [newKey, _currentParentKey, nextSeq, title, newRole],
-    );
-
-    _titleController.clear();
-    _loadChildren();
   }
 
   void _navigateInto(String childKey) {
@@ -401,10 +362,23 @@ CREATE TABLE IF NOT EXISTS entries (
           children: [
             const Text('Realm Library'),
             Text(
-              _currentParentKey,
+              _parentBreadcrumbLabel(_currentParentKey),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
+            ),
+            Builder(
+              builder: (_) {
+                final d = _db;
+                if (d == null) return const SizedBox.shrink();
+                final stats = computeRecallStatsForParent(d, _currentParentKey);
+                return Text(
+                  'due ${stats['due'] ?? 0} · new ${stats['new'] ?? 0} · total ${stats['total'] ?? 0}',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
+                );
+              },
             ),
           ],
         ),
@@ -417,7 +391,7 @@ CREATE TABLE IF NOT EXISTS entries (
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Regenerar snapshot / lista',
+            tooltip: 'Regenerate snapshot / list',
             onPressed: _onRefresh,
           ),
         ],
@@ -425,34 +399,11 @@ CREATE TABLE IF NOT EXISTS entries (
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _titleController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nueva entrada (título)',
-                      hintText: 'Índice — no edita contenido aquí',
-                      border: OutlineInputBorder(),
-                    ),
-                    onSubmitted: (_) => _createEntry(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _createEntry,
-                  child: const Text('Crear'),
-                ),
-              ],
-            ),
-          ),
           Expanded(
             child: _rows.isEmpty
                 ? Center(
                     child: Text(
-                      'Sin entradas en este nivel.\nCrea una o vuelve atrás.',
+                      'No entries at this level.\nGo back to continue.',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             color: Theme.of(context).colorScheme.outline,
@@ -518,7 +469,7 @@ CREATE TABLE IF NOT EXISTS entries (
                                                 .labelSmall,
                                           ),
                                           Text(
-                                            '·  Última revisión: $reviewed',
+                                            '·  Last review: $reviewed',
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .labelSmall
@@ -528,8 +479,45 @@ CREATE TABLE IF NOT EXISTS entries (
                                                       .onSurfaceVariant,
                                                 ),
                                           ),
+                                          if (roleKey == 'object')
+                                            Text(
+                                              '·  Due: ${_formatDueTag(row['next_review_at'] as String?)}',
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .labelSmall
+                                                  ?.copyWith(
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .primary,
+                                                  ),
+                                            ),
                                         ],
                                       ),
+                                      if (roleKey == 'object') ...[
+                                        const SizedBox(height: 4),
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 4,
+                                          children: [
+                                            Text(
+                                              'score=${(row['recall_score'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                              style: Theme.of(context).textTheme.labelSmall,
+                                            ),
+                                            Text(
+                                              'S=${(row['stability_days'] as num?)?.toStringAsFixed(1) ?? '0.0'}d',
+                                              style: Theme.of(context).textTheme.labelSmall,
+                                            ),
+                                            Text(
+                                              'M=${(row['memory_strength'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                              style: Theme.of(context).textTheme.labelSmall,
+                                            ),
+                                            Text(
+                                              'R=${row['review_count'] ?? 0} ✓${row['success_count'] ?? 0} ✕${row['failure_count'] ?? 0}',
+                                              style: Theme.of(context).textTheme.labelSmall,
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                       const SizedBox(height: 2),
                                       Text(
                                         'key=$key  ·  seq=${row['seq']}',
@@ -550,8 +538,30 @@ CREATE TABLE IF NOT EXISTS entries (
                                 TextButton(
                                   onPressed: () =>
                                       _openLocusEditor(context, key),
-                                  child: const Text('Editar'),
+                                  child: const Text('Edit'),
                                 ),
+                                if (roleKey == 'object')
+                                  Wrap(
+                                    spacing: 4,
+                                    children: [
+                                      TextButton(
+                                        onPressed: () => _reviewEntry(key, 0),
+                                        child: const Text('Again'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => _reviewEntry(key, 1),
+                                        child: const Text('Hard'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => _reviewEntry(key, 2),
+                                        child: const Text('Good'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => _reviewEntry(key, 3),
+                                        child: const Text('Easy'),
+                                      ),
+                                    ],
+                                  ),
                               ],
                             ),
                           ),

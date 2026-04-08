@@ -24,8 +24,14 @@ const _assetsRoot = r'C:\Alexandria\data\assets';
 const _kCognitiveRoleLabels = <String, String>{
   'realm': 'Realm',
   'parcour': 'Parcour',
-  'room': 'Room',
   'object': 'Object',
+};
+
+const _kTextKinds = <String, String>{
+  'text': 'Text',
+  'ridiculous_story': 'Ridiculous story',
+  'hint': 'Hint',
+  'place': 'Place',
 };
 
 const _heroExts = ['png', 'jpg', 'jpeg', 'webp'];
@@ -192,7 +198,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     if (srcName.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Indica un archivo en el bloque imagen')),
+        const SnackBar(content: Text('Set an asset filename for this image block')),
       );
       return;
     }
@@ -203,7 +209,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     if (!srcFile.existsSync()) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No existe: $srcPath')),
+        SnackBar(content: Text('File not found: $srcPath')),
       );
       return;
     }
@@ -222,13 +228,13 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     setState(() {
       for (var j = 0; j < _blocks.length; j++) {
         if (_blocks[j].isImage) {
-          _blocks[j].imgRole = j == i ? 'hero' : 'img';
+          _blocks[j].imgRole = j == i ? 'hero' : 'content';
         }
       }
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Portada del marco (hero) actualizada')),
+      const SnackBar(content: Text('Hero image updated for GK frame')),
     );
   }
 
@@ -299,7 +305,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     });
   }
 
-  /// Compatible con legacy: null, texto plano, array JSON (p/link/img → p con marcador).
+  /// Legacy-compatible: null, plain text, or JSON block arrays.
   List<_BlockDraft> _decodeBodyText(String? raw) {
     if (raw == null || raw.trim().isEmpty) {
       return [];
@@ -318,7 +324,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         final m = Map<String, dynamic>.from(
           el.map((k, v) => MapEntry(k.toString(), v)),
         );
-        final t = (m['t'] ?? m['type'] ?? 'p').toString();
+        final t = (m['t'] ?? m['type'] ?? 'p').toString().toLowerCase().trim();
         if (t == 'link') {
           out.add(
             _BlockDraft.link(
@@ -330,34 +336,50 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         }
         if (t == 'img') {
           final src = (m['src'] ?? m['assetKey'] ?? '').toString();
-          var role = (m['role'] ?? 'img').toString();
-          if (role != 'hero') role = 'img';
-          out.add(_BlockDraft.img(src: src, role: role));
+          var role = (m['role'] ?? 'content').toString().toLowerCase().trim();
+          if (role == 'img') role = 'content';
+          if (role != 'hero' && role != 'collage' && role != 'content') {
+            role = 'content';
+          }
+          int? collageOrder;
+          if (role == 'collage') {
+            final o = m['collageOrder'];
+            if (o is int) collageOrder = o;
+            if (o is num) collageOrder = o.toInt();
+          }
+          out.add(_BlockDraft.img(src: src, role: role, collageOrder: collageOrder));
           continue;
         }
+        var textKind = (m['textKind'] ?? '').toString().toLowerCase().trim();
+        if (textKind.isEmpty) {
+          if (t == 'hint') textKind = 'hint';
+          if (t == 'place') textKind = 'place';
+          if (t == 'ridiculous_story' || t == 'story') textKind = 'ridiculous_story';
+        }
+        if (!_kTextKinds.containsKey(textKind)) textKind = 'text';
         final plain = (m['text'] ?? '').toString().trim();
         final imgLegacy = RegExp(r'^\[img:\s*(.+?)\]\s*$').firstMatch(plain);
         if (imgLegacy != null) {
           out.add(_BlockDraft.img(src: imgLegacy.group(1)!.trim()));
         } else {
-          out.add(_BlockDraft.p(text: plain));
+          out.add(_BlockDraft.p(text: plain, textKind: textKind));
         }
       }
       if (out.isEmpty) {
-        return [_BlockDraft.p(text: raw.trim())];
+        return [_BlockDraft.p(text: raw.trim(), textKind: 'text')];
       }
       var heroSeen = false;
       for (final b in out) {
         if (b.isImage && b.imgRole == 'hero') {
           if (heroSeen) {
-            b.imgRole = 'img';
+            b.imgRole = 'content';
           }
           heroSeen = true;
         }
       }
       return out;
     } catch (_) {
-      return [_BlockDraft.p(text: raw.trim())];
+      return [_BlockDraft.p(text: raw.trim(), textKind: 'text')];
     }
   }
 
@@ -436,8 +458,28 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     });
   }
 
+  int _nextCollageOrder() {
+    var maxOrder = 0;
+    for (final b in _blocks) {
+      if (!b.isImage || b.imgRole != 'collage') continue;
+      final o = b.collageOrder ?? 0;
+      if (o > maxOrder) maxOrder = o;
+    }
+    return maxOrder + 1;
+  }
+
   Future<void> _save() async {
     final payload = <Map<String, dynamic>>[];
+    final collagesOrdered = _blocks
+        .where((b) => b.isImage && b.imgRole == 'collage')
+        .toList()
+      ..sort((a, b) => (a.collageOrder ?? 99999).compareTo(b.collageOrder ?? 99999));
+    var nextAutoOrder = 1;
+    for (final c in collagesOrdered) {
+      if ((c.collageOrder ?? 0) < nextAutoOrder) c.collageOrder = nextAutoOrder;
+      nextAutoOrder = c.collageOrder! + 1;
+    }
+
     for (final b in _blocks) {
       if (b.isLink) {
         final k = b.linkKeyCtrl!.text.trim();
@@ -448,12 +490,19 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         final s = b.srcCtrl!.text.trim();
         if (s.isEmpty) continue;
         final row = <String, dynamic>{'type': 'img', 'src': s};
-        if (b.imgRole == 'hero') row['role'] = 'hero';
+        if (b.imgRole == 'hero') {
+          row['role'] = 'hero';
+        } else if (b.imgRole == 'collage') {
+          row['role'] = 'collage';
+          row['collageOrder'] = b.collageOrder ?? nextAutoOrder++;
+        } else {
+          row['role'] = 'content';
+        }
         payload.add(row);
       } else {
         final t = b.textCtrl!.text.trim();
         if (t.isEmpty) continue;
-        payload.add({'type': 'p', 'text': t});
+        payload.add({'type': 'p', 'text': t, 'textKind': b.textKind});
       }
     }
 
@@ -483,6 +532,16 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final collageSeqByIndex = <int, int>{};
+    var collageSeq = 1;
+    for (var j = 0; j < _blocks.length; j++) {
+      final b = _blocks[j];
+      if (b.isImage && b.imgRole == 'collage') {
+        collageSeqByIndex[j] = collageSeq;
+        collageSeq++;
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text('LocusEditor · ${widget.entryKey}'),
@@ -491,9 +550,27 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
           onPressed: () => Navigator.of(context).pop(false),
         ),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: 'More options',
+            onSelected: (value) {
+              if (value == 'migrate') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Migrate content: pending functional definition'),
+                  ),
+                );
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<String>(
+                value: 'migrate',
+                child: Text('Migrate content (pending)'),
+              ),
+            ],
+          ),
           TextButton(
             onPressed: _save,
-            child: const Text('GUARDAR'),
+            child: const Text('SAVE'),
           ),
         ],
       ),
@@ -504,7 +581,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: InputDecorator(
               decoration: const InputDecoration(
-                labelText: 'Rol cognitivo (solo LB; GK no lee)',
+                labelText: 'Cognitive role (LB only; GK does not read this)',
                 border: OutlineInputBorder(),
               ),
               child: DropdownButtonHideUnderline(
@@ -535,17 +612,17 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                 OutlinedButton.icon(
                   onPressed: _addParagraph,
                   icon: const Icon(Icons.text_fields),
-                  label: const Text('Párrafo'),
+                  label: const Text('Paragraph'),
                 ),
                 OutlinedButton.icon(
                   onPressed: _addLink,
                   icon: const Icon(Icons.link),
-                  label: const Text('Enlace'),
+                  label: const Text('Link'),
                 ),
                 OutlinedButton.icon(
                   onPressed: _addImage,
                   icon: const Icon(Icons.image_outlined),
-                  label: const Text('Imagen'),
+                  label: const Text('Image'),
                 ),
               ],
             ),
@@ -553,9 +630,10 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Text(
-              'Pegar imagen o texto: Ctrl+V / Cmd+V (con el foco fuera de un campo de texto). '
-              'Portada del marco GK: botón «Portada» o clic en la imagen y Ctrl/Cmd+H. '
-              'En escritorio: suelta aquí archivos .png / .jpg / .webp.',
+              'Paste image or text: Ctrl+V / Cmd+V (with focus outside text fields). '
+              'Set image target: Content (viewer only), Collage (GK wall), or Hero (GK frame). '
+              'Hero shortcut: click image + Ctrl/Cmd+H. '
+              'Desktop: drop .png / .jpg / .webp files.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
@@ -567,8 +645,8 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                         child: Padding(
                           padding: const EdgeInsets.all(24),
                           child: Text(
-                            'Sin bloques. Añade párrafo, enlace o imagen, '
-                            'o pega / arrastra una imagen.',
+                            'No blocks yet. Add paragraph, link, image, '
+                            'or paste/drop an image.',
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyLarge,
                           ),
@@ -585,7 +663,11 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                           final tagLabel = b.isLink
                               ? 'link'
                               : b.isImage
-                                  ? (b.imgRole == 'hero' ? 'HERO' : 'IMG')
+                                  ? (b.imgRole == 'hero'
+                                      ? 'HERO'
+                                      : b.imgRole == 'collage'
+                                          ? 'COLLAGE #${collageSeqByIndex[i] ?? 0}'
+                                          : 'CONTENT')
                                   : 'p';
                           return Card(
                             margin: const EdgeInsets.only(bottom: 12),
@@ -601,6 +683,8 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                     side: BorderSide(
                                       color: b.imgRole == 'hero'
                                           ? const Color(0xFF1565C0)
+                                          : b.imgRole == 'collage'
+                                              ? const Color(0xFF2E7D32)
                                           : Colors.grey.shade600,
                                       width: 2,
                                     ),
@@ -635,13 +719,15 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                           backgroundColor: b.isImage
                                               ? (b.imgRole == 'hero'
                                                   ? Colors.blue.shade100
+                                                  : b.imgRole == 'collage'
+                                                      ? Colors.green.shade100
                                                   : Colors.grey.shade300)
                                               : null,
                                         ),
                                         if (imgFocused) ...[
                                           const SizedBox(width: 8),
                                           Text(
-                                            'foco · Ctrl/Cmd+H',
+                                            'focus · Ctrl/Cmd+H',
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .labelSmall,
@@ -650,7 +736,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                         const Spacer(),
                                         IconButton(
                                           icon: const Icon(Icons.arrow_upward),
-                                          tooltip: 'Subir',
+                                          tooltip: 'Move up',
                                           onPressed: i == 0
                                               ? null
                                               : () => _moveUp(i),
@@ -658,7 +744,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                         IconButton(
                                           icon:
                                               const Icon(Icons.arrow_downward),
-                                          tooltip: 'Bajar',
+                                          tooltip: 'Move down',
                                           onPressed:
                                               last ? null : () => _moveDown(i),
                                         ),
@@ -666,40 +752,118 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                           icon: const Icon(
                                             Icons.delete_outline,
                                           ),
-                                          tooltip: 'Eliminar',
+                                          tooltip: 'Delete',
                                           onPressed: () => _removeAt(i),
                                         ),
                                       ],
                                     ),
+                                    if (!b.isImage && !b.isLink) ...[
+                                      DropdownButtonFormField<String>(
+                                        initialValue: b.textKind,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Text kind',
+                                          border: OutlineInputBorder(),
+                                        ),
+                                        items: [
+                                          for (final e in _kTextKinds.entries)
+                                            DropdownMenuItem<String>(
+                                              value: e.key,
+                                              child: Text(e.value),
+                                            ),
+                                        ],
+                                        onChanged: (v) {
+                                          if (v == null) return;
+                                          setState(() => b.textKind = v);
+                                        },
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
                                     if (b.isLink) ...[
                                       TextField(
                                         controller: b.linkKeyCtrl!,
                                         decoration: const InputDecoration(
-                                          labelText: 'KEY destino',
+                                          labelText: 'Target KEY',
                                           border: OutlineInputBorder(),
                                         ),
                                       ),
                                       const SizedBox(height: 8),
                                     ],
                                     if (b.isImage) ...[
-                                      Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: FilledButton.tonalIcon(
-                                          onPressed: () =>
-                                              _promoteBlockToHero(i),
-                                          icon: const Icon(Icons.star_outline),
-                                          label: const Text(
-                                            'Portada (marco GK)',
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: DropdownButtonFormField<String>(
+                                              initialValue: b.imgRole,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Image target',
+                                                border: OutlineInputBorder(),
+                                              ),
+                                              items: const [
+                                                DropdownMenuItem(
+                                                  value: 'content',
+                                                  child: Text('Viewer only'),
+                                                ),
+                                                DropdownMenuItem(
+                                                  value: 'collage',
+                                                  child: Text('Wall collage (GK)'),
+                                                ),
+                                                DropdownMenuItem(
+                                                  value: 'hero',
+                                                  child: Text('Hero (GK frame)'),
+                                                ),
+                                              ],
+                                              onChanged: (v) {
+                                                if (v == null) return;
+                                                setState(() {
+                                                  if (v == 'hero') {
+                                                    for (final other in _blocks) {
+                                                      if (other.isImage && other.imgRole == 'hero') {
+                                                        other.imgRole = 'content';
+                                                      }
+                                                    }
+                                                    b.collageOrder = null;
+                                                  } else if (v == 'collage') {
+                                                    b.collageOrder ??= _nextCollageOrder();
+                                                  } else {
+                                                    b.collageOrder = null;
+                                                  }
+                                                  b.imgRole = v;
+                                                });
+                                              },
+                                            ),
                                           ),
-                                        ),
+                                          if (b.imgRole == 'collage') ...[
+                                            const SizedBox(width: 8),
+                                            SizedBox(
+                                              width: 92,
+                                              child: TextFormField(
+                                                initialValue: (b.collageOrder ?? 1).toString(),
+                                                keyboardType: const TextInputType.numberWithOptions(
+                                                  signed: false,
+                                                  decimal: false,
+                                                ),
+                                                decoration: const InputDecoration(
+                                                  labelText: 'Order',
+                                                  border: OutlineInputBorder(),
+                                                  isDense: true,
+                                                ),
+                                                onChanged: (v) {
+                                                  final n = int.tryParse(v.trim());
+                                                  if (n == null || n <= 0) return;
+                                                  b.collageOrder = n;
+                                                },
+                                              ),
+                                            ),
+                                          ],
+                                        ],
                                       ),
                                       const SizedBox(height: 8),
                                       TextField(
                                         controller: b.srcCtrl!,
                                         decoration: InputDecoration(
                                           labelText:
-                                              'Archivo en assets/${widget.entryKey}/',
-                                          hintText: 'ej. foto.png',
+                                              'File in assets/${widget.entryKey}/',
+                                          hintText: 'e.g. image.png',
                                           border: const OutlineInputBorder(),
                                         ),
                                       ),
@@ -715,8 +879,8 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                         maxLines: 8,
                                         decoration: InputDecoration(
                                           labelText: b.isLink
-                                              ? 'Texto visible del enlace'
-                                              : 'Texto',
+                                              ? 'Link label'
+                                              : 'Text',
                                           border: const OutlineInputBorder(),
                                         ),
                                       ),
@@ -750,21 +914,26 @@ class _BlockDraft {
       : kind = _BlockKind.paragraph,
         linkKeyCtrl = null,
         srcCtrl = null,
-        imgRole = 'img';
+        imgRole = 'content',
+        textKind = 'text';
 
   _BlockDraft._link(this.textCtrl, this.linkKeyCtrl)
       : kind = _BlockKind.link,
         srcCtrl = null,
-        imgRole = 'img';
+        imgRole = 'content',
+        textKind = 'text';
 
-  _BlockDraft._image(this.srcCtrl, {String role = 'img'})
+  _BlockDraft._image(this.srcCtrl, {String role = 'content', this.collageOrder})
       : kind = _BlockKind.image,
         textCtrl = null,
         linkKeyCtrl = null,
-        imgRole = role == 'hero' ? 'hero' : 'img';
+        imgRole = (role == 'hero' || role == 'collage') ? role : 'content',
+        textKind = 'text';
 
-  factory _BlockDraft.p({String text = ''}) {
-    return _BlockDraft._paragraph(TextEditingController(text: text));
+  factory _BlockDraft.p({String text = '', String textKind = 'text'}) {
+    final b = _BlockDraft._paragraph(TextEditingController(text: text));
+    b.textKind = _kTextKinds.containsKey(textKind) ? textKind : 'text';
+    return b;
   }
 
   factory _BlockDraft.link({String destKey = '', String text = ''}) {
@@ -774,10 +943,11 @@ class _BlockDraft {
     );
   }
 
-  factory _BlockDraft.img({String src = '', String role = 'img'}) {
+  factory _BlockDraft.img({String src = '', String role = 'content', int? collageOrder}) {
     return _BlockDraft._image(
       TextEditingController(text: src),
       role: role,
+      collageOrder: collageOrder,
     );
   }
 
@@ -786,8 +956,10 @@ class _BlockDraft {
   final TextEditingController? linkKeyCtrl;
   final TextEditingController? srcCtrl;
 
-  /// Solo bloques `img`: `hero` = portada copiada a `assets/<key>/hero.*` para GK.
+  /// Solo bloques `img`: `hero` (marco GK), `collage` (pared GK), `content` (solo viewer).
   String imgRole;
+  int? collageOrder;
+  String textKind;
 
   bool get isLink => kind == _BlockKind.link;
   bool get isImage => kind == _BlockKind.image;
@@ -835,7 +1007,7 @@ class _ImagePreviewTileState extends State<_ImagePreviewTile> {
     final name = widget.srcController.text.trim();
     if (name.isEmpty) {
       return Text(
-        'Vista previa: indica un nombre de archivo',
+        'Preview: set a filename',
         style: Theme.of(context).textTheme.bodySmall,
       );
     }
@@ -844,7 +1016,7 @@ class _ImagePreviewTileState extends State<_ImagePreviewTile> {
     final f = File(path);
     if (!f.existsSync()) {
       return Text(
-        'No encontrado: $path',
+        'Not found: $path',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.error,
             ),
@@ -857,7 +1029,7 @@ class _ImagePreviewTileState extends State<_ImagePreviewTile> {
         height: 160,
         fit: BoxFit.contain,
         errorBuilder: (context, error, stackTrace) =>
-            const Text('No se pudo cargar la imagen'),
+            const Text('Could not load image'),
       ),
     );
   }

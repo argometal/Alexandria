@@ -2929,3 +2929,49 @@ ANEXO — RESUMEN DE EDITORIAL v3 (ORM-15V3) — actualizado al sello
 * **Sin cambio:** formato mínimo snapshot (`key` + `seq`, N=20); núcleo KEY / parentKey / seq / GK.
 
 **Estado:** **SELLADO v3 (2026-04-07).** **Fase 1 + 1.5 (parcial) en código:** LB lee `context_key.txt` / `focus_key.txt` con fallback a `open_key.txt`; bootstrap inicial copia `open_key` → dual si faltan; `syncViewer` y `runLibraryBuild` usan precedencia ACUERDO; viewer JSON con `key` vacío soportado; links en GK escriben `focus_key.txt` + `open_key.txt`. **Pendiente Fase 2:** `RealmController` / frames escribiendo `context_key`+`focus_key` con reglas EXISTS (solo viewer vs entrar nivel).
+
+---
+
+ANEXO — IMPLEMENTACIÓN CONFIRMADA EN GK (iteración actual, sin ambigüedad)
+
+Este anexo registra únicamente comportamiento ya construido y observado en código de GateKeeper, sin abrir decisiones nuevas de arquitectura.
+
+1) Bridge v3 operativo en GK (archivo dual)
+
+* GK escribe y lee `context_key.txt`, `focus_key.txt` y `current_seq.txt` vía `BridgeSpatial`.
+* `RealmController` actualiza bridge en navegación:
+  * foco (sin entrar nivel): `focus_key`
+  * entrar / back de nivel: `context_key` + `focus_key` + trigger de refresh
+* `ViewerService` lee `C:\Alexandria\data\viewer\<focus_key>.json` con fallback a `current.json`.
+
+2) Snapshot consumido por GK sin DB directa
+
+* `Spawner` carga snapshot JSON desde:
+  * `C:\Alexandria\data\snapshot\<context_key>.json`
+  * fallback: `C:\Alexandria\snapshot\current.json`
+* Asignación sigue contrato `KEY -> seq` sobre `FramesContainer`; no hay lectura SQLite en GK.
+
+3) Corredor Z (N fijo) con geometría derivada de snapshot
+
+* N de loci permanece fijo en GK (`FrameSlotCount = 20`).
+* El layout espacial se recalcula en GK y luego se aplica snapshot.
+* Muros de collage, floor y ceiling se regeneran por tramo tras refresh.
+
+4) Cámara y marco (estado visual/espacial consolidado)
+
+* Restauración de cámara en `TryRestoreCameraAfterSnapshot()` usa centro de corredor en X (`CorridorCameraRigX = 0`) para `CORRIDOR_Z`.
+* `FrameTemplate` tiene volumen 3D real (nodo de profundidad + plano frontal de imagen + colisión ampliada).
+
+5) Collage de pared y acoples de tramo
+
+* Collage de pared se renderiza como paneles por imagen en `BuildPanelsForTramo`.
+* Distancias y tamaño visual del collage se controlan por constantes en `Spawner` (parámetros operativos de tuning).
+* `floor/ceiling` se alinean al rango real del collage (inicio/fin efectivo de paneles), no solo al `zA..zB` bruto del tramo.
+
+6) Escalado adicional confirmado de superficies
+
+* `Floor/Ceiling`: longitud efectiva extendida por `FloorCeilingExtraLengthMeters` (actualmente aumentada respecto al base histórico).
+* `WallScene.tscn`: malla base de pared incrementada en longitud (`PlaneMesh size.y` ajustado de 5 a 6 en esta iteración).
+
+Nota editorial:
+Este anexo describe estado implementado de runtime/tuning. No modifica los invariantes del contrato ORM-15V3; solo documenta la materialización actual en GK.

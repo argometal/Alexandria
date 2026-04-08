@@ -48,6 +48,12 @@ public partial class Spawner : Node3D
 
 	// [Cambio 273] diagnóstico refresh — evitar spam (1 Hz)
 	private double _snapshotRefreshCheckTimer = 0;
+	private readonly Dictionary<string, string> _lastWallSignatureByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+	/// <summary>Tras rechazar snapshot (bridge ≠ JSON): backoff antes de reintentar con refresh_now.</summary>
+	private double _snapshotReloadBackoffSec;
+
+	private const string SnapshotCurrentJsonPath = @"C:\Alexandria\snapshot\current.json";
 
 	// --- Corredor recto Z: QuadMesh Size=(PanelHeight,PanelWidth); con rot -90°Y la extensión en +Z es PanelHeight. ---
 	private const int FrameSlotCount = 20;
@@ -126,29 +132,74 @@ public partial class Spawner : Node3D
 		for (var i = 1; i < FrameSlotCount; i++)
 		{
 			var k = i < keysBySeq.Length ? keysBySeq[i] : "";
-			var n = AlexandriaAssets.ListWallGalleryImagePaths(k).Count;
+			var n = AlexandriaAssets.GetWallCollageGroups(k).Count;
 			_frameZPositions[i] = _frameZPositions[i - 1] + ComputeSegmentGap(n);
 		}
 
 		_corridorLayoutBuilt = true;
 	}
 
+	private static bool ResolveSnapshotPath(string bridgeCtx, out string path, out bool usedCurrentJsonFallback)
+	{
+		usedCurrentJsonFallback = false;
+		bridgeCtx = (bridgeCtx ?? "").Trim();
+		if (string.IsNullOrEmpty(bridgeCtx))
+		{
+			path = SnapshotCurrentJsonPath;
+			return File.Exists(path);
+		}
+
+		var keyed = Path.Combine(@"C:\Alexandria\data\snapshot", bridgeCtx + ".json");
+		if (File.Exists(keyed))
+		{
+			path = keyed;
+			return true;
+		}
+
+		if (File.Exists(SnapshotCurrentJsonPath))
+		{
+			path = SnapshotCurrentJsonPath;
+			usedCurrentJsonFallback = true;
+			return true;
+		}
+
+		path = keyed;
+		return false;
+	}
+
+	/// <summary>
+	/// Evita aplicar <c>current.json</c> del hijo cuando el bridge ya apuntó al padre
+	/// (GK corre antes que LibraryBuild). JSON nuevo incluye <c>contextKey</c>; legado: nombre de archivo keyed.
+	/// </summary>
+	private static bool SnapshotDataMatchesBridge(Godot.Collections.Dictionary data, string bridgeCtx, string resolvedPath, bool usedCurrentJsonFallback)
+	{
+		bridgeCtx = (bridgeCtx ?? "").Trim();
+		if (string.IsNullOrEmpty(bridgeCtx))
+			return true;
+
+		if (data.ContainsKey("contextKey"))
+		{
+			var v = data["contextKey"];
+			var snapCtx = v.VariantType == Variant.Type.String ? v.AsString().Trim() : "";
+			return string.Equals(snapCtx, bridgeCtx, StringComparison.OrdinalIgnoreCase);
+		}
+
+		if (!usedCurrentJsonFallback)
+		{
+			var fn = Path.GetFileNameWithoutExtension(resolvedPath);
+			return string.Equals(fn, bridgeCtx, StringComparison.OrdinalIgnoreCase);
+		}
+
+		return false;
+	}
+
 	private bool TryReadSnapshotKeysFromDisk(string[] keysBySeq)
 	{
 		for (var i = 0; i < keysBySeq.Length; i++)
 			keysBySeq[i] = "";
-		var contextKey = BridgeSpatial.ReadContextKey();
-		var path = string.IsNullOrEmpty(contextKey)
-			? @"C:\Alexandria\snapshot\current.json"
-			: $@"C:\Alexandria\data\snapshot\{contextKey}.json";
-		var fallbackPath = @"C:\Alexandria\snapshot\current.json";
-		if (!File.Exists(path))
-		{
-			if (path != fallbackPath && File.Exists(fallbackPath))
-				path = fallbackPath;
-			else
-				return false;
-		}
+		var bridgeCtx = BridgeSpatial.ReadContextKey()?.Trim() ?? "";
+		if (!ResolveSnapshotPath(bridgeCtx, out var path, out var usedFb))
+			return false;
 
 		try
 		{
@@ -158,6 +209,8 @@ public partial class Spawner : Node3D
 				return false;
 			var data = jsonNode.Data.AsGodotDictionary();
 			if (!data.ContainsKey("frames"))
+				return false;
+			if (!SnapshotDataMatchesBridge(data, bridgeCtx, path, usedFb))
 				return false;
 			var frames = data["frames"].AsGodotArray();
 			foreach (Variant f in frames)
@@ -204,15 +257,6 @@ public partial class Spawner : Node3D
 			c.QueueFree();
 	}
 
-	private static ImageTexture LoadWallPanelAlbedo(string path)
-	{
-		var img = AlexandriaAssets.TryLoadImage(path);
-		if (img == null)
-			return null;
-		img.Convert(Image.Format.Rgba8);
-		return ImageTexture.CreateFromImage(img);
-	}
-
 	private bool TryComputePanelBounds(float zA, float zB, int requestedCount, out int fittedCount, out float startZ, out float endZ)
 	{
 		fittedCount = Mathf.Max(0, requestedCount);
@@ -231,7 +275,7 @@ public partial class Spawner : Node3D
 		return false;
 	}
 
-	private void BuildPanelsForTramo(Node3D wallsContainer, float zA, float zB, List<string> images, string segmentName)
+	private void BuildPanelsForTramo(Node3D wallsContainer, float zA, float zB, List<AlexandriaAssets.CollageGroup> groups, string segmentName)
 	{
 		var segmentLength = Mathf.Max(0.01f, zB - zA);
 		var backing = new MeshInstance3D { Name = segmentName + "_Backing" };
@@ -243,7 +287,7 @@ public partial class Spawner : Node3D
 		backing.Visible = false;
 		wallsContainer.AddChild(backing);
 
-		var working = new List<string>(images);
+		var working = new List<AlexandriaAssets.CollageGroup>(groups);
 		if (!TryComputePanelBounds(zA, zB, working.Count, out var fittedCount, out var startZ, out var endZ))
 			return;
 		if (fittedCount < working.Count)
@@ -252,8 +296,8 @@ public partial class Spawner : Node3D
 		if (working.Count == 0)
 			return;
 
-		if (working.Count < images.Count)
-			GD.PrintErr($"[PANEL_TRIM] {segmentName} trimmed {images.Count - working.Count} images (overflow)");
+		if (working.Count < groups.Count)
+			GD.PrintErr($"[PANEL_TRIM] {segmentName} trimmed {groups.Count - working.Count} collage groups (overflow)");
 
 		var cursorZ = startZ + PanelExtentAlongCorridorZ * 0.5f;
 		for (var i = 0; i < working.Count; i++)
@@ -264,7 +308,7 @@ public partial class Spawner : Node3D
 			panel.Mesh = q;
 			panel.Position = new Vector3(WallPlaneX, MarcoStartY, cursorZ);
 			panel.RotationDegrees = new Vector3(0f, -90f, 0f);
-			var tex = LoadWallPanelAlbedo(working[i]);
+			var tex = AlexandriaAssets.BuildCollageTexture(working[i].ImagePaths);
 			if (tex != null)
 			{
 				var mat = new StandardMaterial3D();
@@ -304,13 +348,13 @@ public partial class Spawner : Node3D
 		{
 			var zB = _frameZPositions[dest];
 			var k = dest < keysBySeq.Length ? keysBySeq[dest] : "";
-			var n = AlexandriaAssets.ListWallGalleryImagePaths(k).Count;
+			var groups = AlexandriaAssets.GetWallCollageGroups(k);
+			var n = groups.Count;
 			var zA = dest == 0 ? zB - ComputeSegmentGap(n) : _frameZPositions[dest - 1];
-			var images = AlexandriaAssets.ListWallGalleryImagePaths(k);
-			BuildPanelsForTramo(walls, zA, zB, images, $"Seg_{dest}");
+			BuildPanelsForTramo(walls, zA, zB, groups, $"Seg_{dest}");
 			var floorA = zA;
 			var floorB = zB;
-			if (TryComputePanelBounds(zA, zB, images.Count, out _, out var panelStartZ, out var panelEndZ))
+			if (TryComputePanelBounds(zA, zB, groups.Count, out _, out var panelStartZ, out var panelEndZ))
 			{
 				floorA = panelStartZ;
 				floorB = panelEndZ;
@@ -318,6 +362,49 @@ public partial class Spawner : Node3D
 			SpawnFloorCeilingSegment(FloorScene, floors, $"FloorSeg_{dest}", 0f, floorA, floorB);
 			SpawnFloorCeilingSegment(CeilingScene, ceilings, $"CeilingSeg_{dest}", 3.2f, floorA, floorB);
 		}
+	}
+
+	private void PrimeWallManifestSignatures()
+	{
+		_lastWallSignatureByKey.Clear();
+		var keys = GatherKeysFromFrames();
+		for (var i = 0; i < keys.Length; i++)
+		{
+			var k = keys[i] ?? "";
+			if (string.IsNullOrWhiteSpace(k))
+				continue;
+			_lastWallSignatureByKey[k] = AlexandriaAssets.GetWallSourceSignature(k);
+		}
+	}
+
+	private bool DidWallManifestChange()
+	{
+		var keys = GatherKeysFromFrames();
+		var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var changed = false;
+		for (var i = 0; i < keys.Length; i++)
+		{
+			var k = (keys[i] ?? "").Trim();
+			if (string.IsNullOrEmpty(k) || !seen.Add(k))
+				continue;
+			var sig = AlexandriaAssets.GetWallSourceSignature(k);
+			if (!_lastWallSignatureByKey.TryGetValue(k, out var prev) || !string.Equals(prev, sig, StringComparison.Ordinal))
+			{
+				_lastWallSignatureByKey[k] = sig;
+				changed = true;
+			}
+		}
+
+		var stale = new List<string>();
+		foreach (var k in _lastWallSignatureByKey.Keys)
+		{
+			if (!seen.Contains(k))
+				stale.Add(k);
+		}
+		foreach (var k in stale)
+			_lastWallSignatureByKey.Remove(k);
+
+		return changed;
 	}
 
 	private void ApplyCorridorGeometryAfterSnapshot()
@@ -560,6 +647,7 @@ public partial class Spawner : Node3D
 
 		ApplyCorridorGeometryAfterSnapshot();
 		TryRestoreCameraAfterSnapshot();
+		PrimeWallManifestSignatures();
 		_snapshotLoaded = true;
 
 		SetProcess(true);
@@ -574,48 +662,61 @@ public partial class Spawner : Node3D
 	/// <summary>
 	/// [A14→A15] Lee snapshot únicamente; asigna KEY por índice de slot (seq). Sin DB.
 	/// Frames viven en FramesContainer; seq es índice directo (0..N-1).
+	/// Devuelve <c>false</c> si el JSON no corresponde al bridge (p. ej. <c>current.json</c> aún del hijo).
 	/// </summary>
-	private void LoadSnapshotAndAssign()
+	private bool LoadSnapshotAndAssign()
 	{
-		var contextKey = BridgeSpatial.ReadContextKey();
-		var path = string.IsNullOrEmpty(contextKey)
-			? @"C:\Alexandria\snapshot\current.json"
-			: $@"C:\Alexandria\data\snapshot\{contextKey}.json";
-		var fallbackPath = @"C:\Alexandria\snapshot\current.json";
-		if (!System.IO.File.Exists(path))
+		var bridgeCtx = BridgeSpatial.ReadContextKey()?.Trim() ?? "";
+		if (!ResolveSnapshotPath(bridgeCtx, out var path, out var usedFb))
 		{
-			if (path != fallbackPath && System.IO.File.Exists(fallbackPath))
-			{
-				GD.Print($"[SNAPSHOT][FALLBACK] missing={path} using={fallbackPath}");
-				path = fallbackPath;
-			}
-			else
-			{
-				GD.Print($"[SNAPSHOT][MISS] {path}");
-				return;
-			}
+			GD.PrintErr($"[SNAPSHOT][MISS] context={bridgeCtx}");
+			return false;
 		}
 
 		if (_framesRoot == null)
-			return;
+			return false;
 
 		var framesContainer = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
 		if (framesContainer == null)
 		{
 			GD.PrintErr("[SNAPSHOT] FramesContainer not found");
-			return;
+			return false;
 		}
 
-		var jsonText = System.IO.File.ReadAllText(path);
+		string jsonText;
+		try
+		{
+			jsonText = System.IO.File.ReadAllText(path);
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[SNAPSHOT][READ_FAIL] " + e.Message);
+			return false;
+		}
+
 		var jsonNode = new Json();
-		Error parseErr = jsonNode.Parse(jsonText);
-		if (parseErr != Error.Ok)
+		if (jsonNode.Parse(jsonText) != Error.Ok)
 		{
 			GD.PrintErr("[SNAPSHOT][PARSE_FAIL]");
-			return;
+			return false;
 		}
 
 		var data = jsonNode.Data.AsGodotDictionary();
+		if (!data.ContainsKey("frames"))
+		{
+			GD.PrintErr("[SNAPSHOT][NO_FRAMES]");
+			return false;
+		}
+
+		if (!SnapshotDataMatchesBridge(data, bridgeCtx, path, usedFb))
+		{
+			GD.PrintErr($"[SNAPSHOT][SKIP] snapshot no coincide con bridge (context={bridgeCtx} file={path} fallback={usedFb})");
+			return false;
+		}
+
+		if (usedFb)
+			GD.Print($"[SNAPSHOT][FALLBACK] usando current.json validado contextKey={bridgeCtx}");
+
 		var frames = data["frames"].AsGodotArray();
 
 		foreach (Variant f in frames)
@@ -642,6 +743,8 @@ public partial class Spawner : Node3D
 				GD.PrintErr($"[SNAPSHOT][SKIP] seq={seq} not a FrameTemplate");
 			}
 		}
+
+		return true;
 	}
 
 	/// <summary>
@@ -688,18 +791,43 @@ public partial class Spawner : Node3D
 		if (_snapshotRefreshCheckTimer >= 1.0)
 			_snapshotRefreshCheckTimer = 0;
 
+		_snapshotReloadBackoffSec -= delta;
+
 		if (System.IO.File.Exists(refreshPath))
 		{
-			GD.Print("[SNAPSHOT][REFRESH_DETECTED]");
+			if (_snapshotReloadBackoffSec <= 0)
+			{
+				GD.Print("[SNAPSHOT][REFRESH_DETECTED]");
 
-			System.IO.File.Delete(refreshPath);
+				if (LoadSnapshotAndAssign())
+				{
+					try
+					{
+						System.IO.File.Delete(refreshPath);
+					}
+					catch (Exception e)
+					{
+						GD.PrintErr("[SNAPSHOT][REFRESH_DEL] " + e.Message);
+					}
 
-			_snapshotLoaded = false;
-			LoadSnapshotAndAssign();
+					_snapshotLoaded = false;
+					ApplyCorridorGeometryAfterSnapshot();
+					TryRestoreCameraAfterSnapshot();
+					PrimeWallManifestSignatures();
+					_snapshotLoaded = true;
+					_snapshotReloadBackoffSec = 0;
+				}
+				else
+				{
+					_snapshotReloadBackoffSec = 0.2;
+					GD.PrintErr("[SNAPSHOT][RETRY] snapshot aún no alineado con bridge — esperando LibraryBuild (refresh permanece)");
+				}
+			}
+		}
+		else if (_snapshotLoaded && DidWallManifestChange())
+		{
+			GD.Print("[SPAWNER][WALL_MANIFEST_CHANGED] rebuild corridor geometry");
 			ApplyCorridorGeometryAfterSnapshot();
-			TryRestoreCameraAfterSnapshot();
-			_snapshotLoaded = true;
-
 		}
 
 		// [SCOPE:MAZE_TEST_INPUT]

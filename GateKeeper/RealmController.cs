@@ -10,6 +10,8 @@ public partial class RealmController : Node
 	// [SCOPE:CAMERA_CONTROL]
 	private CameraRig _camera;
 	private ViewerService _viewer;
+	private Label _intentHud = null!;
+	private double _intentPoll;
 
 	public override void _Ready()
 	{
@@ -26,6 +28,23 @@ public partial class RealmController : Node
 		GD.Print(_camera == null ? "[RC][CAMERA NULL]" : "[RC][CAMERA OK]");
 		GD.Print(_viewer == null ? "[RC][VIEWER NULL] path=/root/Realm/ViewerService" : "[RC][VIEWER OK]");
 		Input.MouseMode = Input.MouseModeEnum.Captured;
+
+		var hudLayer = new CanvasLayer();
+		hudLayer.Layer = 30;
+		AddChild(hudLayer);
+		var hudRoot = new Control();
+		hudRoot.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+		hudRoot.MouseFilter = Control.MouseFilterEnum.Ignore;
+		hudLayer.AddChild(hudRoot);
+		_intentHud = new Label();
+		_intentHud.HorizontalAlignment = HorizontalAlignment.Right;
+		_intentHud.SetAnchorsPreset(Control.LayoutPreset.TopRight);
+		_intentHud.OffsetLeft = -400f;
+		_intentHud.OffsetTop = 10f;
+		_intentHud.OffsetRight = -12f;
+		_intentHud.OffsetBottom = 36f;
+		_intentHud.Text = "Intent: " + BridgeSpatial.ReadNavigationIntent();
+		hudRoot.AddChild(_intentHud);
 
 		SetProcess(true);
 		SetProcessInput(true);
@@ -175,6 +194,13 @@ public partial class RealmController : Node
 		if (Input.IsActionPressed("ui_left"))
 			_camera.MoveRight(-(float)delta);
 
+		_intentPoll += delta;
+		if (_intentPoll >= 0.35)
+		{
+			_intentPoll = 0;
+			if (_intentHud != null)
+				_intentHud.Text = "Intent: " + BridgeSpatial.ReadNavigationIntent();
+		}
 	}
 
 

@@ -1,0 +1,20 @@
+C:\Companion\dataAbstract
+TBC (Toolbox Companion) is a lightweight local HTTP server with a browser UI. Users see configurable pages of tiles; each tile opens a URL in the default browser, launches a program or folder path on the PC, or runs several actions in sequence. Paths can use shared name macros (for example well root and startup folders), with optional per-machine overrides via environment variables. Configuration is stored in a single JSON file; the built-in editor saves changes from the same machine only. The companion exposes simple REST endpoints so scripts or other tools can trigger tiles by id or by slot on an optional grid layout. Errors are recorded in a local SQLite log for troubleshooting. TBC is designed to be portable (optional bundled Node.js), runs independently of other integration frameworks, and reduces repeated manual navigation for recurring workflows.
+Introduction
+Toolbox Companion was conceived to give engineers and office staff a consistent, fast way to reach the same URLs, executables, and directory trees they use every day, without hunting through Start menus or inconsistent shortcuts. The technology stack is Node.js serving static HTML/CSS/JavaScript and JSON configuration. Stakeholders include the end users who define tiles and macros for their rig or office, IT or support staff who may read error logs, and any automation that calls the HTTP API. Related work includes generic launchers and enterprise portals; TBC differs by staying small, file-driven, and easy to deploy as a folder copy.
+Problem Definition
+Users often lose time opening the same mix of browser tabs, Explorer paths, and applications in a fixed order. Shortcuts break when paths change between wells or machines; training material does not always match the desktop. Quantifying impact: extra minutes per shift on repetitive launches, occasional wrong folder from manual navigation, and support effort when shortcuts are outdated.
+Benefit to Schlumberger and to Client
+Faster, more reliable access to approved links and paths reduces friction during shift handover and daily reporting. Benefits include fewer mis-clicks, shared macro definitions instead of hard-coded paths on every tile, and a single place to update behavior when URLs or drive mappings change.
+Project Objectives
+Deliver a maintainable launcher: (1) one web UI for grouped tiles; (2) macro-based targets portable across PCs; (3) optional HTTP API for automation; (4) local error logging; (5) configuration editable without a database. Out of scope: replacing enterprise SSO, hosting internet-facing services, or auto-updating the application without user action.
+Project Deliverables
+Shipped deliverables: runnable TBCompanion folder with start scripts; tbc.config.json schema with pages and tiles; browser UI; SQLite error log; documented HTTP endpoints (config, run, launcher manifest, health).
+Project Timeline
+Implementation follows iterative delivery: core server and tiles first, then macros and editor, then companion grid API and logging. Milestones align with internal validation on a pilot machine before wider copy deployment.
+Project Resources
+Resources include developer time for features and fixes, a Windows PC to run the server, and optional time from a pilot user to validate tile sets. No external hosting fees for the default design (localhost). Assumptions: Node runtime available or bundled; users have rights to launch paths they configure.
+Project Risks
+Risks include misconfigured paths (mitigation: macros and validation), local firewall rules blocking the chosen port (mitigation: configurable port), and reliance on the same machine for UI editing (accepted scope). Operational risk is low because the tool is optional and file-backed.
+Conclusion
+Toolbox Companion is a focused, low-footprint launcher that matches recurring SLB-style workflows while remaining easy to copy, edit, and support. Approval supports standardizing daily launch patterns and reducing avoidable navigation errors.

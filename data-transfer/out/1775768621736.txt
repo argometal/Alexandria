@@ -1,0 +1,11 @@
+Hi [Name],
+
+I am preparing a G11 project focused on improving operational efficiency by reducing navigation overhead during routine workflows.
+
+The solution is a lightweight local launcher (Toolbox Companion) that standardizes access to applications, folders, and reporting resources. It does not require infrastructure changes and can be piloted in a single operation.
+
+I would like to ask if you would be willing to act as sponsor for this submission. The role is mainly to validate operational relevance and support the pilot.
+
+I can share a short demo and summary.
+
+Thanks,

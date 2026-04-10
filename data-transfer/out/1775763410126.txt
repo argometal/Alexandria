@@ -1,0 +1,144 @@
+Texto final (1–2 páginas, listo para pegar, alineado a template y G11-safe):
+
+---
+
+**Toolbox Companion (TBC)**
+<CDPH Project ID>
+<G11 Candidate’s Name>, <Business Unit>, <Month-Year>
+This project proposal is prepared for G11 Control
+
+---
+
+## Abstract
+
+Toolbox Companion (TBC) is a lightweight local launcher that triggers applications, folders, URLs, and multi-step sequences from a single interface. It operates as a local Node.js server with a browser-based UI, using a configurable tile system and shared macros to standardize access to operational resources.
+
+In current field and remote operations, engineers repeatedly navigate across folders, applications, and web resources to access routine workflows such as reporting, system checks, and data review. This introduces variability, delays, and occasional path errors, particularly across different wells, machines, and shifts.
+
+TBC centralizes this access into a single interface, reducing repeated navigation and improving execution consistency. The solution operates locally, requires no network dependency, and remains portable as a folder-based deployment.
+
+The expected impact is improved time-to-action, reduced navigation variability, more consistent execution across shifts, and improved utilization of engineer time by reducing non-value-added activities.
+
+---
+
+## Introduction
+
+Toolbox Companion was conceived to address a recurring operational inefficiency: repeated manual navigation to access the same set of tools, folders, and web resources required during daily workflows.
+
+In both field and remote operations, engineers interact with multiple systems and data sources. Accessing these resources typically requires navigating file explorers, launching applications, and opening multiple browser tabs in a specific order. These steps are repeated across shifts and personnel, often with slight variations depending on user habits or machine configuration.
+
+This results in inconsistent execution patterns and unnecessary time spent on navigation rather than operational decision-making.
+
+TBC provides a standardized interface where users configure tiles representing common actions. Each tile can launch an application, open a folder or URL, or execute a sequence of actions. The system uses shared macros (e.g., well root paths) to maintain consistency across different machines and environments.
+
+The technology stack is a local Node.js server serving static web content with JSON-based configuration and optional REST endpoints for triggering actions programmatically.
+
+Stakeholders include field engineers, remote operations personnel, and support staff responsible for maintaining operational consistency and efficiency.
+
+---
+
+## Problem Definition
+
+Engineers spend part of each shift performing repetitive navigation tasks required to initiate routine workflows.
+
+These include:
+
+* Opening recurring folder structures for wells or projects
+* Launching standard applications
+* Accessing web-based systems and reports
+* Reconstructing the same working environment multiple times per shift
+
+These actions introduce:
+
+* **Navigation overhead** during reporting and routine workflows
+* **Variability across users and shifts** in how tasks are executed
+* **Path inconsistencies** when moving between wells or machines
+* **Occasional wrong-path or wrong-application access**, requiring correction
+* **Cognitive load** from repeated context switching between tools
+
+Operationally, this represents time spent navigating rather than analyzing or acting on well conditions. When engineers divide attention between navigation and monitoring, execution continuity is reduced.
+
+---
+
+## Benefit to Schlumberger and to Client
+
+### Direct Time Recovery (Observable Mechanism)
+
+Routine workflows, including reporting and system access, require repeated navigation across multiple tools. TBC centralizes these actions, removing non-value-added navigation steps.
+
+This results in consistent time recovery during daily operational activities.
+
+### Operational Consistency
+
+TBC standardizes how engineers access operational resources. Configured tiles ensure that the same workflow is executed in the same way across shifts, locations, and personnel.
+
+This reduces variability and supports more predictable execution during shift handovers and routine operations.
+
+### Execution Efficiency
+
+TBC improves execution efficiency by reducing intermediate steps and context switching. Engineers progress through workflows with fewer interruptions and less need to reconstruct their working environment.
+
+Tasks are completed with greater continuity, improving flow and reducing friction during execution.
+
+### Error Reduction (Cost Avoidance)
+
+The use of macros and shared configurations reduces incorrect path selection and application access.
+
+Reducing these errors lowers the likelihood of delays, rework, or incorrect data handling associated with manual navigation.
+
+### Utilization of Engineer Time (Cost Mechanism)
+
+Engineer time is a costed operational resource. Time spent navigating does not contribute directly to operational decisions.
+
+By reducing non-value-added navigation, TBC improves utilization of engineer time without changing the underlying operation.
+
+### Summary Statement
+
+TBC improves utilization of engineer time by reducing non-value-added navigation and execution variability, supporting more efficient and consistent operational workflows.
+
+---
+
+## Project Objectives
+
+The objective is to deliver a maintainable, lightweight launcher that standardizes access to operational resources.
+
+Key objectives:
+
+* Provide a single web-based interface for grouped tiles
+* Enable macro-based paths portable across machines
+* Support multi-action sequences from a single trigger
+* Provide optional REST API for external triggering
+* Implement local error logging for troubleshooting
+* Allow configuration without requiring a database
+
+**In scope:** local launcher, tiles, macros, sequences, API, logging, portability
+**Out of scope:** cloud integration, SSO replacement, enterprise infrastructure, auto-update systems
+
+---
+
+## Project Deliverables
+
+* Runnable TBC folder with start scripts
+* JSON configuration file (tiles, macros, sequences)
+* Browser-based tile interface
+* Multi-action execution capability
+* Macro system with optional machine overrides
+* Local SQLite error logging
+* REST API endpoints for triggering actions
+* Basic user and configuration documentation
+
+---
+
+## Conclusion
+
+Toolbox Companion addresses a specific operational inefficiency: repeated navigation during routine workflows.
+
+It does not introduce new infrastructure, requires no external dependencies, and carries minimal operational risk. The solution is portable, configurable, and aligned with existing workflows.
+
+The value lies in reducing navigation friction, improving execution consistency, and enabling engineers to focus on operational decisions rather than tool access.
+
+Approval of this project supports incremental but consistent improvements in operational efficiency, with no additional cost and low implementation complexity.
+
+---
+
+Si necesitas versión **más agresiva para sponsor (no documento formal)**, se arma aparte.

@@ -4,8 +4,46 @@ import 'dart:math' as math;
 import 'package:sqlite3/sqlite3.dart';
 
 import 'alexandria_paths.dart';
+import 'fts_object_search.dart';
+import 'parcour_review.dart';
+import 'pao/pao_standard_store.dart';
 
 export 'locus_review_metrics.dart';
+export 'study/study_utils.dart' show isCastleActiveLocus;
+export 'parcour_review.dart'
+    show
+        applyParcourReviewSession,
+        CastleCompletionResult,
+        computeCanonicalParcourScores,
+        computeCastleCompletionForParcour,
+        ensureParcourReviewSchema,
+        formatParcourReviewOneLine,
+        isLocusEligibleForParcourReview,
+        kParcourHubKey,
+        kParcourPassNorm,
+        kParcourStrongFailNorm,
+        latestParcourRatingByLocus,
+        listHubParcourKeys,
+        loadParcourReviewSummary,
+        LocusRatingKind,
+        locusRatingLabel,
+        locusRatingValue,
+        orderedParcourKeysForSelector,
+        ParcourLocusEval,
+        ParcourReviewUiSummary,
+        writeParcourReviewBridgeSummary;
+export 'fts_object_search.dart' show rebuildEntriesFts5, UsageBand;
+export 'pao/pao_standard_store.dart'
+    show
+        PaoStandardRow,
+        ensurePaoStandardSchema,
+        emptyPaoStandardJsonMap,
+        exportPaoStandardCsv,
+        exportPaoStandardJson,
+        importPaoStandardFromJsonString,
+        loadPaoStandardMerged,
+        missingPaoJsonKeys,
+        upsertPaoStandard;
 
 /// [Cambio 341] Evita re-escritura de viewer si el foco (dual bridge) no cambió.
 String? _lastViewerKey;
@@ -15,6 +53,21 @@ String _lastBridgeParentKey = '';
 
 const _realmKey = 'ROOT';
 const _primaryParcourKey = 'PARCOUR_MAIN';
+
+/// Valores de `textKind` válidos en bloques `p` (locus_editor / viewer GK).
+const Set<String> kAllowedTextKinds = {
+  'text',
+  'hint',
+  'place',
+  'ridiculous_story',
+};
+
+/// Normaliza `textKind` al guardar o al parsear JSON de bloques.
+String normalizeTextKind(String? raw) {
+  final k = raw?.toLowerCase().trim() ?? '';
+  if (k.isEmpty || !kAllowedTextKinds.contains(k)) return 'text';
+  return k;
+}
 
 /// Contrato `data/navigation/by-parent/<stem>.json`: nombres de archivo seguros en Windows.
 String navigationFileStem(String parentKey) {
@@ -124,6 +177,11 @@ void ensureDualBridgeDefaults() {
     if (!foc.existsSync()) {
       foc.writeAsStringSync('');
       print('[LB][BRIDGE_DEFAULT] focus_key.txt creado vacío');
+    }
+    final intent = File(AlexandriaPaths.navigationIntentPath);
+    if (!intent.existsSync()) {
+      intent.writeAsStringSync('explore');
+      print('[LB][BRIDGE_DEFAULT] navigation_intent.txt → explore');
     }
   } catch (e) {
     print('[LB][BRIDGE_DEFAULT_ERR] $e');
@@ -276,6 +334,11 @@ void ensureLibrarySchema(Database db) {
   if (!names.contains('recall_score')) {
     db.execute('ALTER TABLE entries ADD COLUMN recall_score REAL');
   }
+  if (!names.contains('spatial_turn')) {
+    db.execute(
+      "ALTER TABLE entries ADD COLUMN spatial_turn TEXT",
+    );
+  }
 
   db.execute('''
 CREATE TABLE IF NOT EXISTS review_events (
@@ -291,6 +354,8 @@ CREATE TABLE IF NOT EXISTS review_events (
 )
 ''');
   _ensureLocusReviewSchema(db);
+  ensureParcourReviewSchema(db);
+  ensurePaoStandardSchema(db);
   // Filas sin rol (legacy o INSERT sin columna): default `'object'`; no afecta snapshot/viewer.
   db.execute(
     "UPDATE entries SET cognitiveRole = 'object' WHERE cognitiveRole IS NULL OR TRIM(COALESCE(cognitiveRole, '')) = ''",
@@ -309,6 +374,8 @@ CREATE TABLE IF NOT EXISTS review_events (
   /// ORM `LAYERS_REALM_PARCOUR_OBJECT.md`: realm canónico `R1`; hub legado `PARCOUR_MAIN` → etiqueta de parcours bajo R1.
   db.execute("UPDATE entries SET title = 'R1' WHERE key = '$_realmKey'");
   db.execute("UPDATE entries SET title = 'Parcours (R1)' WHERE key = '$_primaryParcourKey'");
+
+  ensureEntriesFts5(db);
 }
 
 double _asDouble(Object? v, double fallback) {
@@ -974,8 +1041,8 @@ String _inferParagraphTextKind(Map<String, dynamic> m, String tLower) {
 }
 
 /// Parsea JSON de bloques (legacy `t`/`text`/`assetKey` o `type`/`text`/`src`).
-/// Conserva `img` y `link` (A15 / viewer GK); el resto → `p`.
-/// Incluye `textKind` en párrafos (LB / estudio; GK ignora campos extra).
+/// Conserva `img`, `link`, `audio`, `warp`, `tag`; el resto → `p` con `textKind` normalizado.
+/// Tipos `hint`/`place`/… como `type` se pliegan a `p` + `textKind`.
 List<Map<String, dynamic>> parseBody(String? raw) {
   if (raw == null || raw.trim().isEmpty) return [];
   try {
@@ -1005,16 +1072,33 @@ List<Map<String, dynamic>> parseBody(String? raw) {
           out.add({
             'type': 'p',
             'text': linkText.isNotEmpty ? linkText : linkKey,
-            'textKind': _inferParagraphTextKind(m, tLower),
+            'textKind': normalizeTextKind(_inferParagraphTextKind(m, tLower)),
           });
         }
+        continue;
+      }
+
+      if (tLower == 'audio') {
+        out.add({'type': 'audio', 'src': (m['src'] ?? '').toString()});
+        continue;
+      }
+      if (tLower == 'warp') {
+        out.add({
+          'type': 'warp',
+          'key': (m['key'] ?? '').toString(),
+          'text': (m['text'] ?? '').toString(),
+        });
+        continue;
+      }
+      if (tLower == 'tag') {
+        out.add({'type': 'tag', 'text': (m['text'] ?? '').toString()});
         continue;
       }
 
       out.add({
         'type': 'p',
         'text': (m['text'] ?? '').toString(),
-        'textKind': _inferParagraphTextKind(m, tLower),
+        'textKind': normalizeTextKind(_inferParagraphTextKind(m, tLower)),
       });
     }
     return out;
@@ -1143,12 +1227,23 @@ int _sqliteCountToInt(Object? cVal) {
   return int.tryParse(cVal.toString()) ?? 0;
 }
 
+String? _normalizeSpatialTurnForSnapshot(Object? raw) {
+  final s = raw?.toString().trim().toLowerCase() ?? '';
+  if (s.isEmpty || s == 'straight' || s == 'recto' || s == 'none') {
+    return null;
+  }
+  if (s == 'left' || s == 'l' || s == 'izquierda') return 'left';
+  if (s == 'right' || s == 'r' || s == 'derecha') return 'right';
+  return null;
+}
+
 List<Map<String, dynamic>> _buildFramesForContext(Database db, String contextKey) {
   final result = db.select(
-    'SELECT key, seq FROM entries WHERE parentKey = ? ORDER BY seq ASC',
+    'SELECT key, seq, spatial_turn FROM entries WHERE parentKey = ? ORDER BY seq ASC',
     [contextKey],
   );
   final bySeq = <int, String>{};
+  final turnBySeq = <int, String>{};
   for (final row in result) {
     final seq = row['seq'];
     final key = row['key'];
@@ -1166,14 +1261,23 @@ List<Map<String, dynamic>> _buildFramesForContext(Database db, String contextKey
       throw StateError('seq duplicado');
     }
     bySeq[seq] = k;
+    final st = _normalizeSpatialTurnForSnapshot(row['spatial_turn']);
+    if (st != null) {
+      turnBySeq[seq] = st;
+    }
   }
 
   final frames = <Map<String, dynamic>>[];
   for (var s = 0; s < 20; s++) {
-    frames.add({
+    final m = <String, dynamic>{
       'key': bySeq.containsKey(s) ? bySeq[s]! : '',
       'seq': s,
-    });
+    };
+    final t = turnBySeq[s];
+    if (t != null) {
+      m['spatialTurn'] = t;
+    }
+    frames.add(m);
   }
   return frames;
 }
@@ -1203,17 +1307,20 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
       ],
       'assets': <Map<String, dynamic>>[],
       'hasChildren': false,
+      'cognitiveRole': '',
+      'nextReviewAt': '',
       'version': DateTime.now().millisecondsSinceEpoch,
     };
   }
 
   final rows = db.select(
-    'SELECT body_text, next_review_at, memory_strength, stability_days, recall_score, review_count, success_count, failure_count FROM entries WHERE key = ? LIMIT 1',
+    'SELECT body_text, next_review_at, memory_strength, stability_days, recall_score, review_count, success_count, failure_count, cognitiveRole FROM entries WHERE key = ? LIMIT 1',
     [focusKey],
   );
 
   var body = <Map<String, dynamic>>[];
   String nextReviewAt = '';
+  String cognitiveRole = '';
   double memoryStrength = 0.0;
   double stabilityDays = 0.0;
   double recallScore = 0.0;
@@ -1224,6 +1331,7 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
     final raw = rows.first['body_text'] as String?;
     body = parseBody(raw);
     nextReviewAt = rows.first['next_review_at']?.toString() ?? '';
+    cognitiveRole = rows.first['cognitiveRole']?.toString().trim() ?? '';
     memoryStrength = _asDouble(rows.first['memory_strength'], 0.0);
     stabilityDays = _asDouble(rows.first['stability_days'], 0.0);
     recallScore = _asDouble(rows.first['recall_score'], 0.0);
@@ -1273,6 +1381,7 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
     'body': body,
     'assets': assetsList,
     'hasChildren': hasChildren,
+    'cognitiveRole': cognitiveRole,
     'nextReviewAt': nextReviewAt,
     'memoryStrength': memoryStrength,
     'stabilityDays': stabilityDays,
@@ -1456,6 +1565,7 @@ void runLibraryBuild() {
   }
 
   ensureLibrarySchema(db);
+  writeParcourReviewBridgeSummary(db);
   _normalizeRealmParcourLanguage(db);
   _rebuildAllWallManifests(db);
   _exportNavigationBundleAtomically(db);
@@ -1561,7 +1671,7 @@ void _stripUserFacingData(Database db) {
 /// Realm **nuevo** sin copiar otro: mismo **esqueleto** que un mundo completo (20 parcours + 400 objetos bajo el hub),
 /// pero **sin datos** (sin texto en `body_text`, sin recall/review; `assets/` vacío al crear).
 bool createEmptyRealm(String rawId) {
-  final id = AlexandriaPaths.sanitizeRealmId(rawId);
+  final id = AlexandriaPaths.sanitizeRealmPath(rawId);
   final root = Directory(AlexandriaPaths.realmDataRoot(id));
   if (root.existsSync()) return false;
 

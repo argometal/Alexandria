@@ -80,6 +80,8 @@ public partial class Spawner : Node3D
 	private const float ParcourOffset = 1.1f;
 	/// <summary>Centro del pasillo en X (cámara); el marco sigue en <see cref="MarcoStartX"/>.</summary>
 	private const float CorridorCameraRigX = 0f;
+	/// <summary>Metros que retrocede la cámara desde el plano del marco hacia el interior del tramo (evita spawn pegado a collage/pared).</summary>
+	private const float CameraStandoffFromFrameMeters = 1.75f;
 	private const float WallWidthConst = 3.2f;
 	private const float FloorCeilingExtraLengthMeters = 3.5f;
 	/// <summary>Plano de pared en X (coincide con ancho de panel en eje X tras rotación -90°).</summary>
@@ -88,11 +90,26 @@ public partial class Spawner : Node3D
 	private const float MarcoStartY = 1.6f;
 	private const float MarcoStartZ = 10.0f;
 
+	/// <summary>Metros rectos **después** del marco que declara el giro, antes de cambiar de dirección (buffer; no es “lead” del collage).</summary>
+	private const float MazeFrameTurnBufferMeters = 1.5f;
+
+	/// <summary>Metros en la **nueva** dirección tras el buffer (hacia el siguiente marco).</summary>
+	private const float MazeOutgoingAfterTurnMeters = 6f;
+
+	/// <summary>Tramo sin giro: una sola recta de 6 m.</summary>
+	private const float MazeStraightEdgeMeters = 6f;
+
 	private readonly float[] _frameZPositions = new float[FrameSlotCount];
 	private bool _corridorLayoutBuilt;
 
+	/// <summary>Posiciones de marco en MAZE tras expandir tramos para <see cref="ComputeSegmentGap"/> (collages).</summary>
+	private Vector3[] _mazeExpandedFramePositions;
+
 	// [SCOPE:MAZE_OVERRIDE]
 	private Dictionary<int, Vector3> _mazeDirections = new Dictionary<int, Vector3>();
+
+	/// <summary>LB snapshot <c>spatialTurn</c> por <c>seq</c> (left/right; vacío = recto). El yaw del marco <c>seq</c> acumula giros en 0..seq-1.</summary>
+	private readonly string[] _spatialTurnBySeq = new string[FrameSlotCount];
 
 	// [SCOPE:SEGMENT_FRAME_BASE]
 	private struct SegmentFrame
@@ -104,9 +121,19 @@ public partial class Spawner : Node3D
 	}
 
 	// [SCOPE:LAYOUT_MODE]
+	private bool HasSpatialTurns()
+	{
+		for (var i = 0; i < FrameSlotCount; i++)
+		{
+			if (_spatialTurnBySeq[i] == "left" || _spatialTurnBySeq[i] == "right")
+				return true;
+		}
+		return false;
+	}
+
 	private string GetLayoutMode()
 	{
-		return "CORRIDOR_Z";
+		return HasSpatialTurns() ? "MAZE" : "CORRIDOR_Z";
 	}
 
 	private static string[] EmptyKeysCorridor()
@@ -145,6 +172,47 @@ public partial class Spawner : Node3D
 		}
 
 		_corridorLayoutBuilt = true;
+	}
+
+	/// <summary>
+	/// Recorre el mismo grafo que <see cref="BuildAllMazeSegments"/>; cada arista (recta o salida tras esquina) tiene longitud
+	/// ≥ <see cref="ComputeSegmentGap"/> del locus destino, para que los collages no se recorten.
+	/// </summary>
+	private void RebuildMazeExpandedFramePositions(string[] keysBySeq)
+	{
+		_mazeExpandedFramePositions = new Vector3[FrameSlotCount];
+		_mazeExpandedFramePositions[0] = GetPositionFromSeq(0);
+
+		for (var dest = 1; dest < FrameSlotCount; dest++)
+		{
+			var k = dest < keysBySeq.Length ? keysBySeq[dest] : "";
+			var requiredGap = ComputeSegmentGap(AlexandriaAssets.GetWallCollageGroups(k).Count);
+			var pPrev = _mazeExpandedFramePositions[dest - 1];
+			var turnAtEdge = _spatialTurnBySeq[dest - 1];
+
+			if (turnAtEdge == "left" || turnAtEdge == "right")
+			{
+				var incoming = dest - 1 > 0
+					? GetPersistentDirection(dest - 2)
+					: new Vector3(0f, 0f, 1f);
+				var corner = pPrev + incoming * MazeFrameTurnBufferMeters;
+				var outgoing = GetPersistentDirection(dest - 1).Normalized();
+				var along = Mathf.Max(requiredGap, MazeOutgoingAfterTurnMeters);
+				_mazeExpandedFramePositions[dest] = new Vector3(
+					corner.X + outgoing.X * along,
+					MarcoStartY,
+					corner.Z + outgoing.Z * along);
+			}
+			else
+			{
+				var forward = GetPersistentDirection(dest - 1).Normalized();
+				var along = Mathf.Max(requiredGap, MazeStraightEdgeMeters);
+				_mazeExpandedFramePositions[dest] = new Vector3(
+					pPrev.X + forward.X * along,
+					MarcoStartY,
+					pPrev.Z + forward.Z * along);
+			}
+		}
 	}
 
 	private static bool ResolveSnapshotPath(string bridgeCtx, out string path, out bool usedCurrentJsonFallback)
@@ -372,6 +440,154 @@ public partial class Spawner : Node3D
 		}
 	}
 
+	/// <summary>Offset lateral corredor Z: de marco (MarcoStartX) a plano de pared (WallPlaneX).</summary>
+	private static float WallSideOffsetFromPath => WallPlaneX - MarcoStartX;
+
+	/// <summary>Collage + suelo + techo a lo largo del tramo en planta (MAZE).</summary>
+	private void BuildPanelsForTramoMaze(Node3D wallsContainer, Vector3 pA, Vector3 pB,
+		List<AlexandriaAssets.CollageGroup> groups, string segmentName)
+	{
+		var flatA = new Vector3(pA.X, 0f, pA.Z);
+		var flatB = new Vector3(pB.X, 0f, pB.Z);
+		var segVec = flatB - flatA;
+		var segLen = segVec.Length();
+		if (segLen < 0.01f)
+			return;
+		var forward = segVec / segLen;
+		var right = Vector3.Up.Cross(forward).Normalized();
+		var wallOff = WallSideOffsetFromPath;
+		var yawDeg = Mathf.RadToDeg(Mathf.Atan2(forward.X, forward.Z));
+
+		var segmentLength = Mathf.Max(0.01f, segLen);
+		var backing = new MeshInstance3D { Name = segmentName + "_Backing" };
+		var quadBack = new QuadMesh();
+		quadBack.Size = new Vector2(WallWidthConst, segmentLength);
+		backing.Mesh = quadBack;
+		var backMid = (flatA + flatB) * 0.5f + right * wallOff;
+		backing.Position = new Vector3(backMid.X, MarcoStartY, backMid.Z);
+		backing.RotationDegrees = new Vector3(0f, yawDeg - 90f, 0f);
+		backing.Visible = false;
+		wallsContainer.AddChild(backing);
+
+		var working = new List<AlexandriaAssets.CollageGroup>(groups);
+		if (!TryComputePanelBounds(0f, segLen, working.Count, out var fittedCount, out var startAlong, out var endAlong))
+			return;
+		if (fittedCount < working.Count)
+			working.RemoveRange(fittedCount, working.Count - fittedCount);
+
+		if (working.Count == 0)
+			return;
+
+		if (working.Count < groups.Count)
+			GD.PrintErr($"[PANEL_TRIM_MAZE] {segmentName} trimmed {groups.Count - working.Count} collage groups (overflow)");
+
+		var cursorAlong = startAlong + PanelExtentAlongCorridorZ * 0.5f;
+		for (var i = 0; i < working.Count; i++)
+		{
+			var panel = new MeshInstance3D { Name = $"{segmentName}_Panel_{i:00}" };
+			var q = new QuadMesh();
+			q.Size = new Vector2(PanelHeight, PanelWidth);
+			panel.Mesh = q;
+			var posPath = flatA + forward * cursorAlong + right * wallOff;
+			panel.Position = new Vector3(posPath.X, MarcoStartY, posPath.Z);
+			panel.RotationDegrees = new Vector3(0f, yawDeg - 90f, 0f);
+			var tex = AlexandriaAssets.BuildCollageTexture(working[i].ImagePaths);
+			if (tex != null)
+			{
+				var mat = new StandardMaterial3D();
+				mat.AlbedoTexture = tex;
+				mat.AlbedoColor = Colors.White;
+				mat.ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded;
+				mat.CullMode = BaseMaterial3D.CullModeEnum.Disabled;
+				panel.MaterialOverride = mat;
+			}
+
+			wallsContainer.AddChild(panel);
+			cursorAlong += PanelCenterStepAlongZ;
+		}
+	}
+
+	/// <summary>
+	/// Corredor Z: suelo en X=0, marco en <see cref="MarcoStartX"/>. En MAZE el tramo estaba centrado en la línea del
+	/// recorrido (mismo X que el marco), el marco quedaba en medio de la losa; se desplaza el centro del suelo/techo
+	/// con <c>-right * MarcoStartX</c> respecto al punto medio del segmento, como lateral del pasillo.
+	/// </summary>
+	private void SpawnFloorCeilingMazeSegment(PackedScene scene, Node3D container, string nodeName, float y,
+		Vector3 flatA, Vector3 flatB)
+	{
+		if (scene == null || container == null)
+			return;
+		var segVec = new Vector3(flatB.X - flatA.X, 0f, flatB.Z - flatA.Z);
+		var len = Mathf.Max(0.01f, segVec.Length() + FloorCeilingExtraLengthMeters);
+		var forward = segVec.Length() > 0.001f ? segVec.Normalized() : new Vector3(0f, 0f, 1f);
+		var right = Vector3.Up.Cross(forward).Normalized();
+		var midFlat = (flatA + flatB) * 0.5f;
+		var floorCenterFlat = midFlat - right * MarcoStartX;
+		var yawDeg = Mathf.RadToDeg(Mathf.Atan2(forward.X, forward.Z));
+		var seg = scene.Instantiate<Node3D>();
+		seg.Name = nodeName;
+		container.AddChild(seg);
+		seg.Position = new Vector3(floorCenterFlat.X, y, floorCenterFlat.Z);
+		seg.RotationDegrees = new Vector3(0f, yawDeg, 0f);
+		var s = len / 6f;
+		seg.Scale = new Vector3(1f, 1f, s);
+		GD.Print($"[SPAWNER][FLOOR_CEIL_MAZE] {nodeName} len={len} yaw={yawDeg}");
+	}
+
+	private void BuildAllMazeSegments(string[] keysBySeq, Node3D walls, Node3D floors, Node3D ceilings)
+	{
+		if (walls == null || _mazeExpandedFramePositions == null || _mazeExpandedFramePositions.Length < FrameSlotCount)
+			return;
+		for (var dest = 0; dest < FrameSlotCount; dest++)
+		{
+			var k = dest < keysBySeq.Length ? keysBySeq[dest] : "";
+			var groups = AlexandriaAssets.GetWallCollageGroups(k);
+			var n = groups.Count;
+			var pB = _mazeExpandedFramePositions[dest];
+			Vector3 pA;
+			if (dest == 0)
+			{
+				var gap = ComputeSegmentGap(n);
+				pA = pB - GetPersistentDirection(0) * gap;
+			}
+			else
+				pA = _mazeExpandedFramePositions[dest - 1];
+
+			var turnAtEdge = dest > 0 && dest - 1 < FrameSlotCount
+				? _spatialTurnBySeq[dest - 1]
+				: "";
+			if (dest > 0 && (turnAtEdge == "left" || turnAtEdge == "right"))
+			{
+				// Misma geometría que GetPositionFromSeq (MAZE): recta entrante (buffer) y luego recta saliente.
+				// Evita la cuerda diagonal pA→pB, que hacía que el collage girara “desde” el marco pA.
+				var incoming = dest - 1 > 0
+					? GetPersistentDirection(dest - 2)
+					: new Vector3(0f, 0f, 1f);
+				var corner = pA + incoming * MazeFrameTurnBufferMeters;
+				BuildPanelsForTramoMaze(walls, pA, corner, new List<AlexandriaAssets.CollageGroup>(),
+					$"Seg_{dest}_turnBuffer");
+				BuildPanelsForTramoMaze(walls, corner, pB, groups, $"Seg_{dest}");
+
+				var flatCorner = new Vector3(corner.X, 0f, corner.Z);
+				var flatA = new Vector3(pA.X, 0f, pA.Z);
+				var flatB = new Vector3(pB.X, 0f, pB.Z);
+				SpawnFloorCeilingMazeSegment(FloorScene, floors, $"FloorSeg_{dest}_buf", 0f, flatA, flatCorner);
+				SpawnFloorCeilingMazeSegment(FloorScene, floors, $"FloorSeg_{dest}", 0f, flatCorner, flatB);
+				SpawnFloorCeilingMazeSegment(CeilingScene, ceilings, $"CeilingSeg_{dest}_buf", 3.2f, flatA, flatCorner);
+				SpawnFloorCeilingMazeSegment(CeilingScene, ceilings, $"CeilingSeg_{dest}", 3.2f, flatCorner, flatB);
+			}
+			else
+			{
+				BuildPanelsForTramoMaze(walls, pA, pB, groups, $"Seg_{dest}");
+
+				var flatA = new Vector3(pA.X, 0f, pA.Z);
+				var flatB = new Vector3(pB.X, 0f, pB.Z);
+				SpawnFloorCeilingMazeSegment(FloorScene, floors, $"FloorSeg_{dest}", 0f, flatA, flatB);
+				SpawnFloorCeilingMazeSegment(CeilingScene, ceilings, $"CeilingSeg_{dest}", 3.2f, flatA, flatB);
+			}
+		}
+	}
+
 	private void PrimeWallManifestSignatures()
 	{
 		_lastWallSignatureByKey.Clear();
@@ -419,8 +635,16 @@ public partial class Spawner : Node3D
 	{
 		if (_framesRoot == null)
 			return;
+		SyncMazeDirectionsFromSpatial();
 		var keys = GatherKeysFromFrames();
-		RebuildCorridorZLayout(keys);
+		if (GetLayoutMode() == "CORRIDOR_Z")
+		{
+			RebuildCorridorZLayout(keys);
+			_mazeExpandedFramePositions = null;
+		}
+		else
+			RebuildMazeExpandedFramePositions(keys);
+
 		var fc = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
 		var walls = _framesRoot.GetNodeOrNull<Node3D>("WallsContainer");
 		var floors = _framesRoot.GetNodeOrNull<Node3D>("FloorsContainer");
@@ -430,13 +654,21 @@ public partial class Spawner : Node3D
 		for (var i = 0; i < FrameSlotCount && i < fc.GetChildCount(); i++)
 		{
 			if (fc.GetChild(i) is Node3D n)
-				n.Position = new Vector3(MarcoStartX, MarcoStartY, _frameZPositions[i]);
+			{
+				n.Position = GetLayoutMode() == "MAZE" && _mazeExpandedFramePositions != null
+					? _mazeExpandedFramePositions[i]
+					: GetPositionFromSeq(i);
+				n.RotationDegrees = new Vector3(0f, GetFrameYawDegrees(i), 0f);
+			}
 		}
 
 		ClearContainerChildren(walls);
 		ClearContainerChildren(floors);
 		ClearContainerChildren(ceilings);
-		BuildAllCorridorSegments(keys, walls, floors, ceilings);
+		if (GetLayoutMode() == "CORRIDOR_Z")
+			BuildAllCorridorSegments(keys, walls, floors, ceilings);
+		else
+			BuildAllMazeSegments(keys, walls, floors, ceilings);
 	}
 
 	// [SCOPE:LAYOUT_CORE]
@@ -458,12 +690,58 @@ public partial class Spawner : Node3D
 		if (GetLayoutMode() == "MAZE")
 		{
 			Vector3 pos = Vector3.Zero;
-			for (int i = 0; i < seq; i++)
-				pos += GetPersistentDirection(i) * step;
-			return new Vector3(pos.X, y, pos.Z);
+			for (var i = 0; i < seq; i++)
+			{
+				var t = i < FrameSlotCount ? _spatialTurnBySeq[i] : "";
+				if (t == "left" || t == "right")
+				{
+					var incoming = i > 0
+						? GetPersistentDirection(i - 1)
+						: new Vector3(0f, 0f, 1f);
+					pos += incoming * MazeFrameTurnBufferMeters;
+					pos += GetPersistentDirection(i) * MazeOutgoingAfterTurnMeters;
+				}
+				else
+					pos += GetPersistentDirection(i) * MazeStraightEdgeMeters;
+			}
+
+			return new Vector3(MarcoStartX + pos.X, MarcoStartY, MarcoStartZ + pos.Z);
 		}
 
 		return new Vector3(0, y, seq * step);
+	}
+
+	/// <summary>
+	/// El marco está en el extremo “entrante” del tramo; sin esto la cámara queda en la misma Z/X que el locus y se siente pegada al muro.
+	/// CORRIDOR_Z: −Z hacia el interior del tramo. MAZE: hacia el marco anterior a lo largo del suelo.
+	/// </summary>
+	private Vector3 ApplyCameraStandoffFromFrame(Vector3 framePos, int seq)
+	{
+		var mode = GetLayoutMode();
+		if (mode == "CORRIDOR_Z")
+		{
+			return new Vector3(framePos.X, framePos.Y, framePos.Z - CameraStandoffFromFrameMeters);
+		}
+
+		if (mode == "MAZE" && _mazeExpandedFramePositions != null && _mazeExpandedFramePositions.Length > seq)
+		{
+			if (seq > 0)
+			{
+				var prev = _mazeExpandedFramePositions[seq - 1];
+				var towardPrev = new Vector3(prev.X - framePos.X, 0f, prev.Z - framePos.Z);
+				if (towardPrev.LengthSquared() > 1e-6f)
+					return framePos + towardPrev.Normalized() * CameraStandoffFromFrameMeters;
+			}
+			else
+			{
+				var back = GetPersistentDirection(0);
+				var hz = new Vector3(-back.X, 0f, -back.Z);
+				if (hz.LengthSquared() > 1e-6f)
+					return framePos + hz.Normalized() * CameraStandoffFromFrameMeters;
+			}
+		}
+
+		return framePos;
 	}
 
 
@@ -538,7 +816,10 @@ public partial class Spawner : Node3D
 	// [SCOPE:SEGMENT_FRAME_FROM_SEQ]
 	private SegmentFrame GetSegmentFrameFromSeq(int seq)
 	{
-		Vector3 pos = GetPositionFromSeq(seq);
+		var s = Mathf.Clamp(seq, 0, FrameSlotCount - 1);
+		Vector3 pos = GetLayoutMode() == "MAZE" && _mazeExpandedFramePositions != null
+			? _mazeExpandedFramePositions[s]
+			: GetPositionFromSeq(s);
 		Vector3 dir = GetPersistentDirection(seq);
 		Vector3 right = new Vector3(-dir.Z, 0, dir.X);
 
@@ -581,7 +862,33 @@ public partial class Spawner : Node3D
 		private void InitMaze()
 		{
 			_mazeDirections.Clear();
-			// No hay giros - corredor completamente recto
+			for (var i = 0; i < FrameSlotCount; i++)
+				_spatialTurnBySeq[i] = "";
+		}
+
+		/// <summary>Copia <see cref="_spatialTurnBySeq"/> a <see cref="_mazeDirections"/> (giros relativos en <see cref="GetPersistentDirection"/>).</summary>
+		private void SyncMazeDirectionsFromSpatial()
+		{
+			_mazeDirections.Clear();
+			for (var i = 0; i < FrameSlotCount; i++)
+			{
+				// LB left/right ↔ vectores comando (intercambiados respecto al primer intento para izq/der correctos en pantalla).
+				if (_spatialTurnBySeq[i] == "left")
+					_mazeDirections[i] = new Vector3(1f, 0f, 0f);
+				else if (_spatialTurnBySeq[i] == "right")
+					_mazeDirections[i] = new Vector3(-1f, 0f, 0f);
+			}
+		}
+
+		/// <summary>Corredor Z: -90° panel. MAZE: alinea el marco con la dirección de avance hacia este nodo (tramo anterior).</summary>
+		private float GetFrameYawDegrees(int seq)
+		{
+			if (GetLayoutMode() != "MAZE")
+				return -90f;
+			var forward = seq == 0
+				? new Vector3(0f, 0f, 1f)
+				: GetPersistentDirection(seq - 1);
+			return Mathf.RadToDeg(Mathf.Atan2(forward.X, forward.Z)) - 90f;
 		}
 
 
@@ -727,11 +1034,21 @@ public partial class Spawner : Node3D
 
 		var frames = data["frames"].AsGodotArray();
 
+		for (var i = 0; i < FrameSlotCount; i++)
+			_spatialTurnBySeq[i] = "";
+
 		foreach (Variant f in frames)
 		{
 			var d = f.AsGodotDictionary();
 			int seq = d["seq"].AsInt32();
 			string key = d["key"].AsString();
+
+			if (seq >= 0 && seq < FrameSlotCount && d.ContainsKey("spatialTurn"))
+			{
+				var st = d["spatialTurn"].AsString().Trim().ToLowerInvariant();
+				if (st == "left" || st == "right")
+					_spatialTurnBySeq[seq] = st;
+			}
 
 			if (seq < 0 || seq >= framesContainer.GetChildCount())
 			{
@@ -788,7 +1105,10 @@ public partial class Spawner : Node3D
 		if (seq >= FrameSlotCount)
 			seq = FrameSlotCount - 1;
 
-		Vector3 pos = GetPositionFromSeq(seq);
+		Vector3 pos = GetLayoutMode() == "MAZE" && _mazeExpandedFramePositions != null
+			? _mazeExpandedFramePositions[seq]
+			: GetPositionFromSeq(seq);
+		pos = ApplyCameraStandoffFromFrame(pos, seq);
 		// Rig en Y=0: la altura de ojos viene del Camera3D hijo en la escena (no duplicar con pos.Y).
 		var camX = GetLayoutMode() == "CORRIDOR_Z" ? CorridorCameraRigX : pos.X;
 		cam.GlobalPosition = new Vector3(camX, 0f, pos.Z);

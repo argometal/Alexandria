@@ -1,0 +1,40 @@
+================================================================================
+DATA TRANSFER — transporte tonto (out/ + handoff/incoming/)
+================================================================================
+
+ARRANQUE
+--------
+  cd C:\\Alexandria\\data-transfer
+  node server.js
+
+  Variables opcionales: DT_PORT, DT_MAX_UPLOAD_MB (def 52),
+  DT_MAX_SFS_MB (def 10), DT_MAX_READ_MB (def 2)
+
+  Puerto: 4020
+
+URL
+---
+  http://127.0.0.1:4020
+  http://192.168.1.64:4020
+
+RUTAS (sin interpretar cuerpo)
+------------------------------
+  out/              C:\Alexandria\data-transfer\out\
+  incoming/         C:\Alexandria\data-transfer\handoff\incoming\
+
+  POST /sfs                    — texto → out/{ts}.txt (límite 10 MiB)
+  POST /upload                 — binario → out/ (nombre ts_original; o X-DT-Stable-Name: 1)
+  POST /incoming               — binario → incoming/ (siempre ts_original)
+  Cabecera: x-filename
+
+  GET  /files?bucket=out|incoming
+  GET  /read?name=&bucket=out|incoming   — vista texto cap 2 MiB
+  GET  /download?name=&bucket=...
+  GET  /send?text=...            — texto → out/
+  GET  /latest?bucket=out|incoming
+  GET  /health                   — límites y rutas (JSON)
+  POST /clean-out                — borra archivos en out/
+  POST /clean-incoming           — borra archivos en incoming/
+
+  SSE GET /events
+================================================================================

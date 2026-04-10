@@ -6,8 +6,14 @@ import 'package:sqlite3/sqlite3.dart' hide Row;
 import 'alexandria_paths.dart';
 import 'library_build.dart';
 import 'locus_editor.dart';
+import 'data_transfer_page.dart';
+import 'metrics_recall_page.dart';
 import 'realm_admin_page.dart';
 import 'study/parcour_study_page.dart';
+import 'object_search_page.dart';
+import 'lb_pdf_export.dart';
+import 'node_card_reader_page.dart';
+import 'pao/pao_standard_page.dart';
 
 /// Etiquetas solo para UI (Cambio 351 — sin lógica de negocio).
 const _kCognitiveRoleLabels = <String, String>{
@@ -49,6 +55,18 @@ class _LbHomeState extends State<LbHome> {
   Database? _db;
   String _currentParentKey = 'ROOT';
   List<Map<String, Object?>> _rows = [];
+  /// Último rating Parcour Review por locus cuando el padre actual es un parcour (semáforo LB).
+  Map<String, String>? _parcourRatingByLocus;
+  static const List<String> _kNavIntents = [
+    'explore',
+    'review',
+    'seek',
+    'drift',
+  ];
+  int _intentIndex = 0;
+
+  /// Leading de lista: base 40px; factor **4×** (160) para parcour/objeto/realm en la misma lista.
+  static const double _kListHeroSize = 160;
 
   @override
   void initState() {
@@ -56,8 +74,10 @@ class _LbHomeState extends State<LbHome> {
     AlexandriaPaths.ensureMigratedToRealmLayout();
     _openDbAndSchema();
     ensureDualBridgeDefaults();
+    _syncNavigationIntentIndexFromDisk();
     _syncParentFromBridgeContext();
     _loadChildren();
+    _syncIntentBridgeAnchorWithFocus();
   }
 
   @override
@@ -71,8 +91,73 @@ class _LbHomeState extends State<LbHome> {
     _db = null;
     _openDbAndSchema();
     ensureDualBridgeDefaults();
+    _syncNavigationIntentIndexFromDisk();
     _syncParentFromBridgeContext();
     _loadChildren();
+    _syncIntentBridgeAnchorWithFocus();
+  }
+
+  void _syncNavigationIntentIndexFromDisk() {
+    try {
+      final f = File(AlexandriaPaths.navigationIntentPath);
+      if (!f.existsSync()) return;
+      final firstLine =
+          f.readAsStringSync().split(RegExp(r'\r?\n')).first.trim().toLowerCase();
+      final i = _kNavIntents.indexOf(firstLine);
+      if (i >= 0) {
+        _intentIndex = i;
+      }
+    } catch (_) {}
+  }
+
+  /// Texto del drawer: modo + locus en foco (marco Hero = ese objeto).
+  String _intentDrawerSubtitle() {
+    try {
+      final f = File(AlexandriaPaths.navigationIntentPath);
+      if (!f.existsSync()) {
+        return _kNavIntents[_intentIndex];
+      }
+      final lines = f.readAsStringSync().split(RegExp(r'\r?\n'));
+      final mode =
+          lines.isNotEmpty ? lines.first.trim() : _kNavIntents[_intentIndex];
+      if (lines.length >= 2 && lines[1].trim().isNotEmpty) {
+        return '$mode · marco ${lines[1].trim()}';
+      }
+      return mode;
+    } catch (_) {
+      return _kNavIntents[_intentIndex];
+    }
+  }
+
+  void _cycleNavigationIntent() {
+    setState(() => _intentIndex = (_intentIndex + 1) % _kNavIntents.length);
+    _syncIntentBridgeAnchorWithFocus();
+    if (!mounted) return;
+    final focus = readFocusKeyWithFallback().trim();
+    final extra = focus.isNotEmpty ? ' · marco $focus' : '';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Intent → ${_kNavIntents[_intentIndex]}$extra (HUD GateKeeper)',
+        ),
+      ),
+    );
+  }
+
+  /// Mantiene `navigation_intent.txt` alineado con [readFocusKeyWithFallback]:
+  /// modo (línea 1) + clave de locus en foco (línea 2) = marco Hero para place/hint/ridiculous.
+  void _syncIntentBridgeAnchorWithFocus() {
+    try {
+      final f = File(AlexandriaPaths.navigationIntentPath);
+      f.parent.createSync(recursive: true);
+      final mode = _kNavIntents[_intentIndex];
+      final focus = readFocusKeyWithFallback().trim();
+      if (focus.isNotEmpty) {
+        f.writeAsStringSync('$mode\n$focus');
+      } else {
+        f.writeAsStringSync(mode);
+      }
+    } catch (_) {}
   }
 
   void _openDbAndSchema() {
@@ -114,6 +199,13 @@ CREATE TABLE IF NOT EXISTS entries (
       [_currentParentKey],
     );
 
+    final parentMeta = d.select(
+      'SELECT cognitiveRole FROM entries WHERE key = ?',
+      [_currentParentKey],
+    );
+    final parentIsParcour = parentMeta.isNotEmpty &&
+        normalizeCognitiveRole(parentMeta.first['cognitiveRole']) == 'parcour';
+
     setState(() {
       _rows = result
           .map((row) => {
@@ -132,7 +224,53 @@ CREATE TABLE IF NOT EXISTS entries (
                 'failure_count': row['failure_count'],
               })
           .toList();
+      _parcourRatingByLocus = parentIsParcour
+          ? latestParcourRatingByLocus(d, _currentParentKey)
+          : null;
     });
+  }
+
+  Future<void> _openObjectNodeViewer(BuildContext context, String entryKey) async {
+    final db = _db;
+    if (db == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (ctx) => NodeCardReaderPage(db: db, entryKey: entryKey),
+      ),
+    );
+    if (mounted) _loadChildren();
+  }
+
+  /// Semáforo: último resultado Parcour Review (good / medium / fail).
+  Widget _parcourReviewSemaforoDot(BuildContext context, String? rating) {
+    final cs = Theme.of(context).colorScheme;
+    final Color c;
+    switch (rating) {
+      case 'good':
+        c = const Color(0xFF2E7D32);
+        break;
+      case 'medium':
+        c = const Color(0xFFF9A825);
+        break;
+      case 'fail':
+        c = const Color(0xFFC62828);
+        break;
+      default:
+        c = cs.outlineVariant;
+    }
+    final label = rating == null || rating.isEmpty ? 'sin dato' : rating;
+    return Tooltip(
+      message: 'Último Parcour Review: $label',
+      child: Container(
+        width: 14,
+        height: 14,
+        decoration: BoxDecoration(
+          color: c,
+          shape: BoxShape.circle,
+          border: Border.all(color: cs.outline.withValues(alpha: 0.35)),
+        ),
+      ),
+    );
   }
 
   /// ORM `LAYERS_REALM_PARCOUR_OBJECT.md`: `R1` realm, `P1..P20` parcours; `ROOT` / `PARCOUR_MAIN` son claves operativas con etiqueta ORM.
@@ -227,15 +365,32 @@ CREATE TABLE IF NOT EXISTS entries (
     return null;
   }
 
+  /// Primer párrafo `ridiculous_story` en body (preview lista; mismo [parseBody] que el editor).
+  String? _firstRidiculousStoryPreview(String? bodyText, {int maxChars = 280}) {
+    final blocks = parseBody(bodyText);
+    for (final b in blocks) {
+      if (b['type'] != 'p') continue;
+      final tk = b['textKind']?.toString().toLowerCase().trim() ?? '';
+      if (tk != 'ridiculous_story') continue;
+      var t = (b['text'] ?? '').toString().trim();
+      if (t.isEmpty) continue;
+      if (t.length > maxChars) {
+        t = '${t.substring(0, maxChars)}…';
+      }
+      return t;
+    }
+    return null;
+  }
+
   Widget _microHeroLeading(String entryKey, String? bodyText, String roleKey) {
     final path = _resolveMicroHeroPath(entryKey, bodyText);
     if (path != null) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         child: Image.file(
           File(path),
-          width: 40,
-          height: 40,
+          width: _kListHeroSize,
+          height: _kListHeroSize,
           fit: BoxFit.cover,
           errorBuilder: (_, _, _) => _microHeroPlaceholder(roleKey),
         ),
@@ -251,15 +406,15 @@ CREATE TABLE IF NOT EXISTS entries (
       'object': Icons.article_outlined,
     };
     return Container(
-      width: 40,
-      height: 40,
+      width: _kListHeroSize,
+      height: _kListHeroSize,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
       child: Icon(
         emoji[roleKey] ?? Icons.description_outlined,
-        size: 22,
+        size: 40,
       ),
     );
   }
@@ -536,6 +691,7 @@ CREATE TABLE IF NOT EXISTS entries (
     });
     writeBridgeContextKey(childKey);
     writeBridgeFocusKey(childKey);
+    _syncIntentBridgeAnchorWithFocus();
     _loadChildren();
   }
 
@@ -558,6 +714,7 @@ CREATE TABLE IF NOT EXISTS entries (
     });
     writeBridgeContextKey(_currentParentKey);
     writeBridgeFocusKey(_currentParentKey);
+    _syncIntentBridgeAnchorWithFocus();
     _loadChildren();
   }
 
@@ -633,14 +790,228 @@ CREATE TABLE IF NOT EXISTS entries (
                   color: cs.tertiary,
                 ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            formatParcourReviewOneLine(loadParcourReviewSummary(d, parcourKey)),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.secondary,
+                ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _castleCompletionLine(d, parcourKey),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.primary,
+                ),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// ORM-16-04: último `good` Parcour Review vs activos Castle (`ridiculous_story` en hijos directos).
+  String _castleCompletionLine(Database d, String parcourKey) {
+    final r = computeCastleCompletionForParcour(d, parcourKey);
+    if (r.isNA) {
+      return 'Castle: N/A';
+    }
+    final p = ((r.percent ?? 0) * 100).round();
+    return 'Castle: $p% (good ${r.goodCount} / active ${r.castleActiveCount})';
+  }
+
+  Future<void> _openObjectSearch() async {
+    final d = _db;
+    if (d == null) return;
+    final pick = await Navigator.of(context).push<ObjectSearchPick>(
+      MaterialPageRoute<ObjectSearchPick>(
+        builder: (_) => ObjectSearchPage(db: d),
+      ),
+    );
+    if (!mounted || pick == null) return;
+    setState(() {
+      _currentParentKey = pick.parentKey;
+    });
+    writeBridgeContextKey(pick.parentKey);
+    writeBridgeFocusKey(pick.focusKey);
+    _syncIntentBridgeAnchorWithFocus();
+    _loadChildren();
+  }
+
+  void _openRealmAdmin() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (ctx) => RealmAdminPage(
+          onRealmChanged: () {
+            if (!mounted) return;
+            setState(_reloadAfterRealmChange);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerHeader(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final active = AlexandriaPaths.readActiveRealmId();
+    return DrawerHeader(
+      margin: EdgeInsets.zero,
+      decoration: BoxDecoration(color: cs.primaryContainer),
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Realm Library',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: cs.onPrimaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Realm activo: $active',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onPrimaryContainer,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerSection(BuildContext context, String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final d = _db;
     return Scaffold(
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            _drawerHeader(context),
+            _drawerSection(context, 'LECTURA'),
+            ListTile(
+              leading: const Icon(Icons.chrome_reader_mode_outlined),
+              title: const Text('Lector de nodo'),
+              subtitle: const Text('Parcour u object (lista)'),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                LbPdfExport.showNodeCardKeyDialog(context, d);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.picture_as_pdf_outlined),
+              title: const Text('PDF de nodo'),
+              subtitle: const Text('Objeto u otro entry'),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                LbPdfExport.showObjectPdfDialog(context, d);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.route),
+              title: const Text('PDF de parcour'),
+              subtitle: const Text('Un parcour por exportación'),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                LbPdfExport.showParcourPdfDialog(context, d);
+              },
+            ),
+            _drawerSection(context, 'IMPORTAR'),
+            ListTile(
+              leading: const Icon(Icons.sync_alt),
+              title: const Text('Importar contenido a locus'),
+              subtitle: const Text('Desde data-transfer/out/ → body_text'),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => DataTransferPage(db: d),
+                  ),
+                );
+              },
+            ),
+            _drawerSection(context, 'PAO'),
+            ListTile(
+              leading: const Icon(Icons.face_retouching_natural_outlined),
+              title: const Text('PAO (00–99)'),
+              subtitle: const Text('Sistema de 2 dígitos · import / export JSON'),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => PaoStandardPage(db: d),
+                  ),
+                );
+              },
+            ),
+            _drawerSection(context, 'MÉTRICAS'),
+            ListTile(
+              leading: const Icon(Icons.insights_outlined),
+              title: const Text('Métricas recall'),
+              subtitle: const Text('Export CSV'),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MetricsRecallPage(db: d),
+                  ),
+                );
+              },
+            ),
+            _drawerSection(context, 'SISTEMA'),
+            ListTile(
+              leading: const Icon(Icons.dns_outlined),
+              title: const Text('Realms'),
+              subtitle: const Text('Core / Active / Seek'),
+              onTap: () {
+                Navigator.pop(context);
+                _openRealmAdmin();
+              },
+            ),
+            Tooltip(
+              message: 'Modo explore / review / seek / drift. Si hay foco en un '
+                  'objeto, se guarda como “marco”: place, hint y ridiculous story '
+                  'van ligados al Hero de ese mismo locus.',
+              child: ListTile(
+                leading: const Icon(Icons.explore_outlined),
+                title: const Text('Intent de navegación'),
+                subtitle: Text(
+                  _intentDrawerSubtitle(),
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _cycleNavigationIntent();
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -655,28 +1026,31 @@ CREATE TABLE IF NOT EXISTS entries (
             ),
           ],
         ),
-        leading: _currentParentKey == 'ROOT'
-            ? null
-            : IconButton(
+        leadingWidth: _currentParentKey == 'ROOT' ? 56 : 112,
+        automaticallyImplyLeading: false,
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu),
+                tooltip: 'Menú',
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            ),
+            if (_currentParentKey != 'ROOT')
+              IconButton(
                 icon: const Icon(Icons.arrow_back),
+                tooltip: 'Subir',
                 onPressed: _goBack,
               ),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.dns_outlined),
-            tooltip: 'Realms (una DB activa)',
-            onPressed: () {
-              Navigator.of(context).push<void>(
-                MaterialPageRoute<void>(
-                  builder: (ctx) => RealmAdminPage(
-                    onRealmChanged: () {
-                      if (!mounted) return;
-                      setState(_reloadAfterRealmChange);
-                    },
-                  ),
-                ),
-              );
-            },
+            icon: const Icon(Icons.search),
+            tooltip: 'Buscar objetos (FTS5) · Core / Active / Seek',
+            onPressed: _openObjectSearch,
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -711,13 +1085,25 @@ CREATE TABLE IF NOT EXISTS entries (
                       final reviewed = _formatLastReviewedAt(
                         row['last_reviewed_at'] as String?,
                       );
-                      return Material(
-                        color: Theme.of(context).colorScheme.surfaceContainerLow,
-                        borderRadius: BorderRadius.circular(10),
-                        child: InkWell(
+                      final ridiculousPreview =
+                          _firstRidiculousStoryPreview(row['body_text'] as String?);
+                      return Tooltip(
+                        message: roleKey == 'object'
+                            ? 'Doble clic: visor de contenido (Node card)'
+                            : 'Doble clic para entrar al nivel',
+                        child: Material(
+                          color: Theme.of(context).colorScheme.surfaceContainerLow,
                           borderRadius: BorderRadius.circular(10),
-                          onTap: () => _navigateInto(key),
-                          child: Padding(
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onDoubleTap: () {
+                              if (roleKey == 'object') {
+                                _openObjectNodeViewer(context, key);
+                              } else {
+                                _navigateInto(key);
+                              }
+                            },
+                            child: Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 8,
@@ -725,8 +1111,20 @@ CREATE TABLE IF NOT EXISTS entries (
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
+                                if (roleKey == 'object' &&
+                                    _parcourRatingByLocus != null) ...[
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 6, top: 6),
+                                    child: _parcourReviewSemaforoDot(
+                                      context,
+                                      _parcourRatingByLocus![key],
+                                    ),
+                                  ),
+                                ],
                                 Tooltip(
-                                  message: 'Rol (solo LB; GK no lo lee)',
+                                  message: roleKey == 'object'
+                                      ? 'Rol (solo LB). Doble clic: visor de contenido.'
+                                      : 'Rol (solo LB; GK no lo lee). Doble clic en la fila para entrar.',
                                   child: _microHeroLeading(
                                     key,
                                     row['body_text'] as String?,
@@ -745,6 +1143,24 @@ CREATE TABLE IF NOT EXISTS entries (
                                             .textTheme
                                             .titleMedium,
                                       ),
+                                      if (ridiculousPreview != null &&
+                                          ridiculousPreview.isNotEmpty) ...[
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          ridiculousPreview,
+                                          maxLines: 5,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.copyWith(
+                                                fontStyle: FontStyle.italic,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
                                       const SizedBox(height: 4),
                                       Wrap(
                                         spacing: 8,
@@ -898,6 +1314,7 @@ CREATE TABLE IF NOT EXISTS entries (
                               ],
                             ),
                           ),
+                        ),
                         ),
                       );
                     },

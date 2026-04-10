@@ -17,6 +17,7 @@ import 'library_build.dart'
         ensureLibrarySchema,
         kCognitiveRoles,
         normalizeCognitiveRole,
+        normalizeTextKind,
         readFocusKeyWithFallback,
         runLibraryBuild,
         writeViewerCurrentJson;
@@ -83,9 +84,225 @@ class LocusEditorPage extends StatefulWidget {
 
 class _LocusEditorPageState extends State<LocusEditorPage> {
   final List<_BlockDraft> _blocks = [];
+  final ScrollController _blocksScrollController = ScrollController();
+  final List<GlobalKey> _blockItemKeys = [];
   String _cognitiveRole = 'object';
+  /// Si el padre en DB es parcour, el rol cognitivo queda fijado a `object`.
+  bool _isParentParcour = false;
+  /// GK: `left` | `right` | vacío (recto; el siguiente marco sigue la dirección relativa).
+  String _spatialTurn = '';
   /// Bloque `img` seleccionado para Ctrl/Cmd+H (portada marco GK).
   int? _focusedImageBlockIndex;
+
+  /// Etiqueta corta para el resumen colapsado (Role · giro).
+  String get _spatialTurnSummaryLabel {
+    switch (_spatialTurn) {
+      case 'left':
+        return 'Izquierda';
+      case 'right':
+        return 'Derecha';
+      default:
+        return 'Recto';
+    }
+  }
+
+  void _showPasteHelpDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pegar y arrastrar'),
+        content: const SingleChildScrollView(
+          child: Text(
+            'Paste image or text: Ctrl+V / Cmd+V (with focus outside text fields). '
+            'Set image target: Content (viewer only), Collage (GK wall), or Hero (GK frame). '
+            'Hero shortcut: click image + Ctrl/Cmd+H. '
+            'Desktop: drop .png / .jpg / .webp files.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLocusMenu(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final bottomPad = MediaQuery.viewInsetsOf(ctx).bottom;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomPad),
+          child: SafeArea(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Locus',
+                      style: Theme.of(ctx).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.entryKey,
+                      style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
+                            fontFamily: 'monospace',
+                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 16),
+                    StatefulBuilder(
+                      builder: (context, setModal) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_isParentParcour)
+                              InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText:
+                                      'Cognitive role (LB only; GK does not read this)',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 8),
+                                ),
+                                child: Text(
+                                  'Object (fijo bajo parcour)',
+                                  style: Theme.of(context).textTheme.bodyLarge,
+                                ),
+                              )
+                            else
+                              InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText:
+                                      'Cognitive role (LB only; GK does not read this)',
+                                  border: OutlineInputBorder(),
+                                  isDense: true,
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 8),
+                                ),
+                                child: DropdownButtonHideUnderline(
+                                  child: DropdownButton<String>(
+                                    isExpanded: true,
+                                    isDense: true,
+                                    value: _cognitiveRole,
+                                    items: [
+                                      for (final r in kCognitiveRoles)
+                                        DropdownMenuItem<String>(
+                                          value: r,
+                                          child: Text(
+                                              _kCognitiveRoleLabels[r] ?? r),
+                                        ),
+                                    ],
+                                    onChanged: (v) {
+                                      if (v == null) return;
+                                      setState(() => _cognitiveRole = v);
+                                      setModal(() {});
+                                    },
+                                  ),
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+                            InputDecorator(
+                              decoration: const InputDecoration(
+                                labelText:
+                                    'Giro espacial (GK) — aplica al siguiente marco',
+                                helperText:
+                                    'Recto: sigue la dirección del tramo anterior. Izq/Der: acumula ±90° en yaw del marco.',
+                                helperMaxLines: 3,
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  isExpanded: true,
+                                  isDense: true,
+                                  value: _spatialTurn.isEmpty
+                                      ? 'straight'
+                                      : _spatialTurn,
+                                  items: const [
+                                    DropdownMenuItem(
+                                        value: 'straight',
+                                        child: Text('Recto')),
+                                    DropdownMenuItem(
+                                        value: 'left',
+                                        child: Text('Izquierda')),
+                                    DropdownMenuItem(
+                                        value: 'right',
+                                        child: Text('Derecha')),
+                                  ],
+                                  onChanged: (v) {
+                                    if (v == null) return;
+                                    setState(() {
+                                      _spatialTurn =
+                                          v == 'straight' ? '' : v;
+                                    });
+                                    setModal(() {});
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    const Divider(),
+                    ListTile(
+                      leading: Icon(
+                        Icons.help_outline,
+                        color: Theme.of(ctx).colorScheme.primary,
+                      ),
+                      title: const Text('Ayuda: pegar y arrastrar'),
+                      subtitle: const Text(
+                        'Ctrl+V, roles de imagen, Hero con ⌘H',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showPasteHelpDialog(context);
+                      },
+                    ),
+                    ListTile(
+                      leading: Icon(
+                        Icons.move_to_inbox_outlined,
+                        color: Theme.of(ctx).colorScheme.primary,
+                      ),
+                      title: const Text('Migrate content (pending)'),
+                      subtitle: const Text(
+                        'Definición funcional pendiente',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Migrate content: pending functional definition',
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -96,11 +313,168 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
 
   @override
   void dispose() {
+    _blocksScrollController.dispose();
     HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
     for (final b in _blocks) {
       b.dispose();
     }
     super.dispose();
+  }
+
+  void _ensureBlockItemKeys() {
+    while (_blockItemKeys.length < _blocks.length) {
+      _blockItemKeys.add(GlobalKey());
+    }
+    while (_blockItemKeys.length > _blocks.length) {
+      _blockItemKeys.removeLast();
+    }
+  }
+
+  void _scrollToBlock(int index) {
+    if (index < 0 || index >= _blockItemKeys.length) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _blockItemKeys[index].currentContext;
+      if (ctx == null || !mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        alignment: 0.08,
+      );
+    });
+  }
+
+  Color _blockRailColor(_BlockDraft b) {
+    if (b.isLink) {
+      return const Color(0xFFFFB74D);
+    }
+    if (b.isImage) {
+      if (b.imgRole == 'hero') {
+        return const Color(0xFF1565C0);
+      }
+      if (b.imgRole == 'collage') {
+        return const Color(0xFF2E7D32);
+      }
+      return const Color(0xFF78909C);
+    }
+    switch (b.textKind) {
+      case 'place':
+        return const Color(0xFFFFAB91);
+      case 'hint':
+        return const Color(0xFFCE93D8);
+      case 'ridiculous_story':
+        return const Color(0xFFF48FB1);
+      default:
+        return const Color(0xFF90CAF9);
+    }
+  }
+
+  String _blockRailTooltip(
+    _BlockDraft b,
+    int i,
+    Map<int, int> collageSeqByIndex,
+  ) {
+    if (b.isLink) {
+      return 'Link #${i + 1}';
+    }
+    if (b.isImage) {
+      if (b.imgRole == 'hero') {
+        return 'HERO · bloque ${i + 1}';
+      }
+      if (b.imgRole == 'collage') {
+        return 'Collage #${collageSeqByIndex[i] ?? 0} · bloque ${i + 1}';
+      }
+      return 'Imagen contenido · bloque ${i + 1}';
+    }
+    final kind = _kTextKinds[b.textKind] ?? 'Text';
+    return '$kind · bloque ${i + 1}';
+  }
+
+  Widget _buildBlockOverviewRail(
+    BuildContext context,
+    Map<int, int> collageSeqByIndex,
+  ) {
+    final cs = Theme.of(context).colorScheme;
+    return Tooltip(
+      message:
+          'Mapa de bloques: colores por tipo. Pulsa una franja para ir al bloque.',
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          width: 28,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Icon(
+                  Icons.view_agenda_outlined,
+                  size: 14,
+                  color: cs.primary,
+                ),
+              ),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (_blocks.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Column(
+                      children: List.generate(_blocks.length, (i) {
+                        final b = _blocks[i];
+                        final imgFocused =
+                            b.isImage && _focusedImageBlockIndex == i;
+                        final col = _blockRailColor(b);
+                        return Expanded(
+                          child: Tooltip(
+                            message: _blockRailTooltip(
+                              b,
+                              i,
+                              collageSeqByIndex,
+                            ),
+                            waitDuration: const Duration(milliseconds: 400),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 3,
+                                vertical: 1,
+                              ),
+                              child: Material(
+                                color: col,
+                                borderRadius: BorderRadius.circular(4),
+                                elevation: imgFocused ? 2 : 0,
+                                child: InkWell(
+                                  onTap: () => _scrollToBlock(i),
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: imgFocused
+                                          ? Border.all(
+                                              color: Colors.white,
+                                              width: 2,
+                                            )
+                                          : Border.all(
+                                              color: Colors.black26,
+                                              width: 0.5,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Directory _assetsDir() =>
@@ -290,14 +664,42 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
 
   void _loadFromDb() {
     final rows = widget.db.select(
-      'SELECT body_text, cognitiveRole FROM entries WHERE key = ? LIMIT 1',
+      'SELECT body_text, cognitiveRole, spatial_turn, parentKey FROM entries WHERE key = ? LIMIT 1',
       [widget.entryKey],
     );
     final raw = rows.isEmpty ? null : rows.first['body_text'] as String?;
     final roleRaw = rows.isEmpty ? null : rows.first['cognitiveRole'];
+    final parentKey = rows.isEmpty
+        ? null
+        : rows.first['parentKey']?.toString().trim();
+
+    var isParcourParent = false;
+    if (parentKey != null && parentKey.isNotEmpty) {
+      final parentRows = widget.db.select(
+        'SELECT cognitiveRole FROM entries WHERE key = ? LIMIT 1',
+        [parentKey],
+      );
+      if (parentRows.isNotEmpty) {
+        isParcourParent = normalizeCognitiveRole(
+                parentRows.first['cognitiveRole']) ==
+            'parcour';
+      }
+    }
+
+    final stRaw = rows.isEmpty
+        ? ''
+        : rows.first['spatial_turn']?.toString().trim().toLowerCase() ?? '';
+    var loadedRole = normalizeCognitiveRole(roleRaw);
+    if (isParcourParent) {
+      loadedRole = 'object';
+    }
+
     final loaded = _decodeBodyText(raw);
     setState(() {
-      _cognitiveRole = normalizeCognitiveRole(roleRaw);
+      _isParentParcour = isParcourParent;
+      _cognitiveRole = loadedRole;
+      _spatialTurn =
+          (stRaw == 'left' || stRaw == 'right') ? stRaw : '';
       for (final b in _blocks) {
         b.dispose();
       }
@@ -503,16 +905,22 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
       } else {
         final t = b.textCtrl!.text.trim();
         if (t.isEmpty) continue;
-        payload.add({'type': 'p', 'text': t, 'textKind': b.textKind});
+        payload.add({
+          'type': 'p',
+          'text': t,
+          'textKind': normalizeTextKind(b.textKind),
+        });
       }
     }
 
     final String? stored =
         payload.isEmpty ? null : jsonEncode(payload);
 
+    final stDb = _spatialTurn.isEmpty ? null : _spatialTurn;
+    final roleToSave = _isParentParcour ? 'object' : _cognitiveRole;
     widget.db.execute(
-      'UPDATE entries SET body_text = ?, cognitiveRole = ? WHERE key = ?',
-      [stored, _cognitiveRole, widget.entryKey],
+      'UPDATE entries SET body_text = ?, cognitiveRole = ?, spatial_turn = ? WHERE key = ?',
+      [stored, roleToSave, stDb, widget.entryKey],
     );
 
     try {
@@ -543,32 +951,42 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         collageSeq++;
       }
     }
+    _ensureBlockItemKeys();
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('LocusEditor · ${widget.entryKey}'),
+        toolbarHeight: 72,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('LocusEditor'),
+            Text(
+              widget.entryKey,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    fontFamily: 'monospace',
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              '${_kCognitiveRoleLabels[_cognitiveRole] ?? _cognitiveRole} · $_spatialTurnSummaryLabel',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(false),
         ),
         actions: [
-          PopupMenuButton<String>(
-            tooltip: 'More options',
-            onSelected: (value) {
-              if (value == 'migrate') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Migrate content: pending functional definition'),
-                  ),
-                );
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem<String>(
-                value: 'migrate',
-                child: Text('Migrate content (pending)'),
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.menu),
+            tooltip: 'Locus, giro y más',
+            onPressed: () => _showLocusMenu(context),
           ),
           TextButton(
             onPressed: _save,
@@ -580,63 +998,112 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Cognitive role (LB only; GK does not read this)',
-                border: OutlineInputBorder(),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  isExpanded: true,
-                  value: _cognitiveRole,
-                  items: [
-                    for (final r in kCognitiveRoles)
-                      DropdownMenuItem<String>(
-                        value: r,
-                        child: Text(_kCognitiveRoleLabels[r] ?? r),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: PopupMenuButton<String>(
+                tooltip: 'Añadir bloque',
+                onSelected: (value) {
+                  switch (value) {
+                    case 'p':
+                      _addParagraph();
+                      break;
+                    case 'l':
+                      _addLink();
+                      break;
+                    case 'i':
+                      _addImage();
+                      break;
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem<String>(
+                    value: 'p',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.text_fields, size: 20),
+                      title: Text('Paragraph'),
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'l',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.link, size: 20),
+                      title: Text('Link'),
+                    ),
+                  ),
+                  const PopupMenuItem<String>(
+                    value: 'i',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.image_outlined, size: 20),
+                      title: Text('Image'),
+                    ),
+                  ),
+                ],
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outline,
                       ),
-                  ],
-                  onChanged: (v) {
-                    if (v == null) return;
-                    setState(() => _cognitiveRole = v);
-                  },
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.add,
+                            size: 20,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Añadir bloque',
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                          Icon(
+                            Icons.arrow_drop_down,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                OutlinedButton.icon(
-                  onPressed: _addParagraph,
-                  icon: const Icon(Icons.text_fields),
-                  label: const Text('Paragraph'),
+                Icon(
+                  Icons.content_paste_go,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.outline,
                 ),
-                OutlinedButton.icon(
-                  onPressed: _addLink,
-                  icon: const Icon(Icons.link),
-                  label: const Text('Link'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _addImage,
-                  icon: const Icon(Icons.image_outlined),
-                  label: const Text('Image'),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Pegar: Ctrl+V. Imagen: Content / Collage / Hero · Hero rápido: imagen + Ctrl/Cmd+H · '
+                    'Detalle: menú ☰',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Text(
-              'Paste image or text: Ctrl+V / Cmd+V (with focus outside text fields). '
-              'Set image target: Content (viewer only), Collage (GK wall), or Hero (GK frame). '
-              'Hero shortcut: click image + Ctrl/Cmd+H. '
-              'Desktop: drop .png / .jpg / .webp files.',
-              style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
           Expanded(
@@ -654,10 +1121,15 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                           ),
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: _blocks.length,
-                        itemBuilder: (context, i) {
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: ListView.builder(
+                              controller: _blocksScrollController,
+                              padding: const EdgeInsets.fromLTRB(12, 0, 4, 16),
+                              itemCount: _blocks.length,
+                              itemBuilder: (context, i) {
                           final b = _blocks[i];
                           final last = i == _blocks.length - 1;
                           final imgFocused =
@@ -670,8 +1142,10 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                       : b.imgRole == 'collage'
                                           ? 'COLLAGE #${collageSeqByIndex[i] ?? 0}'
                                           : 'CONTENT')
-                                  : 'p';
+                                  : (_kTextKinds[b.textKind] ?? 'Text')
+                                      .toUpperCase();
                           return Card(
+                            key: _blockItemKeys[i],
                             margin: const EdgeInsets.only(bottom: 12),
                             color: imgFocused
                                 ? Theme.of(context)
@@ -702,22 +1176,29 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                         () => _focusedImageBlockIndex = null,
                                       ),
                               child: Padding(
-                                padding: const EdgeInsets.all(12),
+                                padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
                                 child: Column(
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
                                     Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
                                       children: [
                                         Chip(
                                           label: Text(
                                             tagLabel,
                                             style: const TextStyle(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
                                             ),
                                           ),
                                           visualDensity: VisualDensity.compact,
+                                          materialTapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                          ),
                                           backgroundColor: b.isImage
                                               ? (b.imgRole == 'hero'
                                                   ? Colors.blue.shade100
@@ -727,105 +1208,115 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                               : null,
                                         ),
                                         if (imgFocused) ...[
-                                          const SizedBox(width: 8),
+                                          const SizedBox(width: 6),
                                           Text(
-                                            'focus · Ctrl/Cmd+H',
+                                            '⌘H',
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .labelSmall,
                                           ),
                                         ],
-                                        const Spacer(),
-                                        IconButton(
-                                          icon: const Icon(Icons.arrow_upward),
-                                          tooltip: 'Move up',
-                                          onPressed: i == 0
-                                              ? null
-                                              : () => _moveUp(i),
-                                        ),
-                                        IconButton(
-                                          icon:
-                                              const Icon(Icons.arrow_downward),
-                                          tooltip: 'Move down',
-                                          onPressed:
-                                              last ? null : () => _moveDown(i),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(
-                                            Icons.delete_outline,
-                                          ),
-                                          tooltip: 'Delete',
-                                          onPressed: () => _removeAt(i),
-                                        ),
-                                      ],
-                                    ),
-                                    if (!b.isImage && !b.isLink) ...[
-                                      DropdownButtonFormField<String>(
-                                        initialValue: b.textKind,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Text kind',
-                                          border: OutlineInputBorder(),
-                                        ),
-                                        items: [
-                                          for (final e in _kTextKinds.entries)
-                                            DropdownMenuItem<String>(
-                                              value: e.key,
-                                              child: Text(e.value),
-                                            ),
-                                        ],
-                                        onChanged: (v) {
-                                          if (v == null) return;
-                                          setState(() => b.textKind = v);
-                                        },
-                                      ),
-                                      const SizedBox(height: 8),
-                                    ],
-                                    if (b.isLink) ...[
-                                      TextField(
-                                        controller: b.linkKeyCtrl!,
-                                        decoration: const InputDecoration(
-                                          labelText: 'Target KEY',
-                                          border: OutlineInputBorder(),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                    ],
-                                    if (b.isImage) ...[
-                                      Row(
-                                        children: [
+                                        if (!b.isImage && !b.isLink) ...[
+                                          const SizedBox(width: 8),
                                           Expanded(
-                                            child: DropdownButtonFormField<String>(
-                                              initialValue: b.imgRole,
+                                            child:
+                                                DropdownButtonFormField<String>(
+                                              initialValue: b.textKind,
+                                              isDense: true,
                                               decoration: const InputDecoration(
-                                                labelText: 'Image target',
+                                                labelText: 'Tipo texto',
+                                                isDense: true,
+                                                contentPadding:
+                                                    EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 4,
+                                                ),
+                                                border: OutlineInputBorder(),
+                                              ),
+                                              items: [
+                                                for (final e
+                                                    in _kTextKinds.entries)
+                                                  DropdownMenuItem<String>(
+                                                    value: e.key,
+                                                    child: Text(
+                                                      e.value,
+                                                      style: const TextStyle(
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                              onChanged: (v) {
+                                                if (v == null) return;
+                                                setState(() => b.textKind = v);
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                        if (b.isImage) ...[
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            flex: 2,
+                                            child:
+                                                DropdownButtonFormField<String>(
+                                              initialValue: b.imgRole,
+                                              isDense: true,
+                                              decoration: const InputDecoration(
+                                                labelText: 'Rol (GK)',
+                                                isDense: true,
+                                                contentPadding:
+                                                    EdgeInsets.symmetric(
+                                                  horizontal: 8,
+                                                  vertical: 4,
+                                                ),
                                                 border: OutlineInputBorder(),
                                               ),
                                               items: const [
                                                 DropdownMenuItem(
                                                   value: 'content',
-                                                  child: Text('Viewer only'),
+                                                  child: Text(
+                                                    'Viewer',
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
                                                 ),
                                                 DropdownMenuItem(
                                                   value: 'collage',
-                                                  child: Text('Wall collage (GK)'),
+                                                  child: Text(
+                                                    'Collage muro',
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
                                                 ),
                                                 DropdownMenuItem(
                                                   value: 'hero',
-                                                  child: Text('Hero (GK frame)'),
+                                                  child: Text(
+                                                    'Hero marco',
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
                                                 ),
                                               ],
                                               onChanged: (v) {
                                                 if (v == null) return;
                                                 setState(() {
                                                   if (v == 'hero') {
-                                                    for (final other in _blocks) {
-                                                      if (other.isImage && other.imgRole == 'hero') {
-                                                        other.imgRole = 'content';
+                                                    for (final other
+                                                        in _blocks) {
+                                                      if (other.isImage &&
+                                                          other.imgRole ==
+                                                              'hero') {
+                                                        other.imgRole =
+                                                            'content';
                                                       }
                                                     }
                                                     b.collageOrder = null;
                                                   } else if (v == 'collage') {
-                                                    b.collageOrder ??= _nextCollageOrder();
+                                                    b.collageOrder ??=
+                                                        _nextCollageOrder();
                                                   } else {
                                                     b.collageOrder = null;
                                                   }
@@ -835,55 +1326,128 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                             ),
                                           ),
                                           if (b.imgRole == 'collage') ...[
-                                            const SizedBox(width: 8),
+                                            const SizedBox(width: 6),
                                             SizedBox(
-                                              width: 92,
+                                              width: 64,
                                               child: TextFormField(
-                                                initialValue: (b.collageOrder ?? 1).toString(),
-                                                keyboardType: const TextInputType.numberWithOptions(
+                                                initialValue: (b.collageOrder ??
+                                                        1)
+                                                    .toString(),
+                                                keyboardType:
+                                                    const TextInputType
+                                                        .numberWithOptions(
                                                   signed: false,
                                                   decimal: false,
                                                 ),
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                ),
                                                 decoration: const InputDecoration(
-                                                  labelText: 'Order',
-                                                  border: OutlineInputBorder(),
+                                                  labelText: '#',
                                                   isDense: true,
+                                                  contentPadding:
+                                                      EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 6,
+                                                  ),
+                                                  border: OutlineInputBorder(),
                                                 ),
                                                 onChanged: (v) {
-                                                  final n = int.tryParse(v.trim());
-                                                  if (n == null || n <= 0) return;
+                                                  final n =
+                                                      int.tryParse(v.trim());
+                                                  if (n == null || n <= 0) {
+                                                    return;
+                                                  }
                                                   b.collageOrder = n;
                                                 },
                                               ),
                                             ),
                                           ],
                                         ],
+                                        const Spacer(),
+                                        IconButton(
+                                          icon: const Icon(Icons.arrow_upward,
+                                              size: 20),
+                                          tooltip: 'Move up',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: i == 0
+                                              ? null
+                                              : () => _moveUp(i),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.arrow_downward,
+                                            size: 20,
+                                          ),
+                                          tooltip: 'Move down',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: last
+                                              ? null
+                                              : () => _moveDown(i),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            size: 20,
+                                          ),
+                                          tooltip: 'Delete',
+                                          visualDensity: VisualDensity.compact,
+                                          onPressed: () => _removeAt(i),
+                                        ),
+                                      ],
+                                    ),
+                                    if (b.isLink) ...[
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: b.linkKeyCtrl!,
+                                        decoration: const InputDecoration(
+                                          labelText: 'Target KEY',
+                                          border: OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
                                       ),
+                                    ],
+                                    if (b.isImage) ...[
                                       const SizedBox(height: 8),
                                       TextField(
                                         controller: b.srcCtrl!,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontFamily: 'monospace',
+                                        ),
                                         decoration: InputDecoration(
                                           labelText:
-                                              'File in assets/${widget.entryKey}/',
-                                          hintText: 'e.g. image.png',
+                                              'assets/${widget.entryKey}/',
+                                          hintText: 'archivo.png',
+                                          isDense: true,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
                                           border: const OutlineInputBorder(),
                                         ),
                                       ),
-                                      const SizedBox(height: 8),
+                                      const SizedBox(height: 6),
                                       _ImagePreviewTile(
                                         entryKey: widget.entryKey,
                                         srcController: b.srcCtrl!,
                                       ),
                                     ] else
-                                      TextField(
-                                        controller: b.textCtrl!,
-                                        minLines: b.isLink ? 2 : 3,
-                                        maxLines: 8,
-                                        decoration: InputDecoration(
-                                          labelText: b.isLink
-                                              ? 'Link label'
-                                              : 'Text',
-                                          border: const OutlineInputBorder(),
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8),
+                                        child: TextField(
+                                          controller: b.textCtrl!,
+                                          minLines: b.isLink ? 2 : 3,
+                                          maxLines: 8,
+                                          decoration: InputDecoration(
+                                            labelText: b.isLink
+                                                ? 'Link label'
+                                                : 'Text',
+                                            border:
+                                                const OutlineInputBorder(),
+                                            isDense: true,
+                                          ),
                                         ),
                                       ),
                                   ],
@@ -892,6 +1456,16 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                             ),
                           );
                         },
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6, bottom: 8),
+                            child: _buildBlockOverviewRail(
+                              context,
+                              collageSeqByIndex,
+                            ),
+                          ),
+                        ],
                       );
                 if (_useDesktopDrop()) {
                   core = DropTarget(

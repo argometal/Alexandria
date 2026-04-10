@@ -2,10 +2,10 @@ import '../library_build.dart' show parseBody;
 
 bool _isEvaluableTextKind(Object? raw) {
   final t = raw?.toString().toLowerCase().trim() ?? '';
-  return t == 'hint' || t == 'ridiculous_story';
+  return t == 'hint' || t == 'place' || t == 'ridiculous_story';
 }
 
-/// Bloques evaluables (hint / ridiculous_story) en orden.
+/// Bloques evaluables (hint / place / ridiculous_story) en orden; [applyLocusReviewOutcome] exige ≥3.
 int countEvaluableBlocks(String? bodyText) {
   final blocks = parseBody(bodyText);
   var n = 0;
@@ -33,4 +33,16 @@ double computeRecallPct(String? bodyText, List<int> recalledIndices) {
   final total = countEvaluableBlocks(bodyText);
   if (total == 0) return 1.0;
   return countCorrectBlocks(bodyText, recalledIndices) / total;
+}
+
+/// **Castle / completitud (ORM-16):** el locus cuenta como activo solo si hay ≥1 bloque `p` con
+/// `textKind == ridiculous_story` (misma semántica que normalización en [parseBody]).
+bool isCastleActiveLocus(String? bodyText) {
+  final blocks = parseBody(bodyText);
+  for (final b in blocks) {
+    if (b['type'] != 'p') continue;
+    final tk = b['textKind']?.toString().toLowerCase().trim() ?? '';
+    if (tk == 'ridiculous_story') return true;
+  }
+  return false;
 }

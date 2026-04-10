@@ -1,0 +1,9 @@
+{
+  "name": "data-transfer",
+  "private": true,
+  "description": "Home + Reader + Sender only (light slice of Bridge)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

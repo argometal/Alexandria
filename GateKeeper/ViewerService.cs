@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.IO;
+using System.Globalization;
 
 /// <summary>
 /// [A15][VIEWER] Lee <c>viewer/current.json</c> del realm activo (sin SQLite en GK).
@@ -20,6 +21,21 @@ public partial class ViewerService : CanvasLayer
 	private const int BlockSeparationPx = 16;
 	private const int PanelMarginPx = 20;
 	private const int SectionSeparationPx = 12;
+
+	/// <summary>Etiquetas alineadas con <c>_kTextKinds</c> en LibraryBuild <c>locus_editor.dart</c>.</summary>
+	private static string ViewerLabelForTextKind(string raw)
+	{
+		var k = (raw ?? "").Trim().ToLowerInvariant();
+		if (string.IsNullOrEmpty(k) || k == "text")
+			return "";
+		return k switch
+		{
+			"hint" => "Hint",
+			"place" => "Place",
+			"ridiculous_story" => "Ridiculous story",
+			_ => "",
+		};
+	}
 
 	private string _lastKeyShown = "";
 	private long _lastVersionShown = 0;
@@ -259,6 +275,8 @@ public partial class ViewerService : CanvasLayer
 		var stabilityDays = ReadViewerNumber(data, "stabilityDays");
 		var memoryStrength = ReadViewerNumber(data, "memoryStrength");
 		var reviewCount = ReadViewerInt(data, "reviewCount");
+		var cognitiveRole = ReadViewerString(data, "cognitiveRole");
+		var nextReviewAtIso = ReadViewerString(data, "nextReviewAt");
 
 		// Si caemos en current.json pero el foco pide otra KEY, el parentKey sería el de otra fila
 		// (p. ej. ROOT) y ← Back saltaría a realm sin pasar por parcour. No pintar hasta alinear LB.
@@ -280,7 +298,7 @@ public partial class ViewerService : CanvasLayer
 				bodyEmpty = new Godot.Collections.Array();
 			else
 				bodyEmpty = data["body"].AsGodotArray();
-			ShowContent("", bodyEmpty, false, "", 0, 0, 0, 0);
+			ShowContent("", bodyEmpty, false, "", 0, 0, 0, 0, "", "");
 			_lastKeyShown = "";
 			_lastVersionShown = version;
 			_lastHasChildrenShown = false;
@@ -296,7 +314,8 @@ public partial class ViewerService : CanvasLayer
 			body = new Godot.Collections.Array();
 		else
 			body = data["body"].AsGodotArray();
-		ShowContent(key, body, hasChildren, parentKey, recallScore, stabilityDays, memoryStrength, reviewCount);
+		ShowContent(key, body, hasChildren, parentKey, recallScore, stabilityDays, memoryStrength, reviewCount,
+			cognitiveRole, nextReviewAtIso);
 
 		_lastKeyShown = key;
 		_lastVersionShown = version;
@@ -370,6 +389,39 @@ public partial class ViewerService : CanvasLayer
 		};
 	}
 
+	private static string ReadViewerString(Godot.Collections.Dictionary data, string key)
+	{
+		if (!data.ContainsKey(key))
+			return "";
+		var v = data[key];
+		return v.VariantType switch
+		{
+			Variant.Type.String => v.AsString().Trim(),
+			_ => "",
+		};
+	}
+
+	private static string StripDangerousBbcode(string raw)
+	{
+		if (string.IsNullOrEmpty(raw))
+			return "";
+		var s = raw;
+		string[] bad = { "[url", "[/url]", "[img", "[/img]", "[table", "[/table]", "[code", "[/code]" };
+		foreach (var b in bad)
+			s = s.Replace(b, "", StringComparison.OrdinalIgnoreCase);
+		return s;
+	}
+
+	private static string FormatNextReviewBadge(string iso)
+	{
+		if (string.IsNullOrWhiteSpace(iso))
+			return "";
+		var t = iso.Trim();
+		if (DateTime.TryParse(t, null, DateTimeStyles.RoundtripKind, out var dt))
+			return "Next review: " + dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+		return "Next review: " + t;
+	}
+
 	private void ClearEnterButtonHost()
 	{
 		foreach (Node child in _enterButtonHost.GetChildren())
@@ -377,7 +429,7 @@ public partial class ViewerService : CanvasLayer
 		_enterButtonHost.Visible = false;
 	}
 
-	private void ShowContent(string key, Godot.Collections.Array body, bool hasChildren, string parentKey, double recallScore, double stabilityDays, double memoryStrength, int reviewCount)
+	private void ShowContent(string key, Godot.Collections.Array body, bool hasChildren, string parentKey, double recallScore, double stabilityDays, double memoryStrength, int reviewCount, string cognitiveRole, string nextReviewAtIso)
 	{
 		foreach (Node child in _stack.GetChildren())
 			child.QueueFree();
@@ -385,6 +437,25 @@ public partial class ViewerService : CanvasLayer
 
 		_titleLabel.Text = string.IsNullOrEmpty(key) ? "Sin KEY de foco" : key;
 		_panel.Visible = true;
+
+		if (!string.IsNullOrEmpty(cognitiveRole) || !string.IsNullOrEmpty(nextReviewAtIso))
+		{
+			var parts = new System.Collections.Generic.List<string>();
+			if (!string.IsNullOrEmpty(cognitiveRole))
+				parts.Add("Role: " + cognitiveRole);
+			var dueLine = FormatNextReviewBadge(nextReviewAtIso);
+			if (!string.IsNullOrEmpty(dueLine))
+				parts.Add(dueLine);
+			var badge = new RichTextLabel();
+			badge.BbcodeEnabled = false;
+			badge.FitContent = true;
+			badge.ScrollActive = false;
+			badge.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+			badge.AddThemeFontSizeOverride("font_size", FontBodyPx);
+			badge.Text = string.Join("  ·  ", parts);
+			badge.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+			_stack.AddChild(badge);
+		}
 
 		if (!string.IsNullOrEmpty(key) && reviewCount > 0)
 		{
@@ -465,14 +536,83 @@ public partial class ViewerService : CanvasLayer
 				continue;
 			}
 
+			if (type == "audio")
+			{
+				var src = d.ContainsKey("src") ? d["src"].AsString() : "";
+				var path = ResolveImagePath(key, src);
+				var audioLbl = new RichTextLabel();
+				audioLbl.BbcodeEnabled = false;
+				audioLbl.FitContent = true;
+				audioLbl.ScrollActive = false;
+				audioLbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+				audioLbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
+				audioLbl.Text = string.IsNullOrEmpty(src)
+					? "Audio: (missing src)"
+					: (File.Exists(path) ? "Audio: " + src : "Audio (file missing): " + src);
+				audioLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+				_stack.AddChild(audioLbl);
+				continue;
+			}
+
+			if (type == "warp")
+			{
+				var wKey = d.ContainsKey("key") ? d["key"].AsString().Trim() : "";
+				var wText = d.ContainsKey("text") ? d["text"].AsString() : "";
+				if (string.IsNullOrEmpty(wKey))
+					continue;
+				var wBtn = new Button();
+				wBtn.Text = string.IsNullOrEmpty(wText) ? "Warp → " + wKey : wText + " → " + wKey;
+				wBtn.Flat = true;
+				wBtn.Alignment = HorizontalAlignment.Left;
+				wBtn.AddThemeFontSizeOverride("font_size", FontLinkPx);
+				wBtn.AddThemeColorOverride("font_color", new Color(0.45f, 0.75f, 0.55f));
+				wBtn.AddThemeColorOverride("font_hover_color", new Color(0.55f, 0.9f, 0.65f));
+				wBtn.AddThemeColorOverride("font_pressed_color", new Color(0.3f, 0.55f, 0.4f));
+				var wNav = wKey;
+				wBtn.Pressed += () => RequestFocusNavigation(wNav);
+				wBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+				_stack.AddChild(wBtn);
+				continue;
+			}
+
+			if (type == "tag")
+			{
+				var tagText = d.ContainsKey("text") ? d["text"].AsString() : "";
+				var tagLbl = new RichTextLabel();
+				tagLbl.BbcodeEnabled = false;
+				tagLbl.FitContent = true;
+				tagLbl.ScrollActive = false;
+				tagLbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+				tagLbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
+				tagLbl.Text = "# " + tagText;
+				tagLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+				_stack.AddChild(tagLbl);
+				continue;
+			}
+
 			var txt = d.ContainsKey("text") ? d["text"].AsString() : "";
+			var textKindRaw = d.ContainsKey("textKind") ? d["textKind"].AsString() : "text";
+			var kindCaption = ViewerLabelForTextKind(textKindRaw);
+			if (!string.IsNullOrEmpty(kindCaption))
+			{
+				var kindLbl = new RichTextLabel();
+				kindLbl.BbcodeEnabled = false;
+				kindLbl.FitContent = true;
+				kindLbl.ScrollActive = false;
+				kindLbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+				kindLbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
+				kindLbl.Text = kindCaption;
+				kindLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+				_stack.AddChild(kindLbl);
+			}
+
 			var lbl = new RichTextLabel();
-			lbl.BbcodeEnabled = false;
+			lbl.BbcodeEnabled = true;
 			lbl.FitContent = true;
 			lbl.ScrollActive = false;
 			lbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 			lbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
-			lbl.Text = txt;
+			lbl.Text = StripDangerousBbcode(txt);
 			lbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(lbl);
 		}

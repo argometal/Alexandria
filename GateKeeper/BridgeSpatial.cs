@@ -11,9 +11,47 @@ public static class BridgeSpatial
 	public static string BridgeDir => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "bridge");
 	public const string CurrentSeqFile = "current_seq.txt";
 	public const string LastPositionFile = "last_position.json";
+	public const string NavigationIntentFile = "navigation_intent.txt";
 
 	public static string CurrentSeqPath => Path.Combine(BridgeDir, CurrentSeqFile);
 	public static string LastPositionPath => Path.Combine(BridgeDir, LastPositionFile);
+
+	public static string NavigationIntentPath => Path.Combine(BridgeDir, NavigationIntentFile);
+
+	/// <summary>
+	/// Modo de intención (explore / review / seek / drift) — LibraryBuild.
+	/// Formato: línea 1 = modo; línea 2 opcional = clave del locus en foco (mismo objeto cuyo Hero ancla place/hint/ridiculous).
+	/// HUD: RealmController muestra "Intent: modo · marco KEY" si hay segunda línea.
+	/// </summary>
+	public static string ReadNavigationIntent()
+	{
+		try
+		{
+			if (!File.Exists(NavigationIntentPath))
+				return "explore";
+			var raw = File.ReadAllText(NavigationIntentPath).Trim();
+			if (string.IsNullOrEmpty(raw))
+				return "explore";
+			var lines = raw.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+			if (lines.Length == 0)
+				return "explore";
+			var mode = lines[0].Trim().ToLowerInvariant();
+			if (string.IsNullOrEmpty(mode))
+				return "explore";
+			if (lines.Length >= 2)
+			{
+				var anchor = lines[1].Trim();
+				if (!string.IsNullOrEmpty(anchor))
+					return $"{mode} · marco {anchor}";
+			}
+			return mode;
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[BRIDGE][INTENT_READ] " + e.Message);
+			return "explore";
+		}
+	}
 
 	public static void WriteCurrentSeq(int seq)
 	{

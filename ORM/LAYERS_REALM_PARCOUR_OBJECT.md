@@ -17,6 +17,22 @@
 
 ---
 
+## Realm vs Castle (product vocabulary — fixed)
+
+These terms are **not** interchangeable.
+
+| Term | Meaning |
+|------|--------|
+| **Realm (structural)** | The **full tree under one realm key** in the homogeneous model: **421 nodes** total in `entries` — 1 realm row + 20 parcours + 400 objects. **421 is the practical upper limit** of the developed allocation (capacity), **not** a requirement to author or “complete” every node. GK still shows **20 frames** per `context_key`; see table above. |
+| **Castle (completion)** | A **completed phase** for that world, judged only on **frames that are *used*** in the authored experience (subset of nodes — how “used” is flagged belongs in **locus / product metrics**, e.g. in-scope for delivery). **Ridiculous-stories** (`historias ridículas`) completion is evaluated on that subset. **Castle qualifies** when **≥ 80%** of **used** frames are completed **at ridiculous-stories level** (not 80% of all 421). Example: **100** frames used, **80** of them completed to that bar → **80% of used** → qualifies. Knowledge may only need **100 frames or fewer**; the tree still caps at **421** as developed capacity. |
+
+**Notes**
+
+- **Unused** nodes (never part of the authored path) **do not** enter the castle denominator; otherwise small-scope worlds would be unfairly penalized.
+- The exact definition of **“used frame”** (metadata column, rule, or export flag) must stay in sync with LB/GK and **locus_review** / story-completion fields — this file only fixes the **meaning** of Realm vs Castle.
+
+---
+
 ## Keys (operational — as implemented in LibraryBuild / GateKeeper synthetic paths)
 
 Canonical runtime pattern used in code and seed:
@@ -46,7 +62,17 @@ Legacy bridge/DB keys (`ROOT`, `C1`, `C1_Hhh`, `PARCOUR_*`, etc.) are **migrated
 
 ---
 
-## Bridge (filesystem, shared GK + LB)
+## Storage: one realm = one folder (LibraryBuild + GateKeeper)
+
+- **Active realm** is stored in `data/active_realm.txt` (single line, id saneado; default `default`).
+- **Data root for that realm:** `data/realms/<id>/` — contains `alexandria.db`, `bridge/`, `snapshot/`, `viewer/`, `assets/`, `navigation/`, `manifests/`, etc.
+- **Migration:** on first LibraryBuild run, if legacy `data/alexandria.db` exists and `data/realms/default/alexandria.db` does not, LB copies the flat `data/` tree into `data/realms/default/`.
+- **GK** resolves the same paths via `AlexandriaDataRoot.RealmDataRoot` (reads `active_realm.txt` each access). Restart GK after switching realms if files were generated while it was idle.
+- **“Realm vacío” (nuevo en LB):** no significa solo `ROOT`. Significa **misma geometría de árbol** (hub `PARCOUR_MAIN` → `L1`…`L20` → 400 objetos) **sin datos de usuario**: `body_text` vacío, tablas de review/locus limpiadas, carpeta `assets/` nueva vacía. Las 420 “hojas” de contenido existen como filas; el techo `ROOT`/hub sigue el ORM.
+
+---
+
+## Bridge (filesystem, shared GK + LB — **per active realm**)
 
 | File | Meaning |
 |------|---------|
@@ -90,6 +116,7 @@ Legacy bridge/DB keys (`ROOT`, `C1`, `C1_Hhh`, `PARCOUR_*`, etc.) are **migrated
 2. Confirm **`ALEXANDRIA_DATA`** (or same default **`…/data`**) for GK and LB on desktop.
 3. **Realm** = one row; **parcours** under realm; **objects** under each parcour; **20 slots** per parent in snapshot.
 4. **`context_key`** selects snapshot; **`focus_key`** selects viewer; **seq** selects frame index.
+5. **Práctica inmediata A15** (motores de repaso, bridge, keyspace, alcance): ver **`ORM/ORM-15V4-A15.md`**.
 
 ---
 

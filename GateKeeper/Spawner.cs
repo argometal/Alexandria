@@ -2,6 +2,7 @@ using Godot;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 
 public partial class Spawner : Node3D
 {
@@ -53,7 +54,14 @@ public partial class Spawner : Node3D
 	/// <summary>Tras rechazar snapshot (bridge ≠ JSON): backoff antes de reintentar con refresh_now.</summary>
 	private double _snapshotReloadBackoffSec;
 
-	private const string SnapshotCurrentJsonPath = @"C:\Alexandria\snapshot\current.json";
+	private static string RealmSnapshotDir => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "snapshot");
+	private static string SnapshotCurrentJsonPath => Path.Combine(RealmSnapshotDir, "current.json");
+
+	/// <summary>Hoja de objeto bajo parcour (p. ej. L1_O01). Siempre cámara en el primer marco.</summary>
+	private static readonly Regex ObjectLocusKeySuffix = new Regex(@"_O\d{2}$", RegexOptions.Compiled);
+
+	private static bool IsObjectLocusKey(string key) =>
+		!string.IsNullOrEmpty(key) && ObjectLocusKeySuffix.IsMatch(key);
 
 	// --- Corredor recto Z: QuadMesh Size=(PanelHeight,PanelWidth); con rot -90°Y la extensión en +Z es PanelHeight. ---
 	private const int FrameSlotCount = 20;
@@ -149,7 +157,7 @@ public partial class Spawner : Node3D
 			return File.Exists(path);
 		}
 
-		var keyed = Path.Combine(@"C:\Alexandria\data\snapshot", bridgeCtx + ".json");
+		var keyed = Path.Combine(RealmSnapshotDir, bridgeCtx + ".json");
 		if (File.Exists(keyed))
 		{
 			path = keyed;
@@ -655,7 +663,7 @@ public partial class Spawner : Node3D
 		// [SCOPE:REFRESH_WATCHER]
 		GD.Print("[SPAWNER][PROCESS_ENABLED]");
 		GD.Print("[SPAWNER][VERSION] A15 Cambio034 refresh polling + 1Hz tick");
-		GD.Print("[SPAWNER][REFRESH_PATH] " + @"C:\Alexandria\data\bridge\refresh_now.txt");
+		GD.Print("[SPAWNER][REFRESH_PATH] " + Path.Combine(AlexandriaDataRoot.RealmDataRoot, "bridge", "refresh_now.txt"));
 	}
 	
 
@@ -748,7 +756,9 @@ public partial class Spawner : Node3D
 	}
 
 	/// <summary>
-	/// Fase 4: last_position.byKey[context_key] si existe; si no, current_seq.txt del bridge.
+	/// Parcour / realm (clave que no es hoja *_O##): primera vez en el nivel → marco 0;
+	/// al volver tras salir → seq guardado en last_position.byKey[context_key] (escribe LB al cambiar contexto).
+	/// Object (hoja *_O##): siempre primer marco (seq 0). No usar current_seq.txt como sustituto.
 	/// </summary>
 	private void TryRestoreCameraAfterSnapshot()
 	{
@@ -760,15 +770,19 @@ public partial class Spawner : Node3D
 		}
 
 		var contextKey = BridgeSpatial.ReadContextKey();
-		int? seqNullable = string.IsNullOrEmpty(contextKey)
-			? null
-			: BridgeSpatial.ReadSavedSeqForOpenKey(contextKey);
-		if (seqNullable == null)
-			seqNullable = BridgeSpatial.ReadCurrentSeqOrNull();
-		if (seqNullable == null)
+		if (string.IsNullOrEmpty(contextKey))
 			return;
 
-		int seq = seqNullable.Value;
+		int seq;
+		if (IsObjectLocusKey(contextKey))
+		{
+			seq = 0;
+		}
+		else
+		{
+			var saved = BridgeSpatial.ReadSavedSeqForOpenKey(contextKey);
+			seq = saved ?? 0;
+		}
 		if (seq < 0)
 			seq = 0;
 		if (seq >= FrameSlotCount)
@@ -785,7 +799,7 @@ public partial class Spawner : Node3D
 
 	public override void _Process(double delta)
 	{
-		var refreshPath = @"C:\Alexandria\data\bridge\refresh_now.txt";
+		var refreshPath = Path.Combine(AlexandriaDataRoot.RealmDataRoot, "bridge", "refresh_now.txt");
 
 		_snapshotRefreshCheckTimer += delta;
 		if (_snapshotRefreshCheckTimer >= 1.0)

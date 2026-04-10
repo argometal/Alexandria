@@ -8,7 +8,7 @@ using Godot;
 /// </summary>
 public static class BridgeSpatial
 {
-	public const string BridgeDir = @"C:\Alexandria\data\bridge";
+	public static string BridgeDir => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "bridge");
 	public const string CurrentSeqFile = "current_seq.txt";
 	public const string LastPositionFile = "last_position.json";
 

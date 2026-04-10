@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
 import 'package:super_clipboard/super_clipboard.dart';
 
+import 'alexandria_paths.dart';
 import 'library_build.dart'
     show
         buildViewerForKey,
@@ -17,9 +18,8 @@ import 'library_build.dart'
         kCognitiveRoles,
         normalizeCognitiveRole,
         readFocusKeyWithFallback,
+        runLibraryBuild,
         writeViewerCurrentJson;
-
-const _assetsRoot = r'C:\Alexandria\data\assets';
 
 const _kCognitiveRoleLabels = <String, String>{
   'realm': 'Realm',
@@ -104,7 +104,8 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
   }
 
   Directory _assetsDir() =>
-      Directory('$_assetsRoot${Platform.pathSeparator}${widget.entryKey}');
+      Directory(
+          '${AlexandriaPaths.assetsRoot}${Platform.pathSeparator}${widget.entryKey}');
 
   void _deleteHeroAssetFiles() {
     final dir = _assetsDir();
@@ -521,6 +522,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         writeViewerCurrentJson(widget.db, widget.entryKey);
       }
       buildViewerForKey(widget.entryKey);
+      runLibraryBuild();
     } catch (_) {}
 
     if (!mounted) return;
@@ -1012,7 +1014,7 @@ class _ImagePreviewTileState extends State<_ImagePreviewTile> {
       );
     }
     final path =
-        '$_assetsRoot${Platform.pathSeparator}${widget.entryKey}${Platform.pathSeparator}$name';
+        '${AlexandriaPaths.assetsRoot}${Platform.pathSeparator}${widget.entryKey}${Platform.pathSeparator}$name';
     final f = File(path);
     if (!f.existsSync()) {
       return Text(

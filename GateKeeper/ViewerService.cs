@@ -3,13 +3,13 @@ using System;
 using System.IO;
 
 /// <summary>
-/// [A15][VIEWER] Lee solo C:\Alexandria\data\viewer\current.json (sin SQLite en GK).
+/// [A15][VIEWER] Lee <c>viewer/current.json</c> del realm activo (sin SQLite en GK).
 /// </summary>
 public partial class ViewerService : CanvasLayer
 {
-	private const string ViewerCurrentPath = @"C:\Alexandria\data\viewer\current.json";
-	private const string DataRoot = @"C:\Alexandria\data";
-	private const string BridgeDir = @"C:\Alexandria\data\bridge";
+	private static string ViewerCurrentPath => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "viewer", "current.json");
+	private static string DataRoot => AlexandriaDataRoot.RealmDataRoot;
+	private static string BridgeDir => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "bridge");
 	private const string RealmKey = "ROOT";
 	private const string ParcourKey = "PARCOUR_MAIN";
 
@@ -213,7 +213,7 @@ public partial class ViewerService : CanvasLayer
 		var focusKey = BridgeSpatial.ReadFocusKey();
 		var viewerPath = string.IsNullOrEmpty(focusKey)
 			? ViewerCurrentPath
-			: $@"C:\Alexandria\data\viewer\{focusKey}.json";
+			: Path.Combine(DataRoot, "viewer", focusKey + ".json");
 		var usedCurrentJsonFallback = false;
 		if (!File.Exists(viewerPath))
 		{
@@ -480,10 +480,9 @@ public partial class ViewerService : CanvasLayer
 
 		var backTarget = ResolveBackTargetForNavigation(key, parentKey);
 		var hasBack = !string.IsNullOrEmpty(backTarget);
-		var hasRealmBack = !string.IsNullOrEmpty(key) &&
-			!string.Equals(key.Trim(), RealmKey, StringComparison.OrdinalIgnoreCase);
 		var hasEnter = hasChildren && !string.IsNullOrEmpty(key);
-		if (!hasBack && !hasRealmBack && !hasEnter)
+		// Sin botón "Realm": subir a ROOT solo en LibraryBuild, no en GK.
+		if (!hasBack && !hasEnter)
 			return;
 
 		var row = new HBoxContainer();
@@ -499,15 +498,6 @@ public partial class ViewerService : CanvasLayer
 			backBtn.Pressed += () => BackLevelRequested?.Invoke(backTarget);
 			backBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			row.AddChild(backBtn);
-		}
-
-		if (hasRealmBack)
-		{
-			var realmBtn = new Button();
-			realmBtn.Text = "⇤ Realm";
-			realmBtn.Pressed += () => BackLevelRequested?.Invoke("ROOT");
-			realmBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			row.AddChild(realmBtn);
 		}
 
 		if (hasEnter)

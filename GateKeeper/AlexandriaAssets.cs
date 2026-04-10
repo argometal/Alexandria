@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using Godot;
 
 /// <summary>
-/// Resolución de imágenes bajo <c>C:\Alexandria\data\assets\&lt;key&gt;\</c> para marcos y paredes.
+/// Resolución de imágenes bajo <c>assets/&lt;key&gt;/</c> del realm activo.
 /// </summary>
 public static class AlexandriaAssets
 {
@@ -27,8 +27,8 @@ public static class AlexandriaAssets
 		public List<string> ImagePaths { get; set; } = new List<string>();
 	}
 
-	public const string Root = @"C:\Alexandria\data\assets";
-	private const string WallManifestRoot = @"C:\Alexandria\data\manifests\wall";
+	public static string Root => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "assets");
+	private static string WallManifestRoot => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "manifests", "wall");
 	private static readonly bool AllowFolderScanFallback = OS.IsDebugBuild();
 
 	private static readonly string[] HeroNames =

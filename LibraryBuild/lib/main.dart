@@ -1,16 +1,13 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
 
+import 'alexandria_paths.dart';
 import 'library_build.dart';
 import 'locus_editor.dart';
-
-const _dbPath = r'C:\Alexandria\data\alexandria.db';
-
-/// Raíz de assets por entry (ORM #365a: `assets/<key>/hero.*` o imágenes en body).
-const _kAssetsRoot = r'C:\Alexandria\data\assets';
+import 'realm_admin_page.dart';
+import 'study/parcour_study_page.dart';
 
 /// Etiquetas solo para UI (Cambio 351 — sin lógica de negocio).
 const _kCognitiveRoleLabels = <String, String>{
@@ -52,36 +49,35 @@ class _LbHomeState extends State<LbHome> {
   Database? _db;
   String _currentParentKey = 'ROOT';
   List<Map<String, Object?>> _rows = [];
-  Timer? _viewerPoll;
-
-  /// Firma context+focus para no repetir `runLibraryBuild()` cada 2s (ORM-15V3 dual bridge).
-  String? _lastProcessedBridgeSig;
-
-  /// Evita solapar `runLibraryBuild()` si dura más que el intervalo del timer.
-  bool _libraryBuildRunning = false;
 
   @override
   void initState() {
     super.initState();
+    AlexandriaPaths.ensureMigratedToRealmLayout();
     _openDbAndSchema();
     ensureDualBridgeDefaults();
     _syncParentFromBridgeContext();
     _loadChildren();
-    _viewerPoll = Timer.periodic(const Duration(seconds: 2), (_) {
-      syncViewerFromFocusKey();
-      _checkAndRunLibraryBuild();
-    });
   }
 
   @override
   void dispose() {
-    _viewerPoll?.cancel();
     _db?.dispose();
     super.dispose();
   }
 
+  void _reloadAfterRealmChange() {
+    _db?.dispose();
+    _db = null;
+    _openDbAndSchema();
+    ensureDualBridgeDefaults();
+    _syncParentFromBridgeContext();
+    _loadChildren();
+  }
+
   void _openDbAndSchema() {
-    _db = sqlite3.open(_dbPath);
+    Directory(AlexandriaPaths.realmDataRoot()).createSync(recursive: true);
+    _db = sqlite3.open(AlexandriaPaths.dbPath);
     final d = _db!;
 
     d.execute('''
@@ -107,36 +103,6 @@ CREATE TABLE IF NOT EXISTS entries (
         _currentParentKey = k;
       }
     } catch (_) {}
-  }
-
-  /// Cuando cambia bridge (context o focus), alinea UI y ejecuta `runLibraryBuild()`.
-  void _checkAndRunLibraryBuild() {
-    if (_libraryBuildRunning) return;
-    try {
-      ensureDualBridgeDefaults();
-      final contextKey = readContextKeyWithFallback();
-      final focusKey = readFocusKeyWithFallback();
-
-      if (contextKey != _currentParentKey) {
-        setState(() {
-          _currentParentKey = contextKey;
-        });
-        _loadChildren();
-      }
-
-      final sig = '$contextKey\x1e$focusKey';
-      if (sig == _lastProcessedBridgeSig) return;
-
-      _libraryBuildRunning = true;
-      try {
-        runLibraryBuild();
-        _lastProcessedBridgeSig = sig;
-      } finally {
-        _libraryBuildRunning = false;
-      }
-    } catch (_) {
-      _libraryBuildRunning = false;
-    }
   }
 
   void _loadChildren() {
@@ -181,6 +147,7 @@ CREATE TABLE IF NOT EXISTS entries (
 
   String _parentBreadcrumbLabel(String parentKey) {
     if (parentKey == 'ROOT') return 'R1';
+    if (parentKey == 'PARCOUR_MAIN') return 'Parcours (R1)';
     return parentKey;
   }
 
@@ -240,7 +207,7 @@ CREATE TABLE IF NOT EXISTS entries (
   /// Hero: `assets/<key>/hero.(png|jpg|jpeg|webp)`; si no, primera `img` en body_text.
   String? _resolveMicroHeroPath(String entryKey, String? bodyText) {
     final sep = Platform.pathSeparator;
-    final baseDir = Directory('$_kAssetsRoot$sep$entryKey');
+    final baseDir = Directory('${AlexandriaPaths.assetsRoot}$sep$entryKey');
     for (final name in ['hero.png', 'hero.jpg', 'hero.jpeg', 'hero.webp']) {
       final f = File('${baseDir.path}$sep$name');
       if (f.existsSync()) return f.path;
@@ -254,7 +221,7 @@ CREATE TABLE IF NOT EXISTS entries (
       if (direct.existsSync()) return src;
       final underKey = File('${baseDir.path}$sep$src');
       if (underKey.existsSync()) return underKey.path;
-      final underRoot = File('$_kAssetsRoot$sep$src');
+      final underRoot = File('${AlexandriaPaths.assetsRoot}$sep$src');
       if (underRoot.existsSync()) return underRoot.path;
     }
     return null;
@@ -313,11 +280,262 @@ CREATE TABLE IF NOT EXISTS entries (
     }
   }
 
+  Future<void> _promptMoveParcour(BuildContext context, String fromKey) async {
+    final d = _db;
+    if (d == null) return;
+    final rows = d.select(
+      "SELECT key, title FROM entries WHERE parentKey = 'PARCOUR_MAIN' ORDER BY seq ASC",
+    );
+    final choices = <Map<String, String>>[];
+    for (final r in rows) {
+      final k = r['key'] as String;
+      if (k == fromKey) continue;
+      choices.add({
+        'key': k,
+        'title': (r['title'] as String?)?.trim().isNotEmpty == true
+            ? (r['title'] as String).trim()
+            : k,
+      });
+    }
+    if (choices.isEmpty) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay otro parcour como destino.')),
+      );
+      return;
+    }
+    var destKey = choices.first['key']!;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Mover parcour'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Origen: $fromKey'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Se borra el subárbol del destino y se sustituye por el del origen. '
+                  'El hueco del origen vuelve al esqueleto vacío (L1…L20).',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Parcour destino',
+                    style: Theme.of(ctx).textTheme.labelLarge,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                DropdownButton<String>(
+                  isExpanded: true,
+                  value: destKey,
+                  items: choices
+                      .map(
+                        (c) => DropdownMenuItem<String>(
+                          value: c['key'],
+                          child: Text('${c['key']} — ${c['title']}'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setDialogState(() => destKey = v);
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Mover'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    if (!context.mounted) return;
+    final result = remapParcourSubtreeToParcourKey(d, fromKey, destKey);
+    if (!context.mounted) return;
+    if (result.ok) {
+      runLibraryBuild();
+      _loadChildren();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Parcour movido: $fromKey → $destKey')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
+    }
+  }
+
+  Future<void> _promptMoveObject(BuildContext context, String objectKey) async {
+    final d = _db;
+    if (d == null) return;
+    final parcours = d.select(
+      "SELECT key, title FROM entries WHERE parentKey = 'PARCOUR_MAIN' ORDER BY seq ASC",
+    );
+    if (parcours.isEmpty) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No hay parcours bajo PARCOUR_MAIN.')),
+      );
+      return;
+    }
+
+    final meta = d.select(
+      'SELECT seq, parentKey FROM entries WHERE key = ?',
+      [objectKey],
+    );
+    var destParcourKey = _currentParentKey;
+    var slotSeq = 0;
+    if (meta.isNotEmpty) {
+      final raw = meta.first['seq'];
+      final parsed = raw is int
+          ? raw
+          : int.tryParse(raw?.toString() ?? '');
+      slotSeq = (parsed ?? 0).clamp(0, 19);
+      final pk = meta.first['parentKey']?.toString().trim();
+      if (pk != null && pk.isNotEmpty) {
+        destParcourKey = pk;
+      }
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return AlertDialog(
+            title: const Text('Mover objeto'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('Origen: $objectKey'),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Si el slot destino ya tiene contenido, se sustituye. '
+                    'El hueco en el parcour de origen se rellena con el esqueleto.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Parcour destino',
+                      style: Theme.of(ctx).textTheme.labelLarge,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  DropdownButton<String>(
+                    isExpanded: true,
+                    value: destParcourKey,
+                    items: parcours
+                        .map(
+                          (r) => DropdownMenuItem<String>(
+                            value: r['key'] as String,
+                            child: Text(
+                              '${r['key']} — ${((r['title'] as String?)?.trim().isNotEmpty == true) ? (r['title'] as String).trim() : r['key']}',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => destParcourKey = v);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Slot (1–20)',
+                      style: Theme.of(ctx).textTheme.labelLarge,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  DropdownButton<int>(
+                    isExpanded: true,
+                    value: slotSeq,
+                    items: List<DropdownMenuItem<int>>.generate(
+                      20,
+                      (i) => DropdownMenuItem<int>(
+                        value: i,
+                        child: Text(
+                          '${i + 1} → ${defaultObjectKeyForParcourChild(destParcourKey, i)}',
+                        ),
+                      ),
+                    ),
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => slotSeq = v);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Mover'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (ok != true) return;
+    if (!context.mounted) return;
+    final result =
+        moveObjectLocusToParcourSlot(d, objectKey, destParcourKey, slotSeq);
+    if (!context.mounted) return;
+    if (result.ok) {
+      runLibraryBuild();
+      _loadChildren();
+      if (!context.mounted) return;
+      final dest =
+          defaultObjectKeyForParcourChild(destParcourKey, slotSeq);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Objeto movido: $objectKey → $dest')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
+    }
+  }
+
+  Future<void> _openParcourStudy(BuildContext context, String parcourKey) async {
+    final d = _db;
+    if (d == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (ctx) => ParcourStudyPage(db: d, parcourKey: parcourKey),
+      ),
+    );
+    if (mounted) _loadChildren();
+  }
+
   void _navigateInto(String childKey) {
     setState(() {
       _currentParentKey = childKey;
     });
-    // Navegación en árbol LB: no escribe bridge; snapshot sigue gobernado por context_key (GK / atrás).
+    writeBridgeContextKey(childKey);
+    writeBridgeFocusKey(childKey);
     _loadChildren();
   }
 
@@ -339,17 +557,85 @@ CREATE TABLE IF NOT EXISTS entries (
       _currentParentKey = next;
     });
     writeBridgeContextKey(_currentParentKey);
+    writeBridgeFocusKey(_currentParentKey);
     _loadChildren();
   }
 
   void _onRefresh() {
     runLibraryBuild();
-    try {
-      final ctx = readContextKeyWithFallback();
-      final foc = readFocusKeyWithFallback();
-      _lastProcessedBridgeSig = '$ctx\x1e$foc';
-    } catch (_) {}
     _loadChildren();
+  }
+
+  /// Franja bajo el AppBar: recall (Again/Hard/…) vs Fib (Parcour Study). Mismo subárbol que el padre actual.
+  Widget _buildStatsStrip(BuildContext context) {
+    final d = _db;
+    if (d == null) return const SizedBox.shrink();
+    final stats = computeRecallStatsForSubtree(d, _currentParentKey);
+    final fib = summarizeLocusScheduleForSubtree(d, _currentParentKey);
+    final cs = Theme.of(context).colorScheme;
+    return Material(
+      color: cs.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Recall (entries) · due ${stats['due'] ?? 0} · new ${stats['new'] ?? 0} · total ${stats['total'] ?? 0}',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: cs.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              formatLocusScheduleSummaryLine(fib),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.tertiary,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Por cada fila parcour (L1, L2, …): agregado del subárbol bajo esa clave (misma lógica que la franja superior).
+  Widget _parcourRowStatusBar(BuildContext context, String parcourKey) {
+    final d = _db;
+    if (d == null) return const SizedBox.shrink();
+    final stats = computeRecallStatsForSubtree(d, parcourKey);
+    final fib = summarizeLocusScheduleForSubtree(d, parcourKey);
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Recall · due ${stats['due'] ?? 0} · new ${stats['new'] ?? 0} · total ${stats['total'] ?? 0}',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            formatLocusScheduleSummaryLine(fib),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: cs.tertiary,
+                ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -367,19 +653,6 @@ CREATE TABLE IF NOT EXISTS entries (
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
             ),
-            Builder(
-              builder: (_) {
-                final d = _db;
-                if (d == null) return const SizedBox.shrink();
-                final stats = computeRecallStatsForParent(d, _currentParentKey);
-                return Text(
-                  'due ${stats['due'] ?? 0} · new ${stats['new'] ?? 0} · total ${stats['total'] ?? 0}',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                );
-              },
-            ),
           ],
         ),
         leading: _currentParentKey == 'ROOT'
@@ -390,6 +663,22 @@ CREATE TABLE IF NOT EXISTS entries (
               ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.dns_outlined),
+            tooltip: 'Realms (una DB activa)',
+            onPressed: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (ctx) => RealmAdminPage(
+                    onRealmChanged: () {
+                      if (!mounted) return;
+                      setState(_reloadAfterRealmChange);
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Regenerate snapshot / list',
             onPressed: _onRefresh,
@@ -399,6 +688,7 @@ CREATE TABLE IF NOT EXISTS entries (
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          _buildStatsStrip(context),
           Expanded(
             child: _rows.isEmpty
                 ? Center(
@@ -493,6 +783,8 @@ CREATE TABLE IF NOT EXISTS entries (
                                             ),
                                         ],
                                       ),
+                                      if (roleKey == 'parcour')
+                                        _parcourRowStatusBar(context, key),
                                       if (roleKey == 'object') ...[
                                         const SizedBox(height: 4),
                                         Wrap(
@@ -535,11 +827,52 @@ CREATE TABLE IF NOT EXISTS entries (
                                     ],
                                   ),
                                 ),
-                                TextButton(
-                                  onPressed: () =>
-                                      _openLocusEditor(context, key),
-                                  child: const Text('Edit'),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          _openLocusEditor(context, key),
+                                      child: const Text('Edit'),
+                                    ),
+                                    if (roleKey == 'object')
+                                      IconButton(
+                                        icon: const Icon(
+                                          Icons.drive_file_move_outline,
+                                        ),
+                                        tooltip:
+                                            'Mover a otro parcour / slot (reemplaza destino)',
+                                        constraints: const BoxConstraints(
+                                          minWidth: 44,
+                                          minHeight: 44,
+                                        ),
+                                        onPressed: () =>
+                                            _promptMoveObject(context, key),
+                                      ),
+                                  ],
                                 ),
+                                if (roleKey == 'parcour') ...[
+                                  IconButton(
+                                    icon: const Icon(Icons.drive_file_move_outline),
+                                    tooltip: 'Mover a otro parcour (reemplaza destino)',
+                                    constraints: const BoxConstraints(
+                                      minWidth: 48,
+                                      minHeight: 48,
+                                    ),
+                                    onPressed: () =>
+                                        _promptMoveParcour(context, key),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.school),
+                                    tooltip: 'Study',
+                                    constraints: const BoxConstraints(
+                                      minWidth: 48,
+                                      minHeight: 48,
+                                    ),
+                                    onPressed: () =>
+                                        _openParcourStudy(context, key),
+                                  ),
+                                ],
                                 if (roleKey == 'object')
                                   Wrap(
                                     spacing: 4,

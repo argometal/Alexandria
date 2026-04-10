@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:sqlite3/sqlite3.dart';
 
+import 'alexandria_paths.dart';
+
 export 'locus_review_metrics.dart';
 
 /// [Cambio 341] Evita re-escritura de viewer si el foco (dual bridge) no cambió.
@@ -11,23 +13,102 @@ String? _lastViewerKey;
 /// [Cambio 353] Último parent procesado en `runLibraryBuild` (detectar cambio de contexto).
 String _lastBridgeParentKey = '';
 
-const _refreshNowPath = r'C:\Alexandria\data\bridge\refresh_now.txt';
-const _bridgeCurrentSeqPath = r'C:\Alexandria\data\bridge\current_seq.txt';
-const _bridgeLastPositionPath = r'C:\Alexandria\data\bridge\last_position.json';
-const _contextKeyPath = r'C:\Alexandria\data\bridge\context_key.txt';
-const _focusKeyPath = r'C:\Alexandria\data\bridge\focus_key.txt';
-const _snapshotRoot = r'C:\Alexandria\data\snapshot';
-const _viewerRoot = r'C:\Alexandria\data\viewer';
-const _wallManifestRoot = r'C:\Alexandria\data\manifests\wall';
-const _assetsRoot = r'C:\Alexandria\data\assets';
 const _realmKey = 'ROOT';
 const _primaryParcourKey = 'PARCOUR_MAIN';
+
+/// Contrato `data/navigation/by-parent/<stem>.json`: nombres de archivo seguros en Windows.
+String navigationFileStem(String parentKey) {
+  if (parentKey.isEmpty) return '_empty';
+  return parentKey.replaceAll(r'\', '_').replaceAll('/', '_');
+}
+
+String _navExportLabel(String key, Object? titleRaw) {
+  final t = titleRaw?.toString().trim();
+  if (t != null && t.isNotEmpty) return t;
+  if (key == _realmKey) return 'R1';
+  if (key == _primaryParcourKey) return 'Parcours (R1)';
+  return key;
+}
+
+/// Regenera `data/navigation/` desde SQLite por reemplazo atómico (tmp → rename).
+void _exportNavigationBundleAtomically(Database db) {
+  final navTmpRoot = AlexandriaPaths.navigationTmpRoot;
+  final navFinalRoot = AlexandriaPaths.navigationRoot;
+  final tmp = Directory(navTmpRoot);
+  try {
+    if (tmp.existsSync()) {
+      tmp.deleteSync(recursive: true);
+    }
+    tmp.createSync(recursive: true);
+    final byParent = Directory('$navTmpRoot/by-parent');
+    byParent.createSync(recursive: true);
+
+    final rootRows = db.select(
+      'SELECT key FROM entries WHERE parentKey IS NULL OR TRIM(COALESCE(parentKey, \'\')) = \'\' ORDER BY seq ASC, key ASC',
+    );
+    final rootKeys = rootRows.map((r) => r['key'] as String).toList();
+
+    final parentRows = db.select(
+      'SELECT DISTINCT parentKey FROM entries WHERE parentKey IS NOT NULL AND TRIM(parentKey) != \'\'',
+    );
+    final parentKeys = parentRows.map((r) => r['parentKey'] as String).toSet().toList()
+      ..sort();
+
+    final now = DateTime.now().toUtc().toIso8601String();
+    final manifest = <String, dynamic>{
+      'schemaVersion': 1,
+      'generatedAt': now,
+      'rootKeys': rootKeys,
+    };
+    File('$navTmpRoot/manifest.json').writeAsStringSync(
+      jsonEncode(manifest),
+    );
+
+    for (final pk in parentKeys) {
+      final kids = db.select(
+        'SELECT key, seq, title, cognitiveRole FROM entries WHERE parentKey = ? ORDER BY seq ASC, key ASC',
+        [pk],
+      );
+      if (kids.isEmpty) continue;
+      final children = <Map<String, dynamic>>[];
+      for (final row in kids) {
+        final k = row['key'] as String;
+        children.add({
+          'key': k,
+          'type': normalizeCognitiveRole(row['cognitiveRole']),
+          'label': _navExportLabel(k, row['title']),
+        });
+      }
+      final payload = <String, dynamic>{
+        'parentKey': pk,
+        'children': children,
+      };
+      final stem = navigationFileStem(pk);
+      File('${byParent.path}${Platform.pathSeparator}$stem.json').writeAsStringSync(
+        jsonEncode(payload),
+      );
+    }
+
+    final finalDir = Directory(navFinalRoot);
+    if (finalDir.existsSync()) {
+      finalDir.deleteSync(recursive: true);
+    }
+    tmp.renameSync(navFinalRoot);
+    print('[LB][NAVIGATION] $navFinalRoot (parents=${parentKeys.length})');
+  } catch (e, st) {
+    print('[LB][NAVIGATION_ERR] $e\n$st');
+    try {
+      if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+    } catch (_) {}
+    rethrow;
+  }
+}
 
 /// Fase 3 ORM-15V3: asegura `context_key.txt` y `focus_key.txt` sin leer `open_key.txt`.
 /// Si falta context → `ROOT`; si falta focus → archivo vacío.
 void ensureDualBridgeDefaults() {
   try {
-    final ctx = File(_contextKeyPath);
+    final ctx = File(AlexandriaPaths.contextKeyPath);
     ctx.parent.createSync(recursive: true);
     if (!ctx.existsSync()) {
       ctx.writeAsStringSync('ROOT');
@@ -39,7 +120,7 @@ void ensureDualBridgeDefaults() {
         print('[LB][NO_CONTEXT_KEY] context_key vacío → ROOT');
       }
     }
-    final foc = File(_focusKeyPath);
+    final foc = File(AlexandriaPaths.focusKeyPath);
     if (!foc.existsSync()) {
       foc.writeAsStringSync('');
       print('[LB][BRIDGE_DEFAULT] focus_key.txt creado vacío');
@@ -52,7 +133,7 @@ void ensureDualBridgeDefaults() {
 /// Solo `context_key.txt`. Sin `open_key`. Ausente o vacío → lógica `ROOT` (snapshot parent).
 String readContextKeyWithFallback() {
   try {
-    final c = File(_contextKeyPath);
+    final c = File(AlexandriaPaths.contextKeyPath);
     if (c.existsSync()) {
       final t = c.readAsStringSync().trim();
       if (t.isNotEmpty) return t;
@@ -66,7 +147,7 @@ String readContextKeyWithFallback() {
 /// Solo `focus_key.txt`. Sin `open_key`. Ausente → `""`.
 String readFocusKeyWithFallback() {
   try {
-    final f = File(_focusKeyPath);
+    final f = File(AlexandriaPaths.focusKeyPath);
     if (f.existsSync()) return f.readAsStringSync().trim();
     return '';
   } catch (_) {
@@ -77,11 +158,22 @@ String readFocusKeyWithFallback() {
 /// LB escribe contexto al navegar atrás en la UI (Fase 3 — no usa open_key).
 void writeBridgeContextKey(String key) {
   try {
-    final f = File(_contextKeyPath);
+    final f = File(AlexandriaPaths.contextKeyPath);
     f.parent.createSync(recursive: true);
     f.writeAsStringSync(key);
   } catch (e) {
     print('[LB][CONTEXT_WRITE_ERR] $e');
+  }
+}
+
+/// Paridad con GateKeeper warp/back al navegar en LB.
+void writeBridgeFocusKey(String key) {
+  try {
+    final f = File(AlexandriaPaths.focusKeyPath);
+    f.parent.createSync(recursive: true);
+    f.writeAsStringSync(key);
+  } catch (e) {
+    print('[LB][FOCUS_WRITE_ERR] $e');
   }
 }
 
@@ -104,12 +196,13 @@ bool snapshotFileHasNonEmptyFrames(String path) {
 /// Sin condiciones de estado LB — solo falla si el SO impide escribir.
 void _writeRefreshNowTrigger() {
   try {
-    final refreshFlag = File(_refreshNowPath);
+    final p = AlexandriaPaths.refreshNowPath;
+    final refreshFlag = File(p);
     refreshFlag.parent.createSync(recursive: true);
     refreshFlag.writeAsStringSync('1');
-    print('[LB][REFRESH_WRITE] $_refreshNowPath');
+    print('[LB][REFRESH_WRITE] $p');
   } catch (e) {
-    print('[LB][REFRESH_ERR] $_refreshNowPath $e');
+    print('[LB][REFRESH_ERR] ${AlexandriaPaths.refreshNowPath} $e');
   }
 }
 
@@ -347,6 +440,36 @@ Map<String, int> computeRecallStatsForParent(Database db, String parentKey) {
   return {'total': total, 'due': due, 'new': newCards};
 }
 
+/// Igual que [computeRecallStatsForParent] pero sobre **todos** los `object` bajo [rootKey] (CTE recursiva).
+/// Alineado con [summarizeLocusScheduleForSubtree] para la barra de estadísticas.
+Map<String, int> computeRecallStatsForSubtree(Database db, String rootKey) {
+  final rows = db.select('''
+    WITH RECURSIVE subtree(key) AS (
+      SELECT ?1
+      UNION ALL
+      SELECT e.key FROM entries e INNER JOIN subtree s ON e.parentKey = s.key
+    )
+    SELECT e.next_review_at AS next_review_at
+    FROM entries e
+    INNER JOIN subtree st ON e.key = st.key
+    WHERE e.cognitiveRole = 'object'
+  ''', [rootKey]);
+  final now = DateTime.now().toUtc();
+  var total = 0;
+  var due = 0;
+  var newCards = 0;
+  for (final r in rows) {
+    total++;
+    final nextAt = _parseIso(r['next_review_at']);
+    if (nextAt == null) {
+      newCards++;
+      continue;
+    }
+    if (!nextAt.toUtc().isAfter(now)) due++;
+  }
+  return {'total': total, 'due': due, 'new': newCards};
+}
+
 String _slotTwoDigits(int seq) => (seq + 1).toString().padLeft(2, '0');
 
 String _defaultObjectKeyForParcourChild(String parentKey, int seq) =>
@@ -407,14 +530,324 @@ void _renameEntryEverywhere(Database db, String oldKey, String newKey) {
     db.execute('UPDATE assets SET entryKey = ? WHERE entryKey = ?', [newKey, oldKey]);
   }
 
-  _replaceBridgeKeyIfEquals(_contextKeyPath, oldKey, newKey);
-  _replaceBridgeKeyIfEquals(_focusKeyPath, oldKey, newKey);
-  _moveDirIfExists('$_assetsRoot\\$oldKey', '$_assetsRoot\\$newKey');
-  _moveFileIfExists('$_snapshotRoot\\$oldKey.json', '$_snapshotRoot\\$newKey.json');
-  _moveFileIfExists('$_viewerRoot\\$oldKey.json', '$_viewerRoot\\$newKey.json');
-  _moveFileIfExists('$_wallManifestRoot\\$oldKey.json', '$_wallManifestRoot\\$newKey.json');
+  _replaceBridgeKeyIfEquals(AlexandriaPaths.contextKeyPath, oldKey, newKey);
+  _replaceBridgeKeyIfEquals(AlexandriaPaths.focusKeyPath, oldKey, newKey);
+  _moveDirIfExists('${AlexandriaPaths.assetsRoot}/$oldKey', '${AlexandriaPaths.assetsRoot}/$newKey');
+  _moveFileIfExists('${AlexandriaPaths.snapshotRoot}/$oldKey.json', '${AlexandriaPaths.snapshotRoot}/$newKey.json');
+  _moveFileIfExists('${AlexandriaPaths.viewerRoot}/$oldKey.json', '${AlexandriaPaths.viewerRoot}/$newKey.json');
+  _moveFileIfExists('${AlexandriaPaths.wallManifestRoot}/$oldKey.json', '${AlexandriaPaths.wallManifestRoot}/$newKey.json');
 
   print('[LB][KEY_RENAME] $oldKey -> $newKey');
+}
+
+/// Clave canónica `Parent_O01`…`Parent_O20` para [seq] en `0..19`.
+String defaultObjectKeyForParcourChild(String parentKey, int seq) =>
+    _defaultObjectKeyForParcourChild(parentKey, seq);
+
+/// Resultado de [remapParcourSubtreeToParcourKey].
+class ParcourRemapResult {
+  const ParcourRemapResult._(this.ok, this.message);
+
+  final bool ok;
+  final String message;
+
+  factory ParcourRemapResult.success() => const ParcourRemapResult._(true, '');
+  factory ParcourRemapResult.fail(String message) =>
+      ParcourRemapResult._(false, message);
+}
+
+bool _entryIsStrictDescendantOf(Database db, String ancestorKey, String key) {
+  if (key == ancestorKey) return false;
+  var k = key;
+  for (var i = 0; i < 4096; i++) {
+    final r = db.select('SELECT parentKey FROM entries WHERE key = ?', [k]);
+    if (r.isEmpty) return false;
+    final p = r.first['parentKey']?.toString().trim();
+    if (p == null || p.isEmpty) return false;
+    if (p == ancestorKey) return true;
+    k = p;
+  }
+  return false;
+}
+
+List<String> _subtreeKeysDeepestFirst(Database db, String rootKey) {
+  final rows = db.select('''
+    WITH RECURSIVE st(key, depth) AS (
+      SELECT key, 0 AS depth FROM entries WHERE key = ?
+      UNION ALL
+      SELECT e.key, st.depth + 1
+      FROM entries e INNER JOIN st ON e.parentKey = st.key
+    )
+    SELECT key FROM st ORDER BY depth DESC
+  ''', [rootKey]);
+  return rows.map((r) => r['key'] as String).toList();
+}
+
+void _purgeDiskArtifactsForKey(String key) {
+  try {
+    final dir = Directory('${AlexandriaPaths.assetsRoot}/$key');
+    if (dir.existsSync()) dir.deleteSync(recursive: true);
+  } catch (_) {}
+  for (final base in [
+    AlexandriaPaths.snapshotRoot,
+    AlexandriaPaths.viewerRoot,
+    AlexandriaPaths.wallManifestRoot,
+  ]) {
+    try {
+      final f = File('$base/$key.json');
+      if (f.existsSync()) f.deleteSync();
+    } catch (_) {}
+  }
+}
+
+void _deleteEntryRowAndRelated(Database db, String key) {
+  if (_tableExists(db, 'review_events')) {
+    db.execute('DELETE FROM review_events WHERE entryKey = ?', [key]);
+  }
+  if (_tableExists(db, 'locus_review_state')) {
+    db.execute('DELETE FROM locus_review_state WHERE entry_key = ?', [key]);
+  }
+  if (_tableExists(db, 'locus_review_events')) {
+    db.execute('DELETE FROM locus_review_events WHERE locus_key = ?', [key]);
+  }
+  if (_tableExists(db, 'assets')) {
+    db.execute('DELETE FROM assets WHERE entryKey = ?', [key]);
+  }
+  db.execute('DELETE FROM entries WHERE key = ?', [key]);
+  _purgeDiskArtifactsForKey(key);
+}
+
+/// Quita filas y artefactos del subárbol en [rootKey] (hojas → raíz). Sin tocar el bridge
+/// (llamar a [_bridgeResetIfKeysRemoved] tras COMMIT si aplica).
+void _deleteSubtreeForRemap(Database db, String rootKey) {
+  final keys = _subtreeKeysDeepestFirst(db, rootKey);
+  for (final k in keys) {
+    _deleteEntryRowAndRelated(db, k);
+  }
+}
+
+void _bridgeResetIfKeysRemoved(Set<String> removed) {
+  if (removed.isEmpty) return;
+  final ctx = readContextKeyWithFallback();
+  if (removed.contains(ctx)) writeBridgeContextKey('ROOT');
+  final foc = readFocusKeyWithFallback();
+  if (foc.isNotEmpty && removed.contains(foc)) writeBridgeFocusKey('');
+}
+
+/// Mueve un parcour y sus hijos a las claves canónicas bajo [toParcourKey]:
+/// borra el subárbol destino (reemplazo), renombra hijos `seq` → `to_Oxx`, luego el parcour.
+/// Restaura el hueco del origen con el esqueleto ORM (`L1`…`L20` + objetos).
+///
+/// Requisitos: ambos existen como `parcour`; el origen no puede estar dentro del destino
+/// ni al revés (evita borrar el subárbol que se va a conservar).
+ParcourRemapResult remapParcourSubtreeToParcourKey(
+  Database db,
+  String fromParcourKey,
+  String toParcourKey,
+) {
+  ensureLibrarySchema(db);
+  final from = fromParcourKey.trim();
+  final to = toParcourKey.trim();
+  if (from.isEmpty || to.isEmpty) {
+    return ParcourRemapResult.fail('Origen o destino vacío.');
+  }
+  if (from == to) {
+    return ParcourRemapResult.success();
+  }
+
+  final fromRow = db.select(
+    'SELECT cognitiveRole FROM entries WHERE key = ? LIMIT 1',
+    [from],
+  );
+  if (fromRow.isEmpty) {
+    return ParcourRemapResult.fail('Origen no existe.');
+  }
+  if (normalizeCognitiveRole(fromRow.first['cognitiveRole']) != 'parcour') {
+    return ParcourRemapResult.fail('El origen debe ser un parcour.');
+  }
+
+  final toRow = db.select(
+    'SELECT cognitiveRole FROM entries WHERE key = ? LIMIT 1',
+    [to],
+  );
+  if (toRow.isEmpty) {
+    return ParcourRemapResult.fail('Destino no existe.');
+  }
+  if (normalizeCognitiveRole(toRow.first['cognitiveRole']) != 'parcour') {
+    return ParcourRemapResult.fail('El destino debe ser un parcour.');
+  }
+
+  if (_entryIsStrictDescendantOf(db, to, from)) {
+    return ParcourRemapResult.fail(
+      'El origen está bajo el destino; vaciar destino borraría el origen.',
+    );
+  }
+  if (_entryIsStrictDescendantOf(db, from, to)) {
+    return ParcourRemapResult.fail(
+      'El destino está bajo el origen; elige un parcour fuera de ese subárbol.',
+    );
+  }
+
+  try {
+    db.execute('BEGIN IMMEDIATE');
+    final destKeysRemoved = _subtreeKeysDeepestFirst(db, to).toSet();
+    _deleteSubtreeForRemap(db, to);
+
+    final children = db.select(
+      'SELECT key, seq FROM entries WHERE parentKey = ? ORDER BY seq ASC, key ASC',
+      [from],
+    );
+
+    for (final row in children) {
+      final oldChild = row['key']?.toString().trim() ?? '';
+      if (oldChild.isEmpty) continue;
+      final rawSeq = row['seq'];
+      final seq = rawSeq is int
+          ? rawSeq
+          : int.tryParse(rawSeq?.toString() ?? '');
+      if (seq == null || seq < 0 || seq > 19) continue;
+      final newChild = _defaultObjectKeyForParcourChild(to, seq);
+      _renameEntryEverywhere(db, oldChild, newChild);
+      final stillThere =
+          db.select('SELECT 1 FROM entries WHERE key = ?', [oldChild]);
+      if (stillThere.isNotEmpty) {
+        db.execute('ROLLBACK');
+        return ParcourRemapResult.fail(
+          'No se pudo renombrar $oldChild → $newChild (¿clave bloqueada?).',
+        );
+      }
+    }
+
+    _renameEntryEverywhere(db, from, to);
+    final fromStill =
+        db.select('SELECT 1 FROM entries WHERE key = ?', [from]);
+    if (fromStill.isNotEmpty) {
+      db.execute('ROLLBACK');
+      return ParcourRemapResult.fail(
+        'No se pudo renombrar el parcour $from → $to.',
+      );
+    }
+
+    _insertHomogeneousSkeletonIfNeeded(db);
+    _normalizeRealmParcourLanguage(db);
+
+    db.execute('COMMIT');
+
+    _bridgeResetIfKeysRemoved(destKeysRemoved);
+    print('[LB][PARCOUR_REMAP] $from → $to (hijos=${children.length})');
+    return ParcourRemapResult.success();
+  } catch (e, st) {
+    try {
+      db.execute('ROLLBACK');
+    } catch (_) {}
+    print('[LB][PARCOUR_REMAP_ERR] $e\n$st');
+    return ParcourRemapResult.fail('Error: $e');
+  }
+}
+
+/// Mueve un locus `object` al slot canónico `destParcour_Oxx` con [destSeq] en `0..19`.
+/// Si el destino ya tiene fila, se elimina (reemplazo). Tras mover, se normaliza el esqueleto
+/// (hueco en el parcour de origen).
+ParcourRemapResult moveObjectLocusToParcourSlot(
+  Database db,
+  String objectKey,
+  String destParcourKey,
+  int destSeq,
+) {
+  ensureLibrarySchema(db);
+  if (destSeq < 0 || destSeq > 19) {
+    return ParcourRemapResult.fail('El slot debe estar entre 1 y 20 (seq 0..19).');
+  }
+  final from = objectKey.trim();
+  final toParent = destParcourKey.trim();
+  if (from.isEmpty || toParent.isEmpty) {
+    return ParcourRemapResult.fail('Clave o parcour vacío.');
+  }
+
+  final newKey = _defaultObjectKeyForParcourChild(toParent, destSeq);
+
+  final objRow = db.select(
+    'SELECT cognitiveRole, parentKey FROM entries WHERE key = ? LIMIT 1',
+    [from],
+  );
+  if (objRow.isEmpty) {
+    return ParcourRemapResult.fail('Objeto no existe.');
+  }
+  if (normalizeCognitiveRole(objRow.first['cognitiveRole']) != 'object') {
+    return ParcourRemapResult.fail('Solo se pueden mover loci de tipo object.');
+  }
+
+  final pRow = db.select(
+    'SELECT cognitiveRole FROM entries WHERE key = ? LIMIT 1',
+    [toParent],
+  );
+  if (pRow.isEmpty) {
+    return ParcourRemapResult.fail('Parcour destino no existe.');
+  }
+  if (normalizeCognitiveRole(pRow.first['cognitiveRole']) != 'parcour') {
+    return ParcourRemapResult.fail('El destino debe ser un parcour.');
+  }
+
+  if (from == newKey) {
+    try {
+      db.execute('BEGIN IMMEDIATE');
+      db.execute(
+        "UPDATE entries SET parentKey = ?, seq = ?, cognitiveRole = 'object' WHERE key = ?",
+        [toParent, destSeq, newKey],
+      );
+      _insertHomogeneousSkeletonIfNeeded(db);
+      _normalizeRealmParcourLanguage(db);
+      db.execute('COMMIT');
+      print('[LB][OBJECT_MOVE] $from (solo alinear parent/seq)');
+      return ParcourRemapResult.success();
+    } catch (e, st) {
+      try {
+        db.execute('ROLLBACK');
+      } catch (_) {}
+      print('[LB][OBJECT_MOVE_ERR] $e\n$st');
+      return ParcourRemapResult.fail('Error: $e');
+    }
+  }
+
+  try {
+    db.execute('BEGIN IMMEDIATE');
+    final removedForBridge = <String>{};
+    final destRow = db.select('SELECT 1 FROM entries WHERE key = ?', [newKey]);
+    if (destRow.isNotEmpty) {
+      removedForBridge.add(newKey);
+      _deleteEntryRowAndRelated(db, newKey);
+    }
+
+    _renameEntryEverywhere(db, from, newKey);
+    final stillOld =
+        db.select('SELECT 1 FROM entries WHERE key = ?', [from]);
+    if (stillOld.isNotEmpty) {
+      db.execute('ROLLBACK');
+      return ParcourRemapResult.fail(
+        'No se pudo renombrar $from → $newKey (¿destino bloqueado?).',
+      );
+    }
+
+    db.execute(
+      "UPDATE entries SET parentKey = ?, seq = ?, cognitiveRole = 'object' WHERE key = ?",
+      [toParent, destSeq, newKey],
+    );
+
+    _insertHomogeneousSkeletonIfNeeded(db);
+    _normalizeRealmParcourLanguage(db);
+
+    db.execute('COMMIT');
+
+    _bridgeResetIfKeysRemoved(removedForBridge);
+    print('[LB][OBJECT_MOVE] $from → $newKey');
+    return ParcourRemapResult.success();
+  } catch (e, st) {
+    try {
+      db.execute('ROLLBACK');
+    } catch (_) {}
+    print('[LB][OBJECT_MOVE_ERR] $e\n$st');
+    return ParcourRemapResult.fail('Error: $e');
+  }
 }
 
 void _ensureObjectSlotsForParcourChildren(Database db) {
@@ -526,8 +959,23 @@ String defaultChildCognitiveRoleForParent(Object? parentRoleRaw) {
   }
 }
 
+/// Alineado con [locus_editor] para `hint` / `ridiculous_story` (viewer GK solo usa `text`).
+String _inferParagraphTextKind(Map<String, dynamic> m, String tLower) {
+  var textKind = (m['textKind'] ?? '').toString().toLowerCase().trim();
+  if (textKind.isEmpty) {
+    if (tLower == 'hint') textKind = 'hint';
+    if (tLower == 'place') textKind = 'place';
+    if (tLower == 'ridiculous_story' || tLower == 'story') {
+      textKind = 'ridiculous_story';
+    }
+  }
+  if (textKind.isEmpty) textKind = 'text';
+  return textKind;
+}
+
 /// Parsea JSON de bloques (legacy `t`/`text`/`assetKey` o `type`/`text`/`src`).
 /// Conserva `img` y `link` (A15 / viewer GK); el resto → `p`.
+/// Incluye `textKind` en párrafos (LB / estudio; GK ignora campos extra).
 List<Map<String, dynamic>> parseBody(String? raw) {
   if (raw == null || raw.trim().isEmpty) return [];
   try {
@@ -539,15 +987,16 @@ List<Map<String, dynamic>> parseBody(String? raw) {
       final m = Map<String, dynamic>.from(
         el.map((k, v) => MapEntry(k.toString(), v)),
       );
-      final t = (m['t'] ?? m['type'] ?? 'p').toString();
+      final tLower =
+          (m['t'] ?? m['type'] ?? 'p').toString().toLowerCase().trim();
 
-      if (t == 'img') {
+      if (tLower == 'img') {
         final src = (m['src'] ?? m['assetKey'] ?? '').toString();
         out.add({'type': 'img', 'src': src});
         continue;
       }
 
-      if (t == 'link') {
+      if (tLower == 'link') {
         final linkKey = (m['key'] ?? '').toString();
         final linkText = (m['text'] ?? '').toString();
         if (linkKey.isNotEmpty && linkText.isNotEmpty) {
@@ -556,12 +1005,17 @@ List<Map<String, dynamic>> parseBody(String? raw) {
           out.add({
             'type': 'p',
             'text': linkText.isNotEmpty ? linkText : linkKey,
+            'textKind': _inferParagraphTextKind(m, tLower),
           });
         }
         continue;
       }
 
-      out.add({'type': 'p', 'text': (m['text'] ?? '').toString()});
+      out.add({
+        'type': 'p',
+        'text': (m['text'] ?? '').toString(),
+        'textKind': _inferParagraphTextKind(m, tLower),
+      });
     }
     return out;
   } catch (_) {
@@ -641,7 +1095,7 @@ void _writeWallManifestForKey(Database db, String key) {
   for (final sel in imageNames) {
     final filename = sel.filename;
     if (!seen.add(filename.toLowerCase())) continue;
-    final full = '$_assetsRoot\\$key\\${filename.replaceAll('/', '\\')}';
+    final full = '${AlexandriaPaths.assetsRoot}/$key/${filename.replaceAll('/', Platform.pathSeparator)}';
     if (!File(full).existsSync()) continue;
     images.add({
       'filename': filename,
@@ -655,14 +1109,14 @@ void _writeWallManifestForKey(Database db, String key) {
     'images': images,
     'groups': <dynamic>[],
   };
-  final outPath = '$_wallManifestRoot\\$key.json';
+  final outPath = '${AlexandriaPaths.wallManifestRoot}/$key.json';
   final out = File(outPath);
   out.parent.createSync(recursive: true);
   out.writeAsStringSync(jsonEncode(payload));
 }
 
 void _rebuildAllWallManifests(Database db) {
-  final dir = Directory(_wallManifestRoot);
+  final dir = Directory(AlexandriaPaths.wallManifestRoot);
   dir.createSync(recursive: true);
   for (final e in dir.listSync()) {
     if (e is File && e.path.toLowerCase().endsWith('.json')) {
@@ -837,7 +1291,7 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
 /// y ← Back saltaría a realm sin pasar por parcour (PARCOUR_MAIN / Lk). Por eso duplicamos el payload
 /// en la ruta keyed siempre que [focusKey] no esté vacío.
 void writeViewerForFocusKey(Database db, String focusKey) {
-  const viewerPath = r'C:\Alexandria\data\viewer\current.json';
+  final viewerPath = '${AlexandriaPaths.viewerRoot}/current.json';
   final payload = _buildViewerPayload(db, focusKey);
 
   final f = File(viewerPath);
@@ -846,7 +1300,7 @@ void writeViewerForFocusKey(Database db, String focusKey) {
   print('[LB][VIEWER_WRITE] $viewerPath key=$focusKey');
 
   if (focusKey.isNotEmpty) {
-    final keyedPath = '$_viewerRoot\\$focusKey.json';
+    final keyedPath = '${AlexandriaPaths.viewerRoot}/$focusKey.json';
     final keyed = File(keyedPath);
     keyed.parent.createSync(recursive: true);
     keyed.writeAsStringSync(jsonEncode(payload));
@@ -855,13 +1309,13 @@ void writeViewerForFocusKey(Database db, String focusKey) {
 }
 
 void buildViewerForKey(String key) {
-  const dbPath = r'C:\Alexandria\data\alexandria.db';
+  final dbPath = AlexandriaPaths.dbPath;
   if (!File(dbPath).existsSync()) return;
   final db = sqlite3.open(dbPath);
   try {
     ensureLibrarySchema(db);
     final payload = _buildViewerPayload(db, key);
-    final outPath = '$_viewerRoot\\$key.json';
+    final outPath = '${AlexandriaPaths.viewerRoot}/$key.json';
     final f = File(outPath);
     f.parent.createSync(recursive: true);
     f.writeAsStringSync(jsonEncode(payload));
@@ -872,13 +1326,13 @@ void buildViewerForKey(String key) {
 }
 
 void buildSnapshotForContext(String contextKey) {
-  const dbPath = r'C:\Alexandria\data\alexandria.db';
+  final dbPath = AlexandriaPaths.dbPath;
   if (!File(dbPath).existsSync()) return;
   final db = sqlite3.open(dbPath);
   try {
     ensureLibrarySchema(db);
     final frames = _buildFramesForContext(db, contextKey);
-    final outPath = '$_snapshotRoot\\$contextKey.json';
+    final outPath = '${AlexandriaPaths.snapshotRoot}/$contextKey.json';
     final f = File(outPath);
     f.parent.createSync(recursive: true);
     f.writeAsStringSync(jsonEncode(_snapshotEnvelope(contextKey, frames)));
@@ -888,7 +1342,7 @@ void buildSnapshotForContext(String contextKey) {
 }
 
 void buildAll() {
-  const dbPath = r'C:\Alexandria\data\alexandria.db';
+  final dbPath = AlexandriaPaths.dbPath;
   final db = sqlite3.open(dbPath);
   try {
     ensureLibrarySchema(db);
@@ -901,12 +1355,12 @@ void buildAll() {
     for (final key in keys) {
       try {
         final frames = _buildFramesForContext(db, key);
-        final snapshotFile = File('$_snapshotRoot\\$key.json');
+        final snapshotFile = File('${AlexandriaPaths.snapshotRoot}/$key.json');
         snapshotFile.parent.createSync(recursive: true);
         snapshotFile.writeAsStringSync(jsonEncode(_snapshotEnvelope(key, frames)));
       } catch (_) {}
 
-      final viewerFile = File('$_viewerRoot\\$key.json');
+      final viewerFile = File('${AlexandriaPaths.viewerRoot}/$key.json');
       viewerFile.parent.createSync(recursive: true);
       viewerFile.writeAsStringSync(jsonEncode(_buildViewerPayload(db, key)));
       _writeWallManifestForKey(db, key);
@@ -924,7 +1378,7 @@ void writeViewerCurrentJson(Database db, String key) {
 
 /// Polling liviano: solo `focus_key.txt` (Fase 3 — sin open_key).
 void syncViewerFromFocusKey() {
-  const dbPath = r'C:\Alexandria\data\alexandria.db';
+  final dbPath = AlexandriaPaths.dbPath;
 
   if (!File(dbPath).existsSync()) return;
 
@@ -946,7 +1400,7 @@ void syncViewerFromFocusKey() {
 
 int _readBridgeCurrentSeq() {
   try {
-    final f = File(_bridgeCurrentSeqPath);
+    final f = File(AlexandriaPaths.bridgeCurrentSeqPath);
     if (!f.existsSync()) return 0;
     return int.tryParse(f.readAsStringSync().trim()) ?? 0;
   } catch (_) {
@@ -958,9 +1412,9 @@ int _readBridgeCurrentSeq() {
 void _mergeLastPositionByKey(String previousKey, int seq) {
   if (previousKey.isEmpty) return;
   try {
-    Directory(File(_bridgeLastPositionPath).parent.path).createSync(recursive: true);
+    Directory(File(AlexandriaPaths.bridgeLastPositionPath).parent.path).createSync(recursive: true);
     final byKey = <String, int>{};
-    final f = File(_bridgeLastPositionPath);
+    final f = File(AlexandriaPaths.bridgeLastPositionPath);
     if (f.existsSync()) {
       final decoded = jsonDecode(f.readAsStringSync());
       if (decoded is Map && decoded['byKey'] is Map) {
@@ -982,8 +1436,8 @@ void _mergeLastPositionByKey(String previousKey, int seq) {
 
 void runLibraryBuild() {
 
-  final dbPath = r'C:\Alexandria\data\alexandria.db';
-  final snapshotPath = r'C:\Alexandria\snapshot\current.json';
+  final dbPath = AlexandriaPaths.dbPath;
+  final snapshotPath = AlexandriaPaths.snapshotCurrentJsonPath;
 
   final db = sqlite3.open(dbPath);
 
@@ -1004,6 +1458,7 @@ void runLibraryBuild() {
   ensureLibrarySchema(db);
   _normalizeRealmParcourLanguage(db);
   _rebuildAllWallManifests(db);
+  _exportNavigationBundleAtomically(db);
 
   ensureDualBridgeDefaults();
 
@@ -1024,7 +1479,7 @@ void runLibraryBuild() {
   print('[LB][FRAMES_COUNT] ${frames.length} (fijo #357)');
   print('[LB][SNAPSHOT_FRAMES] count=${frames.length}');
   print('[LB][SNAPSHOT_WRITE] $snapshotPath');
-  final keyedSnapshotPath = '$_snapshotRoot\\$contextKey.json';
+  final keyedSnapshotPath = '${AlexandriaPaths.snapshotRoot}/$contextKey.json';
   final keyedSnapshotFile = File(keyedSnapshotPath);
   keyedSnapshotFile.parent.createSync(recursive: true);
   keyedSnapshotFile.writeAsStringSync(jsonEncode(snapshot));
@@ -1053,3 +1508,100 @@ void runLibraryBuild() {
   }
 
 }
+
+/// Árbol fijo ORM: `ROOT` → `PARCOUR_MAIN` → `L1`…`L20` → `Lk_O01`…`Lk_O20` (421 filas de contenido + hub; ver `_normalizeRealmParcourLanguage`).
+void _insertHomogeneousSkeletonIfNeeded(Database db) {
+  if (db.select('SELECT 1 FROM entries WHERE key = ? LIMIT 1', [_realmKey]).isEmpty) {
+    db.execute(
+      "INSERT INTO entries (key, parentKey, seq, cognitiveRole, title) VALUES ('ROOT', NULL, 0, 'realm', 'R1')",
+    );
+  }
+  if (db.select('SELECT 1 FROM entries WHERE key = ? LIMIT 1', [_primaryParcourKey]).isEmpty) {
+    db.execute(
+      "INSERT INTO entries (key, parentKey, seq, cognitiveRole, title) VALUES ('PARCOUR_MAIN', 'ROOT', 0, 'parcour', 'Parcours (R1)')",
+    );
+  }
+  for (var i = 0; i < 20; i++) {
+    final lk = 'L${i + 1}';
+    if (db.select('SELECT 1 FROM entries WHERE key = ? LIMIT 1', [lk]).isEmpty) {
+      db.execute(
+        'INSERT INTO entries (key, parentKey, seq, cognitiveRole, title) VALUES (?, ?, ?, ?, ?)',
+        [lk, _primaryParcourKey, i, 'parcour', lk],
+      );
+    }
+  }
+}
+
+/// Quita **datos** (texto/imágenes en `body_text`, recall/review); la forma del árbol no cambia.
+void _stripUserFacingData(Database db) {
+  db.execute('UPDATE entries SET body_text = NULL');
+  db.execute('''
+    UPDATE entries SET
+      last_reviewed_at = NULL,
+      next_review_at = NULL,
+      last_review_grade = NULL,
+      review_count = 0,
+      success_count = 0,
+      failure_count = 0,
+      memory_strength = NULL,
+      stability_days = NULL,
+      recall_score = NULL
+  ''');
+  if (_tableExists(db, 'locus_review_state')) {
+    db.execute('DELETE FROM locus_review_state');
+  }
+  if (_tableExists(db, 'locus_review_events')) {
+    db.execute('DELETE FROM locus_review_events');
+  }
+  if (_tableExists(db, 'review_events')) {
+    db.execute('DELETE FROM review_events');
+  }
+}
+
+/// Realm **nuevo** sin copiar otro: mismo **esqueleto** que un mundo completo (20 parcours + 400 objetos bajo el hub),
+/// pero **sin datos** (sin texto en `body_text`, sin recall/review; `assets/` vacío al crear).
+bool createEmptyRealm(String rawId) {
+  final id = AlexandriaPaths.sanitizeRealmId(rawId);
+  final root = Directory(AlexandriaPaths.realmDataRoot(id));
+  if (root.existsSync()) return false;
+
+  try {
+    root.createSync(recursive: true);
+    Directory('${root.path}/bridge').createSync(recursive: true);
+    Directory('${root.path}/snapshot').createSync(recursive: true);
+    Directory('${root.path}/viewer').createSync(recursive: true);
+    Directory('${root.path}/assets').createSync(recursive: true);
+    Directory('${root.path}/manifests/wall').createSync(recursive: true);
+
+    final dbPath = '${AlexandriaPaths.realmDataRoot(id)}/alexandria.db';
+    final db = sqlite3.open(dbPath);
+    try {
+      db.execute('''
+CREATE TABLE IF NOT EXISTS entries (
+  key TEXT PRIMARY KEY,
+  parentKey TEXT,
+  seq INTEGER
+)
+''');
+      ensureLibrarySchema(db);
+      _insertHomogeneousSkeletonIfNeeded(db);
+      _normalizeRealmParcourLanguage(db);
+      ensureLibrarySchema(db);
+      _stripUserFacingData(db);
+    } finally {
+      db.dispose();
+    }
+
+    File('${root.path}/bridge/context_key.txt').writeAsStringSync('ROOT');
+    File('${root.path}/bridge/focus_key.txt').writeAsStringSync('');
+    print('[LB][REALM_EMPTY] $id (árbol homogéneo, sin datos de usuario)');
+    return true;
+  } catch (e, st) {
+    print('[LB][REALM_EMPTY_ERR] $e\n$st');
+    try {
+      if (root.existsSync()) root.deleteSync(recursive: true);
+    } catch (_) {}
+    return false;
+  }
+}
+

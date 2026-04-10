@@ -126,3 +126,100 @@ LocusStats getLocusStatsForParent(Database db, String parentKey) {
     total: rows.length,
   );
 }
+
+// --- Agregación Fibonacci / locus_review_state en subárbol (realm o parcour) ---
+
+DateTime? _parseIsoField(Object? v) {
+  final s = v?.toString().trim();
+  if (s == null || s.isEmpty) return null;
+  return DateTime.tryParse(s);
+}
+
+/// Resumen para barra de estado: última sesión estructurada (max `last_ok_at`) y
+/// repaso más urgente (min `next_due_at`; sin fila en estado → 1970 = vencido).
+class LocusScheduleSummary {
+  const LocusScheduleSummary({
+    this.latestLastOk,
+    this.earliestNextDue,
+    this.objectCount = 0,
+  });
+
+  final DateTime? latestLastOk;
+  final DateTime? earliestNextDue;
+  final int objectCount;
+}
+
+/// Todos los `cognitiveRole = object` bajo [rootKey] (CTE recursiva), no solo hijos directos.
+LocusScheduleSummary summarizeLocusScheduleForSubtree(Database db, String rootKey) {
+  final rows = db.select('''
+    WITH RECURSIVE subtree(key) AS (
+      SELECT ?1
+      UNION ALL
+      SELECT e.key FROM entries e INNER JOIN subtree s ON e.parentKey = s.key
+    )
+    SELECT l.last_ok_at AS last_ok_at,
+           COALESCE(l.next_due_at, '1970-01-01') AS next_due_at
+    FROM entries e
+    INNER JOIN subtree st ON e.key = st.key
+    LEFT JOIN locus_review_state l ON l.entry_key = e.key
+    WHERE e.cognitiveRole = 'object'
+  ''', [rootKey]);
+
+  if (rows.isEmpty) {
+    return const LocusScheduleSummary(objectCount: 0);
+  }
+
+  DateTime? maxLast;
+  DateTime? minNext;
+  for (final r in rows) {
+    final lo = _parseIsoField(r['last_ok_at']);
+    final nd = _parseIsoField(r['next_due_at']);
+    if (lo != null) {
+      if (maxLast == null || lo.isAfter(maxLast)) {
+        maxLast = lo;
+      }
+    }
+    if (nd != null) {
+      if (minNext == null || nd.isBefore(minNext)) {
+        minNext = nd;
+      }
+    }
+  }
+
+  return LocusScheduleSummary(
+    latestLastOk: maxLast,
+    earliestNextDue: minNext,
+    objectCount: rows.length,
+  );
+}
+
+/// Una línea para AppBar: recall separado; esto es solo **estudio estructurado** (Fibonacci).
+String formatLocusScheduleSummaryLine(LocusScheduleSummary s, [DateTime? now]) {
+  final n = now ?? DateTime.now();
+  if (s.objectCount == 0) {
+    return 'Fib · sin objetos bajo este nivel';
+  }
+  final prev = s.latestLastOk == null
+      ? '—'
+      : _formatRelPast(s.latestLastOk!, n);
+  final nxt = s.earliestNextDue == null
+      ? '—'
+      : (!s.earliestNextDue!.isAfter(n))
+          ? 'vencido'
+          : _formatRelFuture(s.earliestNextDue!, n);
+  return 'Fib · última: $prev · próximo: $nxt';
+}
+
+String _formatRelPast(DateTime t, DateTime now) {
+  final d = now.difference(t);
+  if (d.inMinutes < 90) return 'hace ${d.inMinutes}m';
+  if (d.inHours < 48) return 'hace ${d.inHours}h';
+  return 'hace ${d.inDays}d';
+}
+
+String _formatRelFuture(DateTime t, DateTime now) {
+  final d = t.difference(now);
+  if (d.inMinutes < 90) return 'en ${d.inMinutes}m';
+  if (d.inHours < 48) return 'en ${d.inHours}h';
+  return 'en ${d.inDays}d';
+}

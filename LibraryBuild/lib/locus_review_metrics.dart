@@ -2,6 +2,9 @@ import 'dart:math' as math;
 
 import 'package:sqlite3/sqlite3.dart';
 
+import 'fib_locale_text.dart';
+import 'l10n/app_localizations.dart';
+
 const List<int> _fibonacci = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233];
 
 int _asInt(Object? value) {
@@ -194,32 +197,22 @@ LocusScheduleSummary summarizeLocusScheduleForSubtree(Database db, String rootKe
 }
 
 /// Una línea para AppBar: recall separado; esto es solo **estudio estructurado** (Fibonacci).
-String formatLocusScheduleSummaryLine(LocusScheduleSummary s, [DateTime? now]) {
+String formatLocusScheduleSummaryLine(
+  LocusScheduleSummary s,
+  AppLocalizations l, [
+  DateTime? now,
+]) {
   final n = now ?? DateTime.now();
   if (s.objectCount == 0) {
-    return 'Fib · sin objetos bajo este nivel';
+    return l.fibScheduleEmpty;
   }
   final prev = s.latestLastOk == null
       ? '—'
-      : _formatRelPast(s.latestLastOk!, n);
+      : fibFormatRelPast(s.latestLastOk!, n, l);
   final nxt = s.earliestNextDue == null
       ? '—'
       : (!s.earliestNextDue!.isAfter(n))
-          ? 'vencido'
-          : _formatRelFuture(s.earliestNextDue!, n);
-  return 'Fib · última: $prev · próximo: $nxt';
-}
-
-String _formatRelPast(DateTime t, DateTime now) {
-  final d = now.difference(t);
-  if (d.inMinutes < 90) return 'hace ${d.inMinutes}m';
-  if (d.inHours < 48) return 'hace ${d.inHours}h';
-  return 'hace ${d.inDays}d';
-}
-
-String _formatRelFuture(DateTime t, DateTime now) {
-  final d = t.difference(now);
-  if (d.inMinutes < 90) return 'en ${d.inMinutes}m';
-  if (d.inHours < 48) return 'en ${d.inHours}h';
-  return 'en ${d.inDays}d';
+          ? l.fibOverdue
+          : fibFormatRelFuture(s.earliestNextDue!, n, l);
+  return l.fibScheduleLine(prev, nxt);
 }

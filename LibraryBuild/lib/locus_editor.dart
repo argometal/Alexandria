@@ -4,16 +4,19 @@ import 'dart:io';
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
 import 'package:super_clipboard/super_clipboard.dart';
 
+import 'alexandria_lb_theme.dart';
 import 'alexandria_paths.dart';
+import 'l10n/app_localizations.dart';
 import 'library_build.dart'
     show
         buildViewerForKey,
+        deleteEntrySubtreeAndSync,
         ensureLibrarySchema,
         kCognitiveRoles,
         normalizeCognitiveRole,
@@ -36,6 +39,15 @@ const _kTextKinds = <String, String>{
 };
 
 const _heroExts = ['png', 'jpg', 'jpeg', 'webp'];
+
+List<String> _parseRelatedKeysLine(String raw) {
+  final out = <String>[];
+  for (final part in raw.split(RegExp(r'[\s,;]+'))) {
+    final s = part.trim();
+    if (s.isNotEmpty) out.add(s);
+  }
+  return out;
+}
 
 Future<Uint8List?> _readClipboardFile(DataReader reader, FileFormat format) async {
   final c = Completer<Uint8List?>();
@@ -94,15 +106,27 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
   /// Bloque `img` seleccionado para Ctrl/Cmd+H (portada marco GK).
   int? _focusedImageBlockIndex;
 
-  /// Etiqueta corta para el resumen colapsado (Role · giro).
-  String get _spatialTurnSummaryLabel {
+  String _cognitiveRoleLabel(AppLocalizations l10n) {
+    switch (_cognitiveRole) {
+      case 'realm':
+        return l10n.roleRealm;
+      case 'parcour':
+        return l10n.roleParcour;
+      case 'object':
+        return l10n.roleObject;
+      default:
+        return _cognitiveRole;
+    }
+  }
+
+  String _spatialTurnLabel(AppLocalizations l10n) {
     switch (_spatialTurn) {
       case 'left':
-        return 'Izquierda';
+        return l10n.locusEditorSpatialLeft;
       case 'right':
-        return 'Derecha';
+        return l10n.locusEditorSpatialRight;
       default:
-        return 'Recto';
+        return l10n.locusEditorSpatialStraight;
     }
   }
 
@@ -127,6 +151,80 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         ],
       ),
     );
+  }
+
+  bool get _canDeleteLocus =>
+      widget.entryKey != 'ROOT' && widget.entryKey != 'PARCOUR_MAIN';
+
+  Future<void> _confirmDeleteLocus(BuildContext outerContext) async {
+    if (!_canDeleteLocus) return;
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: outerContext,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete locus permanently'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Removes this entry and all descendants from the realm database '
+                '(${AlexandriaPaths.realmDataRoot()}), deletes matching rows in '
+                'review/parcour tables, removes assets/snapshot/viewer/manifest '
+                'files for those keys, then rebuilds snapshots.',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Type the key exactly to confirm:',
+                style: Theme.of(ctx).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: ctrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: widget.entryKey,
+                  border: const OutlineInputBorder(),
+                ),
+                style: const TextStyle(fontFamily: 'monospace'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            onPressed: () {
+              if (ctrl.text.trim() == widget.entryKey) {
+                Navigator.pop(ctx, true);
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (ok != true || !mounted) return;
+    try {
+      deleteEntrySubtreeAndSync(widget.db, widget.entryKey);
+      if (!mounted) return;
+      Navigator.of(outerContext).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(outerContext).showSnackBar(
+        SnackBar(content: Text('Delete failed: $e')),
+      );
+    }
   }
 
   Future<void> _showLocusMenu(BuildContext context) async {
@@ -210,48 +308,6 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                   ),
                                 ),
                               ),
-                            const SizedBox(height: 12),
-                            InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText:
-                                    'Giro espacial (GK) — aplica al siguiente marco',
-                                helperText:
-                                    'Recto: sigue la dirección del tramo anterior. Izq/Der: acumula ±90° en yaw del marco.',
-                                helperMaxLines: 3,
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 8),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  isExpanded: true,
-                                  isDense: true,
-                                  value: _spatialTurn.isEmpty
-                                      ? 'straight'
-                                      : _spatialTurn,
-                                  items: const [
-                                    DropdownMenuItem(
-                                        value: 'straight',
-                                        child: Text('Recto')),
-                                    DropdownMenuItem(
-                                        value: 'left',
-                                        child: Text('Izquierda')),
-                                    DropdownMenuItem(
-                                        value: 'right',
-                                        child: Text('Derecha')),
-                                  ],
-                                  onChanged: (v) {
-                                    if (v == null) return;
-                                    setState(() {
-                                      _spatialTurn =
-                                          v == 'straight' ? '' : v;
-                                    });
-                                    setModal(() {});
-                                  },
-                                ),
-                              ),
-                            ),
                           ],
                         );
                       },
@@ -294,6 +350,25 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                         );
                       },
                     ),
+                    if (_canDeleteLocus)
+                      ListTile(
+                        leading: Icon(
+                          Icons.delete_forever_outlined,
+                          color: Theme.of(ctx).colorScheme.error,
+                        ),
+                        title: Text(
+                          'Delete locus (DB + files)',
+                          style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+                        ),
+                        subtitle: const Text(
+                          'Subtree removed from SQLite and disk under this realm',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _confirmDeleteLocus(context);
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -346,26 +421,29 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
 
   Color _blockRailColor(_BlockDraft b) {
     if (b.isLink) {
-      return const Color(0xFFFFB74D);
+      return AlexandriaLbTheme.blockRailLink;
+    }
+    if (b.isCard) {
+      return AlexandriaLbTheme.blockRailCard;
     }
     if (b.isImage) {
       if (b.imgRole == 'hero') {
-        return const Color(0xFF1565C0);
+        return AlexandriaLbTheme.blockRailHero;
       }
       if (b.imgRole == 'collage') {
-        return const Color(0xFF2E7D32);
+        return AlexandriaLbTheme.blockRailCollage;
       }
-      return const Color(0xFF78909C);
+      return AlexandriaLbTheme.blockRailImage;
     }
     switch (b.textKind) {
       case 'place':
-        return const Color(0xFFFFAB91);
+        return AlexandriaLbTheme.blockRailPlace;
       case 'hint':
-        return const Color(0xFFCE93D8);
+        return AlexandriaLbTheme.blockRailHint;
       case 'ridiculous_story':
-        return const Color(0xFFF48FB1);
+        return AlexandriaLbTheme.blockRailRidiculous;
       default:
-        return const Color(0xFF90CAF9);
+        return AlexandriaLbTheme.blockRailTextDefault;
     }
   }
 
@@ -376,6 +454,9 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
   ) {
     if (b.isLink) {
       return 'Link #${i + 1}';
+    }
+    if (b.isCard) {
+      return 'Card · bloque ${i + 1}';
     }
     if (b.isImage) {
       if (b.imgRole == 'hero') {
@@ -451,7 +532,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                       borderRadius: BorderRadius.circular(4),
                                       border: imgFocused
                                           ? Border.all(
-                                              color: Colors.white,
+                                              color: AlexandriaLbTheme.gold,
                                               width: 2,
                                             )
                                           : Border.all(
@@ -487,6 +568,52 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     for (final ext in _heroExts) {
       final p = File('${dir.path}${Platform.pathSeparator}hero.$ext');
       if (p.existsSync()) p.deleteSync();
+    }
+  }
+
+  /// Borra en `assets/<entryKey>/` los archivos que ya no aparecen en los bloques guardados (p. ej. `paste_*` viejos).
+  /// Alinea `hero.*` en disco con el bloque marcado hero (mismo criterio que GK). Sin bloque hero, borra `hero.*`.
+  void _syncHeroFileFromBlocks() {
+    _BlockDraft? heroBlock;
+    for (final b in _blocks) {
+      if (b.isImage && b.imgRole == 'hero') {
+        heroBlock = b;
+        break;
+      }
+    }
+    _deleteHeroAssetFiles();
+    if (heroBlock == null) return;
+    final srcName = heroBlock.srcCtrl!.text.trim();
+    if (srcName.isEmpty) return;
+    final dir = _assetsDir();
+    dir.createSync(recursive: true);
+    final srcPath = '${dir.path}${Platform.pathSeparator}$srcName';
+    final srcFile = File(srcPath);
+    if (!srcFile.existsSync()) return;
+    final lower = srcName.toLowerCase();
+    var ext = 'png';
+    for (final e in _heroExts) {
+      if (lower.endsWith('.$e')) {
+        ext = e;
+        break;
+      }
+    }
+    final destPath = '${dir.path}${Platform.pathSeparator}hero.$ext';
+    srcFile.copySync(destPath);
+  }
+
+  void _purgeOrphanAssetFiles(Set<String> keepBasenames) {
+    final dir = _assetsDir();
+    if (!dir.existsSync()) return;
+    for (final e in dir.listSync(followLinks: false)) {
+      if (e is! File) continue;
+      final name = e.path.split(Platform.pathSeparator).last;
+      if (keepBasenames.contains(name)) continue;
+      try {
+        e.deleteSync();
+      } catch (err, st) {
+        debugPrint('[LocusEditor] orphan asset delete failed: $name — $err\n$st');
+      }
     }
   }
 
@@ -602,8 +729,11 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     if (!mounted) return;
     setState(() {
       for (var j = 0; j < _blocks.length; j++) {
-        if (_blocks[j].isImage) {
-          _blocks[j].imgRole = j == i ? 'hero' : 'content';
+        if (!_blocks[j].isImage) continue;
+        if (j == i) {
+          _blocks[j].imgRole = 'hero';
+        } else if (_blocks[j].imgRole == 'hero') {
+          _blocks[j].imgRole = 'content';
         }
       }
     });
@@ -739,7 +869,8 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         }
         if (t == 'img') {
           final src = (m['src'] ?? m['assetKey'] ?? '').toString();
-          var role = (m['role'] ?? 'content').toString().toLowerCase().trim();
+          var role =
+              (m['role'] ?? m['imgRole'] ?? 'content').toString().toLowerCase().trim();
           if (role == 'img') role = 'content';
           if (role != 'hero' && role != 'collage' && role != 'content') {
             role = 'content';
@@ -751,6 +882,30 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
             if (o is num) collageOrder = o.toInt();
           }
           out.add(_BlockDraft.img(src: src, role: role, collageOrder: collageOrder));
+          continue;
+        }
+        if (t == 'card') {
+          final word = (m['word'] ?? '').toString();
+          final image = (m['image'] ?? m['src'] ?? '').toString();
+          final phonetic = (m['phonetic'] ?? '').toString();
+          final audio = (m['audio'] ?? '').toString();
+          final relRaw = m['related_to'];
+          var relStr = '';
+          if (relRaw is List) {
+            relStr = relRaw
+                .map((e) => e.toString().trim())
+                .where((e) => e.isNotEmpty)
+                .join(', ');
+          }
+          out.add(
+            _BlockDraft.card(
+              word: word,
+              image: image,
+              phonetic: phonetic,
+              audio: audio,
+              related: relStr,
+            ),
+          );
           continue;
         }
         var textKind = (m['textKind'] ?? '').toString().toLowerCase().trim();
@@ -795,6 +950,12 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
   void _addLink() {
     setState(() {
       _blocks.add(_BlockDraft.link());
+    });
+  }
+
+  void _addCard() {
+    setState(() {
+      _blocks.add(_BlockDraft.card());
     });
   }
 
@@ -872,7 +1033,28 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
   }
 
   Future<void> _save() async {
+    _syncHeroFileFromBlocks();
+
+    final l10nValidate = AppLocalizations.of(context)!;
+    for (final b in _blocks) {
+      if (!b.isCard) continue;
+      for (final k in _parseRelatedKeysLine(b.relatedCtrl!.text)) {
+        final ok = widget.db.select(
+          'SELECT 1 FROM entries WHERE key = ? LIMIT 1',
+          [k],
+        );
+        if (ok.isEmpty) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10nValidate.locusEditorUnknownRelatedKey(k))),
+          );
+          return;
+        }
+      }
+    }
+
     final payload = <Map<String, dynamic>>[];
+    final keepAssetNames = <String>{};
     final collagesOrdered = _blocks
         .where((b) => b.isImage && b.imgRole == 'collage')
         .toList()
@@ -889,9 +1071,34 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         final t = b.textCtrl!.text.trim();
         if (k.isEmpty) continue;
         payload.add({'type': 'link', 'key': k, 'text': t});
+      } else if (b.isCard) {
+        final w = b.wordCtrl!.text.trim();
+        final img = b.srcCtrl!.text.trim();
+        if (w.isEmpty && img.isEmpty) continue;
+        final phon = b.phoneticCtrl!.text.trim();
+        final aud = b.audioCtrl!.text.trim();
+        final rel = _parseRelatedKeysLine(b.relatedCtrl!.text);
+        final row = <String, dynamic>{
+          'type': 'card',
+          'word': w,
+        };
+        if (img.isNotEmpty) row['image'] = img;
+        if (phon.isNotEmpty) row['phonetic'] = phon;
+        if (aud.isNotEmpty) row['audio'] = aud;
+        if (rel.isNotEmpty) row['related_to'] = rel;
+        payload.add(row);
+        if (img.isNotEmpty) keepAssetNames.add(img);
+        if (phon.isNotEmpty) keepAssetNames.add(phon);
+        if (aud.isNotEmpty) keepAssetNames.add(aud);
       } else if (b.isImage) {
         final s = b.srcCtrl!.text.trim();
         if (s.isEmpty) continue;
+        keepAssetNames.add(s);
+        if (b.imgRole == 'hero') {
+          for (final ext in _heroExts) {
+            keepAssetNames.add('hero.$ext');
+          }
+        }
         final row = <String, dynamic>{'type': 'img', 'src': s};
         if (b.imgRole == 'hero') {
           row['role'] = 'hero';
@@ -922,6 +1129,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
       'UPDATE entries SET body_text = ?, cognitiveRole = ?, spatial_turn = ? WHERE key = ?',
       [stored, roleToSave, stDb, widget.entryKey],
     );
+    _purgeOrphanAssetFiles(keepAssetNames);
 
     try {
       ensureLibrarySchema(widget.db);
@@ -934,8 +1142,9 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     } catch (_) {}
 
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Guardado')),
+      SnackBar(content: Text(l10n.locusEditorSaved)),
     );
     Navigator.of(context).pop(true);
   }
@@ -953,6 +1162,9 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     }
     _ensureBlockItemKeys();
 
+    final l10n = AppLocalizations.of(context)!;
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 72,
@@ -960,20 +1172,23 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('LocusEditor'),
+            Text(l10n.locusEditorTitle),
             Text(
               widget.entryKey,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     fontFamily: 'monospace',
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: cs.onSurfaceVariant,
                   ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
             Text(
-              '${_kCognitiveRoleLabels[_cognitiveRole] ?? _cognitiveRole} · $_spatialTurnSummaryLabel',
+              l10n.locusEditorSubtitleLine(
+                _cognitiveRoleLabel(l10n),
+                _spatialTurnLabel(l10n),
+              ),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: cs.onSurfaceVariant,
                   ),
             ),
           ],
@@ -983,14 +1198,153 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
           onPressed: () => Navigator.of(context).pop(false),
         ),
         actions: [
+          Tooltip(
+            message: l10n.locusEditorSpatialTurnTooltip,
+            child: PopupMenuButton<String>(
+              padding: EdgeInsets.zero,
+              onSelected: (value) {
+                setState(() {
+                  _spatialTurn = value == 'straight' ? '' : value;
+                });
+              },
+              itemBuilder: (ctx) => [
+                PopupMenuItem<String>(
+                  value: 'straight',
+                  child: Text(l10n.locusEditorSpatialStraight),
+                ),
+                PopupMenuItem<String>(
+                  value: 'left',
+                  child: Text(l10n.locusEditorSpatialLeft),
+                ),
+                PopupMenuItem<String>(
+                  value: 'right',
+                  child: Text(l10n.locusEditorSpatialRight),
+                ),
+              ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: cs.outline),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.alt_route, size: 18, color: cs.primary),
+                        const SizedBox(width: 4),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 88),
+                          child: Text(
+                            _spatialTurnLabel(l10n),
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelMedium,
+                          ),
+                        ),
+                        Icon(
+                          Icons.arrow_drop_down,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: l10n.locusEditorAddBlockTooltip,
+            onSelected: (value) {
+              switch (value) {
+                case 'p':
+                  _addParagraph();
+                  break;
+                case 'l':
+                  _addLink();
+                  break;
+                case 'i':
+                  _addImage();
+                  break;
+                case 'c':
+                  _addCard();
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem<String>(
+                value: 'p',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.text_fields, size: 20),
+                  title: Text(l10n.locusEditorBlockParagraph),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'l',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.link, size: 20),
+                  title: Text(l10n.locusEditorBlockLink),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'i',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.image_outlined, size: 20),
+                  title: Text(l10n.locusEditorBlockImage),
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'c',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.style_outlined, size: 20),
+                  title: Text(l10n.locusEditorBlockCard),
+                ),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(color: cs.outline),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add, size: 20, color: cs.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        l10n.locusEditorAddBlockTooltip,
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      Icon(Icons.arrow_drop_down, color: cs.onSurfaceVariant),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.menu),
-            tooltip: 'Locus, giro y más',
+            tooltip: l10n.locusEditorMenuTooltip,
             onPressed: () => _showLocusMenu(context),
           ),
           TextButton(
             onPressed: _save,
-            child: const Text('SAVE'),
+            child: Text(l10n.locusEditorSave),
           ),
         ],
       ),
@@ -998,108 +1352,21 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: PopupMenuButton<String>(
-                tooltip: 'Añadir bloque',
-                onSelected: (value) {
-                  switch (value) {
-                    case 'p':
-                      _addParagraph();
-                      break;
-                    case 'l':
-                      _addLink();
-                      break;
-                    case 'i':
-                      _addImage();
-                      break;
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem<String>(
-                    value: 'p',
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.text_fields, size: 20),
-                      title: Text('Paragraph'),
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'l',
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.link, size: 20),
-                      title: Text('Link'),
-                    ),
-                  ),
-                  const PopupMenuItem<String>(
-                    value: 'i',
-                    child: ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.image_outlined, size: 20),
-                      title: Text('Image'),
-                    ),
-                  ),
-                ],
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.add,
-                            size: 20,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Añadir bloque',
-                            style: Theme.of(context).textTheme.labelLarge,
-                          ),
-                          Icon(
-                            Icons.arrow_drop_down,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(
                   Icons.content_paste_go,
                   size: 16,
-                  color: Theme.of(context).colorScheme.outline,
+                  color: cs.outline,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    'Pegar: Ctrl+V. Imagen: Content / Collage / Hero · Hero rápido: imagen + Ctrl/Cmd+H · '
-                    'Detalle: menú ☰',
+                    l10n.locusEditorPasteHint,
                     style: Theme.of(context).textTheme.bodySmall,
-                    maxLines: 2,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -1114,8 +1381,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                         child: Padding(
                           padding: const EdgeInsets.all(24),
                           child: Text(
-                            'No blocks yet. Add paragraph, link, image, '
-                            'or paste/drop an image.',
+                            l10n.locusEditorEmptyBlocksHint,
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyLarge,
                           ),
@@ -1136,14 +1402,16 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                               b.isImage && _focusedImageBlockIndex == i;
                           final tagLabel = b.isLink
                               ? 'link'
-                              : b.isImage
-                                  ? (b.imgRole == 'hero'
-                                      ? 'HERO'
-                                      : b.imgRole == 'collage'
-                                          ? 'COLLAGE #${collageSeqByIndex[i] ?? 0}'
-                                          : 'CONTENT')
-                                  : (_kTextKinds[b.textKind] ?? 'Text')
-                                      .toUpperCase();
+                              : b.isCard
+                                  ? l10n.locusEditorBlockCard.toUpperCase()
+                                  : b.isImage
+                                      ? (b.imgRole == 'hero'
+                                          ? 'HERO'
+                                          : b.imgRole == 'collage'
+                                              ? 'COLLAGE #${collageSeqByIndex[i] ?? 0}'
+                                              : 'CONTENT')
+                                      : (_kTextKinds[b.textKind] ?? 'Text')
+                                          .toUpperCase();
                           return Card(
                             key: _blockItemKeys[i],
                             margin: const EdgeInsets.only(bottom: 12),
@@ -1158,14 +1426,22 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                     borderRadius: BorderRadius.circular(12),
                                     side: BorderSide(
                                       color: b.imgRole == 'hero'
-                                          ? const Color(0xFF1565C0)
+                                          ? AlexandriaLbTheme.blockRailHero
                                           : b.imgRole == 'collage'
-                                              ? const Color(0xFF2E7D32)
-                                          : Colors.grey.shade600,
+                                              ? AlexandriaLbTheme.blockRailCollage
+                                              : const Color(0xFF6B6258),
                                       width: 2,
                                     ),
                                   )
-                                : null,
+                                : b.isCard
+                                    ? RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        side: const BorderSide(
+                                          color: AlexandriaLbTheme.blockRailCard,
+                                          width: 2,
+                                        ),
+                                      )
+                                    : null,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(12),
                               onTap: b.isImage
@@ -1201,11 +1477,15 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                           ),
                                           backgroundColor: b.isImage
                                               ? (b.imgRole == 'hero'
-                                                  ? Colors.blue.shade100
+                                                  ? AlexandriaLbTheme.chipHeroBg
                                                   : b.imgRole == 'collage'
-                                                      ? Colors.green.shade100
-                                                  : Colors.grey.shade300)
-                                              : null,
+                                                      ? AlexandriaLbTheme
+                                                          .chipCollageBg
+                                                      : AlexandriaLbTheme
+                                                          .chipImageBg)
+                                              : b.isCard
+                                                  ? AlexandriaLbTheme.chipImageBg
+                                                  : null,
                                         ),
                                         if (imgFocused) ...[
                                           const SizedBox(width: 6),
@@ -1216,7 +1496,9 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                                 .labelSmall,
                                           ),
                                         ],
-                                        if (!b.isImage && !b.isLink) ...[
+                                        if (!b.isImage &&
+                                            !b.isLink &&
+                                            !b.isCard) ...[
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child:
@@ -1259,6 +1541,10 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                             flex: 2,
                                             child:
                                                 DropdownButtonFormField<String>(
+                                              key: ValueKey<String>(
+                                                '${widget.entryKey}_$i'
+                                                '_role_${b.imgRole}_co_${b.collageOrder}',
+                                              ),
                                               initialValue: b.imgRole,
                                               isDense: true,
                                               decoration: const InputDecoration(
@@ -1407,6 +1693,78 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                         ),
                                       ),
                                     ],
+                                    if (b.isCard) ...[
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: b.wordCtrl!,
+                                        decoration: InputDecoration(
+                                          labelText: l10n.locusEditorCardWordLabel,
+                                          border: const OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: b.srcCtrl!,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontFamily: 'monospace',
+                                        ),
+                                        decoration: InputDecoration(
+                                          labelText: l10n.locusEditorCardImageLabel,
+                                          hintText: 'illustration.png',
+                                          border: const OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      _ImagePreviewTile(
+                                        entryKey: widget.entryKey,
+                                        srcController: b.srcCtrl!,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: b.phoneticCtrl!,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontFamily: 'monospace',
+                                        ),
+                                        decoration: InputDecoration(
+                                          labelText:
+                                              l10n.locusEditorCardPhoneticLabel,
+                                          hintText: 'ipa.txt',
+                                          border: const OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: b.audioCtrl!,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontFamily: 'monospace',
+                                        ),
+                                        decoration: InputDecoration(
+                                          labelText: l10n.locusEditorCardAudioLabel,
+                                          hintText: 'pronunciation.ogg',
+                                          border: const OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      TextField(
+                                        controller: b.relatedCtrl!,
+                                        minLines: 2,
+                                        maxLines: 6,
+                                        decoration: InputDecoration(
+                                          labelText:
+                                              l10n.locusEditorCardRelatedLabel,
+                                          hintText: l10n.locusEditorCardRelatedHint,
+                                          border: const OutlineInputBorder(),
+                                          isDense: true,
+                                        ),
+                                      ),
+                                    ],
                                     if (b.isImage) ...[
                                       const SizedBox(height: 8),
                                       TextField(
@@ -1433,7 +1791,8 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                         entryKey: widget.entryKey,
                                         srcController: b.srcCtrl!,
                                       ),
-                                    ] else
+                                    ],
+                                    if (!b.isImage && !b.isLink && !b.isCard)
                                       Padding(
                                         padding: const EdgeInsets.only(top: 8),
                                         child: TextField(
@@ -1483,19 +1842,27 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
   }
 }
 
-enum _BlockKind { paragraph, link, image }
+enum _BlockKind { paragraph, link, image, card }
 
 class _BlockDraft {
   _BlockDraft._paragraph(this.textCtrl)
       : kind = _BlockKind.paragraph,
         linkKeyCtrl = null,
         srcCtrl = null,
+        wordCtrl = null,
+        phoneticCtrl = null,
+        audioCtrl = null,
+        relatedCtrl = null,
         imgRole = 'content',
         textKind = 'text';
 
   _BlockDraft._link(this.textCtrl, this.linkKeyCtrl)
       : kind = _BlockKind.link,
         srcCtrl = null,
+        wordCtrl = null,
+        phoneticCtrl = null,
+        audioCtrl = null,
+        relatedCtrl = null,
         imgRole = 'content',
         textKind = 'text';
 
@@ -1503,7 +1870,23 @@ class _BlockDraft {
       : kind = _BlockKind.image,
         textCtrl = null,
         linkKeyCtrl = null,
+        wordCtrl = null,
+        phoneticCtrl = null,
+        audioCtrl = null,
+        relatedCtrl = null,
         imgRole = (role == 'hero' || role == 'collage') ? role : 'content',
+        textKind = 'text';
+
+  _BlockDraft._card(
+    this.wordCtrl,
+    this.srcCtrl,
+    this.phoneticCtrl,
+    this.audioCtrl,
+    this.relatedCtrl,
+  )   : kind = _BlockKind.card,
+        textCtrl = null,
+        linkKeyCtrl = null,
+        imgRole = 'content',
         textKind = 'text';
 
   factory _BlockDraft.p({String text = '', String textKind = 'text'}) {
@@ -1527,10 +1910,30 @@ class _BlockDraft {
     );
   }
 
+  factory _BlockDraft.card({
+    String word = '',
+    String image = '',
+    String phonetic = '',
+    String audio = '',
+    String related = '',
+  }) {
+    return _BlockDraft._card(
+      TextEditingController(text: word),
+      TextEditingController(text: image),
+      TextEditingController(text: phonetic),
+      TextEditingController(text: audio),
+      TextEditingController(text: related),
+    );
+  }
+
   final _BlockKind kind;
   final TextEditingController? textCtrl;
   final TextEditingController? linkKeyCtrl;
   final TextEditingController? srcCtrl;
+  final TextEditingController? wordCtrl;
+  final TextEditingController? phoneticCtrl;
+  final TextEditingController? audioCtrl;
+  final TextEditingController? relatedCtrl;
 
   /// Solo bloques `img`: `hero` (marco GK), `collage` (pared GK), `content` (solo viewer).
   String imgRole;
@@ -1539,11 +1942,16 @@ class _BlockDraft {
 
   bool get isLink => kind == _BlockKind.link;
   bool get isImage => kind == _BlockKind.image;
+  bool get isCard => kind == _BlockKind.card;
 
   void dispose() {
     textCtrl?.dispose();
     linkKeyCtrl?.dispose();
     srcCtrl?.dispose();
+    wordCtrl?.dispose();
+    phoneticCtrl?.dispose();
+    audioCtrl?.dispose();
+    relatedCtrl?.dispose();
   }
 }
 

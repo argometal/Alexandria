@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using Godot;
 
 /// <summary>
@@ -8,6 +9,12 @@ using Godot;
 /// </summary>
 public static class BridgeSpatial
 {
+	private static readonly Regex ObjectLocusKeySuffix = new Regex(@"_O\d{2}$", RegexOptions.Compiled);
+
+	/// <summary>Hoja de objeto bajo parcour (p. ej. L1_O01). Usado para spawn y bridge seq.</summary>
+	public static bool IsObjectLocusKey(string key) =>
+		!string.IsNullOrEmpty(key) && ObjectLocusKeySuffix.IsMatch(key);
+
 	public static string BridgeDir => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "bridge");
 	public const string CurrentSeqFile = "current_seq.txt";
 	public const string LastPositionFile = "last_position.json";

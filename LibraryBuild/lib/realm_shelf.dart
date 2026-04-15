@@ -95,4 +95,17 @@ class RealmShelfStore {
     m[id] = tier;
     write(m);
   }
+
+  /// Tras mover `data/realms/<from>/` en disco, reasigna el tier del estante.
+  static void renameRealmKey(String fromRealmId, String toRealmId) {
+    final from = AlexandriaPaths.sanitizeRealmPath(fromRealmId);
+    final to = AlexandriaPaths.sanitizeRealmPath(toRealmId);
+    if (from.isEmpty || to.isEmpty || from == to) return;
+    final m = read();
+    final t = m.remove(from);
+    if (t != null) {
+      m[to] = t;
+    }
+    write(m);
+  }
 }

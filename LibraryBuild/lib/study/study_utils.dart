@@ -35,9 +35,9 @@ double computeRecallPct(String? bodyText, List<int> recalledIndices) {
   return countCorrectBlocks(bodyText, recalledIndices) / total;
 }
 
-/// **Castle / completitud (ORM-16):** el locus cuenta como activo solo si hay ≥1 bloque `p` con
+/// **Realm / completitud (ORM-16):** el locus cuenta como activo solo si hay ≥1 bloque `p` con
 /// `textKind == ridiculous_story` (misma semántica que normalización en [parseBody]).
-bool isCastleActiveLocus(String? bodyText) {
+bool isRealmActiveLocus(String? bodyText) {
   final blocks = parseBody(bodyText);
   for (final b in blocks) {
     if (b['type'] != 'p') continue;

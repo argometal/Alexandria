@@ -105,7 +105,7 @@ class AlexandriaPaths {
     return t;
   }
 
-  /// Ruta relativa bajo `data/realms/`, p.ej. `default` o `Trabajo/MemoryOS`.
+  /// Ruta relativa bajo `data/realms/`, p.ej. `default` o `Lab/mi_realm`.
   /// Cada segmento usa [sanitizeRealmId]; separador `/`.
   static String sanitizeRealmPath(String raw) {
     if (raw.trim().isEmpty) return 'default';
@@ -150,6 +150,14 @@ class AlexandriaPaths {
   }
 
   static String get dbPath => '${realmDataRoot()}/alexandria.db';
+
+  /// Clon repetible del ORM (sin datos de usuario) para plantillas / nuevos realms.
+  /// Directorio: `data/realm_seed/`; archivo: [realmSeedDbPath].
+  static String get realmSeedDir =>
+      _pathJoin(repoRoot, 'data', 'realm_seed');
+
+  static String get realmSeedDbPath =>
+      '${realmSeedDir}${Platform.pathSeparator}alexandria.db';
 
   /// Servidor Node en repo: `data-transfer/` → `out/`, `handoff/incoming/`.
   static String get dataTransferRoot => '${repoRoot}/data-transfer';
@@ -366,6 +374,46 @@ class AlexandriaPaths {
         _copyDirIfExists(entity, Directory('${dst.path}/$name'));
       } else if (entity is File) {
         entity.copySync('${dst.path}/$name');
+      }
+    }
+  }
+
+  /// Plantilla de realm **completa** en disco (DB + `assets/` + snapshot + viewer + …), p. ej. curada en `data/bundled_default_realm/`.
+  /// Si existe `alexandria.db` ahí, [ensureDefaultRealmOnDiskFromBundledTemplateSync] y el reset nuclear pueden poblar `data/realms/default/` sin esqueleto vacío.
+  static String get bundledDefaultRealmRoot =>
+      _pathJoin(repoRoot, 'data', 'bundled_default_realm');
+
+  /// Copia recursiva del contenido de [src] bajo [dst] (equivalente a duplicar un realm en disco).
+  static void copyDirectoryTreeContents(Directory src, Directory dst) {
+    _copyDirIfExists(src, dst);
+  }
+
+  /// Mueve `data/realms/<from>/` → `data/realms/<to>/` (sin sobrescribir destino).
+  /// El llamador debe cerrar SQLite del realm afectado antes de invocar esto.
+  static bool moveRealmDataDirectory(String fromRealmId, String toRealmId) {
+    final from = sanitizeRealmPath(fromRealmId);
+    final to = sanitizeRealmPath(toRealmId);
+    if (from.isEmpty || to.isEmpty || from == to) return false;
+    final src = Directory(realmDataRoot(from));
+    final dst = Directory(realmDataRoot(to));
+    if (!src.existsSync()) return false;
+    if (dst.existsSync()) return false;
+    dst.parent.createSync(recursive: true);
+    try {
+      src.renameSync(dst.path);
+      return true;
+    } catch (e, st) {
+      try {
+        copyDirectoryTreeContents(src, dst);
+        src.deleteSync(recursive: true);
+        return true;
+      } catch (e2, st2) {
+        try {
+          if (dst.existsSync()) dst.deleteSync(recursive: true);
+        } catch (_) {}
+        // ignore: avoid_print
+        print('[LB][REALM_MOVE_ERR] $e2\n$st2 (rename failed: $e)\n$st');
+        return false;
       }
     }
   }

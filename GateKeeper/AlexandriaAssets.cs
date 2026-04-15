@@ -29,8 +29,6 @@ public static class AlexandriaAssets
 
 	public static string Root => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "assets");
 	private static string WallManifestRoot => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "manifests", "wall");
-	private static readonly bool AllowFolderScanFallback = OS.IsDebugBuild();
-
 	private static readonly string[] HeroNames =
 	{
 		"hero.png", "hero.jpg", "hero.jpeg", "hero.webp",
@@ -44,6 +42,7 @@ public static class AlexandriaAssets
 
 	private static readonly string[] ImageExtensions = { ".png", ".jpg", ".jpeg", ".webp" };
 
+	/// <summary>Si coexisten varios <c>hero.*</c>, usa el más reciente por fecha (evita quedar pegado a un <c>hero.png</c> viejo).</summary>
 	public static string FindHeroPath(string key)
 	{
 		if (string.IsNullOrWhiteSpace(key))
@@ -51,13 +50,29 @@ public static class AlexandriaAssets
 		var dir = Path.Combine(Root, key.Trim());
 		if (!Directory.Exists(dir))
 			return "";
+		string best = "";
+		var bestTicks = 0L;
 		foreach (var name in HeroNames)
 		{
 			var full = Path.Combine(dir, name);
-			if (File.Exists(full))
-				return full;
+			if (!File.Exists(full))
+				continue;
+			try
+			{
+				var t = File.GetLastWriteTimeUtc(full).Ticks;
+				if (string.IsNullOrEmpty(best) || t >= bestTicks)
+				{
+					bestTicks = t;
+					best = full;
+				}
+			}
+			catch
+			{
+				if (string.IsNullOrEmpty(best))
+					best = full;
+			}
 		}
-		return "";
+		return best;
 	}
 
 	public static bool IsHeroFileName(string fileName)
@@ -137,6 +152,25 @@ public static class AlexandriaAssets
 		return FindFirstImageInFolder(key);
 	}
 
+	/// <summary>Firma del archivo que alimenta el marco (hero → cover → primera imagen), para hot-reload sin <c>refresh_now</c>.</summary>
+	public static string GetFrameDisplaySignature(string key)
+	{
+		if (string.IsNullOrWhiteSpace(key))
+			return "";
+		var path = FindFrameDisplayImagePath(key);
+		if (string.IsNullOrEmpty(path) || !File.Exists(path))
+			return "frame:empty";
+		try
+		{
+			var fi = new FileInfo(path);
+			return $"frame:{Path.GetFileName(path)}:{fi.Length}:{fi.LastWriteTimeUtc.Ticks}";
+		}
+		catch
+		{
+			return "frame:err";
+		}
+	}
+
 	public static Image TryLoadImage(string path)
 	{
 		if (string.IsNullOrEmpty(path) || !File.Exists(path))
@@ -164,7 +198,7 @@ public static class AlexandriaAssets
 		if (w <= 0 || h <= 0)
 			return ImageTexture.CreateFromImage(source);
 
-		var fill = padColor ?? new Color(0.04f, 0.06f, 0.1f, 1f);
+		var fill = padColor ?? new Color(0.12f, 0.098f, 0.086f, 1f);
 		var s = (float)boxPixels;
 		var scale = Math.Min(s / w, s / h);
 		var dw = Math.Max(1, (int)Math.Round(w * scale));
@@ -242,7 +276,7 @@ public static class AlexandriaAssets
 	}
 
 	/// <summary>
-	/// Fallback legacy: escaneo de carpeta (solo debug).
+	/// Galería por carpeta (excl. hero/cover); usado si el manifest no aporta rutas válidas.
 	/// </summary>
 	private static List<string> ListWallGalleryImagePathsFromFolder(string key)
 	{
@@ -292,8 +326,8 @@ public static class AlexandriaAssets
 	}
 
 	/// <summary>
-	/// Rutas de pared válidas para GK. Prioriza manifest explícito LB.
-	/// Fallback a escaneo de carpeta solo en debug.
+	/// Rutas de pared válidas para GK. Prioriza manifest explícito LB; si no hay rutas resueltas
+	/// (manifest ausente, vacío o archivos movidos), usa la misma galería por carpeta que el fallback debug.
 	/// </summary>
 	public static List<string> GetWallImagePaths(string key)
 	{
@@ -301,8 +335,10 @@ public static class AlexandriaAssets
 		if (string.IsNullOrWhiteSpace(key))
 			return result;
 
+		var hadManifestFile = false;
 		if (TryReadWallManifest(key, out var manifest))
 		{
+			hadManifestFile = true;
 			var baseDir = Path.Combine(Root, key.Trim());
 			foreach (var img in manifest.Images)
 			{
@@ -311,42 +347,56 @@ public static class AlexandriaAssets
 				if (File.Exists(full))
 					result.Add(full);
 			}
-			return result
+
+			result = result
 				.Distinct(StringComparer.OrdinalIgnoreCase)
 				.ToList();
+			if (result.Count > 0)
+				return result;
 		}
 
-		if (!AllowFolderScanFallback)
+		var fromFolder = ListWallGalleryImagePathsFromFolder(key);
+		if (fromFolder.Count == 0)
 			return result;
 
-		GD.PrintErr($"[WALL][MANIFEST_MISS] key={key} fallback=folder_scan(debug_only)");
-		return ListWallGalleryImagePathsFromFolder(key);
+		if (hadManifestFile)
+			GD.PrintErr($"[WALL][RECOVERY] key={key} manifest sin archivos resueltos → carpeta ({fromFolder.Count} imgs)");
+		else
+			GD.Print($"[WALL][FOLDER] key={key} sin manifest o vacío → carpeta ({fromFolder.Count} imgs)");
+
+		return fromFolder;
 	}
 
 	/// <summary>
-	/// Firma de fuente visual de pared para invalidación runtime.
+	/// Firma de fuente visual de pared para invalidación runtime (alineada con <see cref="GetWallImagePaths"/>).
 	/// </summary>
 	public static string GetWallSourceSignature(string key)
 	{
 		if (string.IsNullOrWhiteSpace(key))
 			return "";
-
-		if (TryReadWallManifest(key, out var manifest))
+		var paths = GetWallImagePaths(key);
+		if (paths.Count == 0)
+			return "wall:0";
+		try
 		{
-			var imageSig = string.Join("|", manifest.Images.Select(i => $"{i.Filename}:{i.Hash}"));
-			return $"manifest:{manifest.Version}:{imageSig}";
+			var parts = paths.Select(p =>
+			{
+				try
+				{
+					var fi = new FileInfo(p);
+					return $"{Path.GetFileName(p)}:{fi.Length}:{fi.LastWriteTimeUtc.Ticks}";
+				}
+				catch
+				{
+					return Path.GetFileName(p);
+				}
+			});
+			return $"wall:{paths.Count}:{string.Join("|", parts)}";
 		}
-
-		if (!AllowFolderScanFallback)
-			return "manifest:missing";
-
-		var fromFolder = ListWallGalleryImagePathsFromFolder(key);
-		var mtimeSig = string.Join("|", fromFolder.Select(p =>
+		catch
 		{
-			try { return $"{p}:{File.GetLastWriteTimeUtc(p).Ticks}"; }
-			catch { return p; }
-		}));
-		return $"folder:{mtimeSig}";
+			return "wall:err";
+		}
 	}
 
 	/// <summary>
@@ -477,7 +527,7 @@ public static class AlexandriaAssets
 	{
 		const int stripSize = 768;
 		var canvas = Image.CreateEmpty(stripSize, stripSize, false, Image.Format.Rgba8);
-		canvas.Fill(new Color(0.05f, 0.06f, 0.08f));
+		canvas.Fill(new Color(0.11f, 0.09f, 0.078f, 1f));
 
 		var n = Math.Min(paths.Count, 4);
 		var x = 0;

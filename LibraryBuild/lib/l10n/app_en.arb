@@ -1,0 +1,585 @@
+{
+  "@@locale": "en",
+  "appTitle": "Realm Library",
+  "activeRealmLabel": "Active realm: {realm}",
+  "@activeRealmLabel": {
+    "placeholders": {
+      "realm": {"type": "String"}
+    }
+  },
+  "sectionReading": "READING",
+  "sectionImport": "IMPORT",
+  "sectionPao": "PAO",
+  "sectionMatchCards": "MATCH CARDS",
+  "sectionGo": "GO",
+  "sectionMetrics": "METRICS",
+  "sectionSystem": "SYSTEM",
+  "sectionLanguage": "LANGUAGE",
+  "nodeReaderTitle": "Node reader",
+  "nodeReaderSubtitle": "Parcour or object (list)",
+  "pdfNodeTitle": "Node PDF",
+  "pdfNodeSubtitle": "Object or other entry",
+  "pdfParcourTitle": "Parcour PDF",
+  "pdfParcourSubtitle": "One parcour per export",
+  "importLocusTitle": "Import content into locus",
+  "importLocusSubtitle": "From data-transfer/out/ → body_text",
+  "paoEditorTitle": "PAO (00–99)",
+  "paoEditorSubtitle": "Two-digit system · import / export JSON",
+  "paoPracticeTitle": "PAO · individual practice",
+  "paoPracticeSubtitle": "Mental recall · show answers · pass / fail",
+  "matchCardsTitle": "Match cards",
+  "matchCardsSubtitle": "Image ↔ caption pairs · random session (LB only)",
+  "matchCardsOrmHint": "Each pair: lemma (native script), optional transliteration, optional meaning (gloss), and image. route_key is for future “along a route”; FSRS table exists but scheduling is not implemented.",
+  "matchCardsEmpty": "No pairs yet. Add an image and a caption.",
+  "matchCardsAddPair": "Add pair",
+  "matchCardsPractice": "Practice",
+  "matchCardsDeleteTooltip": "Remove pair",
+  "matchCardsAddDialogTitle": "New pair",
+  "matchCardsLemmaLabel": "Lemma / word (native script)",
+  "matchCardsLemmaHint": "e.g. кошка",
+  "matchCardsLemmaRequired": "Enter the lemma first.",
+  "matchCardsTransliterationLabel": "Transliteration (optional)",
+  "matchCardsTransliterationHint": "e.g. koshka",
+  "matchCardsGlossLabel": "Meaning (optional)",
+  "matchCardsGlossHint": "e.g. cat",
+  "matchCardsPickImage": "Choose image",
+  "matchCardsCancel": "Cancel",
+  "matchCardsSessionTitle": "Match session",
+  "matchCardsNeedTwoPairs": "Add at least two pairs in Match cards to play.",
+  "matchCardsNoMatch": "No match — try again.",
+  "matchCardsPlayAgain": "Again",
+  "matchCardsAttempts": "Attempts: {count}",
+  "@matchCardsAttempts": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "matchCardsComplete": "Complete",
+  "matchCardsPairsRemaining": "pairs left",
+  "matchCardsPasteDropHint": "Paste image: Ctrl+V (⌘V on Mac) outside a text field. Or drop an image file here. Captions accept any script (Chinese, Japanese, Russian, …).",
+  "matchCardsLemmaUnicodeHelper": "Any script — stored as UTF-8.",
+  "matchCardsImageReady": "Image ready — add caption and save.",
+  "matchCardsPasteImageInDialog": "Paste image from clipboard",
+  "matchCardsSavePair": "Save pair",
+  "matchCardsImageRequired": "Choose, paste, or drop an image first.",
+  "matchCardsClipboardNoImage": "Clipboard has no image.",
+  "matchCardsDeckLabel": "Deck",
+  "matchCardsDeckMenuTooltip": "Decks · export · import",
+  "matchCardsNewDeckMenu": "New deck…",
+  "matchCardsRenameDeckMenu": "Rename deck…",
+  "matchCardsDeleteDeckMenu": "Delete deck…",
+  "matchCardsExportMenu": "Export deck (.zip)…",
+  "matchCardsImportMenu": "Import deck (.zip)…",
+  "matchCardsNewDeckTitle": "New deck",
+  "matchCardsRenameDeckTitle": "Rename deck",
+  "matchCardsDeleteDeckTitle": "Delete deck?",
+  "matchCardsDeleteDeckBody": "Pairs in this deck will be moved to another deck.",
+  "matchCardsDeleteDeckConfirm": "Delete",
+  "matchCardsDeckNameLabel": "Name",
+  "matchCardsExportTitle": "Save deck export",
+  "matchCardsExportDone": "Export saved.",
+  "matchCardsExportError": "Export failed: {error}",
+  "@matchCardsExportError": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "matchCardsImportTitle": "New deck for import",
+  "matchCardsImportDefaultDeckName": "Imported",
+  "matchCardsImportNewDeckNameLabel": "Deck name",
+  "matchCardsImportNewDeckNameHelper": "Pairs from the file are added to this new deck.",
+  "matchCardsImportConfirm": "Import",
+  "matchCardsImportDone": "Imported {count} pair(s).",
+  "@matchCardsImportDone": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "matchCardsImportError": "Import failed: {error}",
+  "@matchCardsImportError": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "matchCardsSearchHint": "Search lemma, transliteration, gloss…",
+  "matchCardsDuplicatesOnly": "Duplicates only",
+  "matchCardsDuplicateSummary": "{groups} duplicate lemma(s) in this deck",
+  "@matchCardsDuplicateSummary": {
+    "placeholders": {
+      "groups": {"type": "int"}
+    }
+  },
+  "matchCardsSearchNoResults": "No cards match the search or filter.",
+  "matchCardsDuplicateLemmaTooltip": "Same lemma as another card in this deck",
+  "matchCardsDuplicateSaveTitle": "Duplicate lemma",
+  "matchCardsDuplicateSaveBody": "A pair with this lemma already exists in this deck.",
+  "matchCardsContinueAnyway": "Save anyway",
+  "goGameTitle": "Go 9×9",
+  "goGameSubtitle": "Captures, no suicide, positional superko. Two passes end the game. Komi for White.",
+  "goGameModePvp": "Two players",
+  "goGameModeBot": "vs Bot (you are Black)",
+  "goGameNew": "New game",
+  "goGamePass": "Pass",
+  "goGameBlackTurn": "Black to play",
+  "goGameWhiteTurn": "White to play",
+  "goGameBotThinking": "Bot thinking…",
+  "goGameIllegal": "Illegal move",
+  "goGameOver": "Game over",
+  "goGameScoreLine": "Black {blackPt} — White {whitePt} (komi +{komi})",
+  "@goGameScoreLine": {
+    "placeholders": {
+      "blackPt": {"type": "String"},
+      "whitePt": {"type": "String"},
+      "komi": {"type": "String"}
+    }
+  },
+  "metricsRecallTitle": "Recall metrics",
+  "metricsRecallSubtitle": "Export CSV",
+  "realmsTitle": "Realms",
+  "realmsSubtitle": "Core / Active / Seek",
+  "navigationIntentTitle": "Navigation intent",
+  "navigationIntentTooltip": "Explore / review / seek / drift mode. When an object is in focus, it is saved as a frame: place, hint and ridiculous story are tied to that locus Hero.",
+  "menuTooltip": "Menu",
+  "backTooltip": "Go up",
+  "searchTooltip": "Search objects (FTS5) · Core / Active / Seek",
+  "refreshTooltip": "Regenerate snapshot / list",
+  "emptyLevelMessage": "No entries at this level.\nGo back to continue.",
+  "tooltipDoubleTapObject": "Double-tap: content viewer (node card)",
+  "tooltipDoubleTapEnter": "Double-tap to enter this level",
+  "tooltipRoleObject": "Role (LB only). Double-tap: content viewer.",
+  "tooltipRoleEnter": "Role (LB only; GK does not read it). Double-tap the row to enter.",
+  "lastReviewPrefix": "·  Last review: {when}",
+  "@lastReviewPrefix": {
+    "placeholders": {
+      "when": {"type": "String"}
+    }
+  },
+  "duePrefix": "·  Due: {when}",
+  "@duePrefix": {
+    "placeholders": {
+      "when": {"type": "String"}
+    }
+  },
+  "roleRealm": "Realm",
+  "roleParcour": "Parcour",
+  "roleObject": "Object",
+  "languageTitle": "Interface language",
+  "languageEnglish": "English",
+  "languageSpanish": "Spanish",
+  "languagePortuguese": "Portuguese",
+  "languageSystem": "Use device language",
+  "languageChanged": "Language updated",
+  "edit": "Edit",
+  "moveObjectTooltip": "Move to another parcour / slot (replaces target)",
+  "moveParcourTooltip": "Move to another parcour (replaces target)",
+  "studyTooltip": "Study",
+  "reviewAgain": "Again",
+  "reviewHard": "Hard",
+  "reviewGood": "Good",
+  "reviewEasy": "Easy",
+  "statsRecallLine": "Recall (entries) · due {due} · new {n} · total {total}",
+  "@statsRecallLine": {
+    "placeholders": {
+      "due": {"type": "int"},
+      "n": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "parcourRowRecallLine": "Recall · due {due} · new {n} · total {total}",
+  "@parcourRowRecallLine": {
+    "placeholders": {
+      "due": {"type": "int"},
+      "n": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "realmNA": "Realm: N/A",
+  "realmPercent": "Realm: {percent}% (good {good} / active {active})",
+  "@realmPercent": {
+    "placeholders": {
+      "percent": {"type": "int"},
+      "good": {"type": "int"},
+      "active": {"type": "int"}
+    }
+  },
+  "dialogMoveParcourTitle": "Move parcour",
+  "dialogMoveObjectTitle": "Move object",
+  "originLabel": "From: {key}",
+  "@originLabel": {
+    "placeholders": {
+      "key": {"type": "String"}
+    }
+  },
+  "moveParcourHint": "Choose the parcour that will replace the destination (same number of object children).",
+  "moveParcourBodyWarning": "The destination subtree is removed and replaced by the source. The source slot returns to the empty skeleton (L1…L20).",
+  "destinationParcourLabel": "Destination parcour",
+  "moveObjectBodyWarning": "If the destination slot already has content, it is replaced. The gap in the source parcour is filled with the skeleton.",
+  "slotLabel": "Slot (1–20)",
+  "moveObjectHint": "Choose destination parcour and slot (seq). The object moves to Parent_O## for that seq.",
+  "cancel": "Cancel",
+  "move": "Move",
+  "snackbarNoDestParcour": "No other parcour available as destination.",
+  "snackbarParcourMoved": "Parcour moved: {from} → {to}",
+  "@snackbarParcourMoved": {
+    "placeholders": {
+      "from": {"type": "String"},
+      "to": {"type": "String"}
+    }
+  },
+  "snackbarNoParcoursUnderHub": "No parcours under PARCOUR_MAIN.",
+  "snackbarObjectMoved": "Object moved: {obj} → {dest}",
+  "@snackbarObjectMoved": {
+    "placeholders": {
+      "obj": {"type": "String"},
+      "dest": {"type": "String"}
+    }
+  },
+  "snackbarNuclearError": "Delete failed: {error}",
+  "@snackbarNuclearError": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "breadcrumbRoot": "R1",
+  "breadcrumbParcours": "Parcours (R1)",
+  "intentFrameSuffix": " · frame {focus}",
+  "@intentFrameSuffix": {
+    "placeholders": {
+      "focus": {"type": "String"}
+    }
+  },
+  "intentDrawerWithFrame": "{mode} · frame {frame}",
+  "@intentDrawerWithFrame": {
+    "placeholders": {
+      "mode": {"type": "String"},
+      "frame": {"type": "String"}
+    }
+  },
+  "intentSnackbar": "Intent → {mode}{frameSuffix} (HUD GateKeeper)",
+  "@intentSnackbar": {
+    "placeholders": {
+      "mode": {"type": "String"},
+      "frameSuffix": {"type": "String"}
+    }
+  },
+  "keySeqLine": "key={key}  ·  seq={seq}",
+  "@keySeqLine": {
+    "placeholders": {
+      "key": {"type": "String"},
+      "seq": {"type": "String"}
+    }
+  },
+  "parcourReviewTooltip": "Last Parcour Review: {rating}",
+  "@parcourReviewTooltip": {
+    "placeholders": {
+      "rating": {"type": "String"}
+    }
+  },
+  "parcourReviewNoData": "no data",
+  "timeReviewNever": "never",
+  "timeReviewUpcoming": "upcoming",
+  "timeReviewToday": "today",
+  "timeReviewYesterday": "yesterday",
+  "timeReviewDaysAgo": "{count} days ago",
+  "@timeReviewDaysAgo": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "timeReviewWeeksAgo": "{count} weeks ago",
+  "@timeReviewWeeksAgo": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "timeReviewMonthsAgo": "{count} months ago",
+  "@timeReviewMonthsAgo": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "timeReviewYearsAgo": "{count} years ago",
+  "@timeReviewYearsAgo": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "dueTagNew": "new",
+  "dueTagDue": "due",
+  "dueTagInHours": "in {h}h",
+  "@dueTagInHours": {
+    "placeholders": {
+      "h": {"type": "int"}
+    }
+  },
+  "dueTagInDays": "in {d}d",
+  "@dueTagInDays": {
+    "placeholders": {
+      "d": {"type": "int"}
+    }
+  },
+  "fibScheduleEmpty": "Fib · no objects under this level",
+  "fibScheduleLine": "Fib · last: {prev} · next: {next}",
+  "@fibScheduleLine": {
+    "placeholders": {
+      "prev": {"type": "String"},
+      "next": {"type": "String"}
+    }
+  },
+  "fibOverdue": "overdue",
+  "fibRelPastMinutes": "{m}m ago",
+  "@fibRelPastMinutes": {
+    "placeholders": {
+      "m": {"type": "int"}
+    }
+  },
+  "fibRelPastHours": "{h}h ago",
+  "@fibRelPastHours": {
+    "placeholders": {
+      "h": {"type": "int"}
+    }
+  },
+  "fibRelPastDays": "{d}d ago",
+  "@fibRelPastDays": {
+    "placeholders": {
+      "d": {"type": "int"}
+    }
+  },
+  "fibRelFutureMinutes": "in {m}m",
+  "@fibRelFutureMinutes": {
+    "placeholders": {
+      "m": {"type": "int"}
+    }
+  },
+  "fibRelFutureHours": "in {h}h",
+  "@fibRelFutureHours": {
+    "placeholders": {
+      "h": {"type": "int"}
+    }
+  },
+  "fibRelFutureDays": "in {d}d",
+  "@fibRelFutureDays": {
+    "placeholders": {
+      "d": {"type": "int"}
+    }
+  },
+  "parcourFibDueDash": "due —",
+  "parcourFibDueOverdue": "due overdue",
+  "parcourFibDueIn": "due {when}",
+  "@parcourFibDueIn": {
+    "placeholders": {
+      "when": {"type": "String"}
+    }
+  },
+  "parcourFibScoreDash": "score —",
+  "parcourFibScoreValue": "score {value}",
+  "@parcourFibScoreValue": {
+    "placeholders": {
+      "value": {"type": "String"}
+    }
+  },
+  "parcourFibFullLine": "Parcour · fib {fibIndex} · {due} · {score}",
+  "@parcourFibFullLine": {
+    "placeholders": {
+      "fibIndex": {"type": "int"},
+      "due": {"type": "String"},
+      "score": {"type": "String"}
+    }
+  },
+  "locusEditorTitle": "Locus editor",
+  "locusEditorAddBlockTooltip": "Add block",
+  "locusEditorBlockParagraph": "Paragraph",
+  "locusEditorBlockLink": "Link",
+  "locusEditorBlockImage": "Image",
+  "locusEditorBlockCard": "Card",
+  "locusEditorCardWordLabel": "Word / lemma",
+  "locusEditorCardImageLabel": "Illustration (filename under assets)",
+  "locusEditorCardPhoneticLabel": "Phonetic / notes (file, e.g. ipa.txt)",
+  "locusEditorCardAudioLabel": "Pronunciation audio (ogg / mp3 / wav)",
+  "locusEditorCardRelatedLabel": "Related entry keys",
+  "locusEditorCardRelatedHint": "Comma or space separated (must exist in this realm)",
+  "locusEditorEmptyBlocksHint": "No blocks yet. Add paragraph, link, image, or vocabulary card—or paste or drop an image.",
+  "locusEditorUnknownRelatedKey": "Related key not found in this realm: {key}",
+  "@locusEditorUnknownRelatedKey": {
+    "placeholders": {
+      "key": {"type": "String"}
+    }
+  },
+  "locusEditorSpatialTurnTooltip": "Spatial turn (path to next frame in GateKeeper)",
+  "locusEditorSpatialStraight": "Straight",
+  "locusEditorSpatialLeft": "Left",
+  "locusEditorSpatialRight": "Right",
+  "locusEditorMenuTooltip": "Locus settings, role, help",
+  "locusEditorSave": "Save",
+  "locusEditorPasteHint": "Paste: Ctrl+V. Image roles: Viewer / Collage / Hero. Quick hero: focus image + Ctrl/Cmd+H. More: menu ☰",
+  "locusEditorSaved": "Saved",
+  "locusEditorSubtitleLine": "{role} · {turn}",
+  "@locusEditorSubtitleLine": {
+    "placeholders": {
+      "role": {"type": "String"},
+      "turn": {"type": "String"}
+    }
+  },
+  "sectionHelp": "HELP",
+  "helpGuideTitle": "How Alexandria works",
+  "helpGuideClose": "Close",
+  "helpGuideGkHint": "Press F1 in GateKeeper for this guide.",
+  "helpGuideOverviewTitle": "Big picture",
+  "helpGuideOverviewBody": "Alexandria has two apps that share the same data folder. Library Build (LB) is where you edit the realm tree, locus content, images, and reviews. GateKeeper (GK) is the 3D corridor: you walk between frames and open the viewer. Both read the same SQLite database and assets; a small bridge folder tells GK which level and frame are active.",
+  "helpGuideRolesTitle": "Realms, parcours, and objects",
+  "helpGuideRolesBody": "The tree starts at ROOT, then realms (e.g. R1), the parcour hub (PARCOUR_MAIN), numbered parcours (P1…P20), and object slots under each parcour. Each row has a cognitive role: Realm (container), Parcour (a corridor of frames), or Object (a leaf you open for full content). In LB you assign roles when you create or edit entries. In GK, parcour levels show many frames along a path; object levels focus on one frame.",
+  "helpGuideContentTitle": "Hero, collage, and body",
+  "helpGuideContentBody": "In the locus editor, images can be Viewer-only, Collage (panels on the GK wall between frames), or Hero (the picture on the 3D frame). Text blocks can carry place, hint, or ridiculous story for study. Saving updates files under assets/<key>/ and refreshes snapshots so GK can rebuild the corridor.",
+  "helpGuideCardsTitle": "Vocabulary cards",
+  "helpGuideCardsBody": "Add a Card block for language-style entries: a large word, an illustration file under assets/<key>/, optional phonetic notes (.txt), optional pronunciation audio (ogg/mp3/wav), and related_to with other entry keys in this realm. In GateKeeper, related keys only change focus (same corridor); Back returns to the previous focus.",
+  "helpGuideLbTitle": "Library Build — what you can do",
+  "helpGuideLbBody": "Browse with the app bar and drawer: open any level, edit a locus (double-tap or edit), search objects, refresh snapshots. The drawer offers node PDF, parcour PDF, import from data-transfer, PAO tools, recall metrics export, language, realm folders, and navigation intent (explore / review / seek / drift — optionally tied to a focus locus for Hero-linked fields). The list shows recall due dates, review history, parcour review dots, and Fib schedule lines where applicable.",
+  "helpGuideGkTitle": "GateKeeper — 3D realm",
+  "helpGuideGkBody": "Move with WASD, look with the mouse (Esc frees or recaptures the cursor). Click a frame to set focus for the viewer; use the on-screen viewer to enter a child level or go back to the parent. The top line shows navigation intent from LB. The corridor layout follows spatial turns you set per frame in LB (straight, left, right).",
+  "helpGuideMetricsTitle": "Metrics and reviews",
+  "helpGuideMetricsBody": "LB stores per-entry recall fields (next review, strength, counts) and parcour review ratings. Use the metrics page to export CSV. In the list, badges and tooltips summarize due state and last parcour review when you are under a parcour.",
+  "helpGuideBridgeTitle": "Bridge and sync",
+  "helpGuideBridgeBody": "Files under data/…/bridge/ carry context_key (which snapshot level GK loads), focus_key (which locus the viewer highlights), navigation_intent.txt, and optional refresh flags. After edits in LB, use Refresh so snapshots and manifests stay aligned; GK picks up changes when those files update.",
+  "usageBandAll": "All",
+  "usageBandCore": "Core",
+  "usageBandActive": "Active",
+  "usageBandSeek": "Seek",
+  "usageBandSubtitleCore": "Core usage — highest engagement",
+  "usageBandSubtitleActive": "Recurrent use",
+  "usageBandSubtitleSeek": "Exploration / long tail",
+  "realmShelfPopupCore": "Core — core priority",
+  "realmShelfPopupActive": "Active — regular use",
+  "realmShelfPopupSeek": "Seek — long tail",
+  "realmAdminFabCreate": "Create new realm",
+  "realmAdminTabFolders": "Folders",
+  "realmAdminTabShelves": "Shelves",
+  "realmAdminTooltipEmptySubfolder": "Create empty folder (organization only, no realm)",
+  "realmAdminTooltipRefresh": "Refresh list",
+  "realmAdminTooltipOpenExplorer": "Open this folder in file explorer",
+  "realmAdminTooltipCreateSeed": "Create realm seed from active realm (data/realm_seed/)",
+  "realmAdminTooltipNuclear": "Delete all data (irreversible)",
+  "realmAdminTooltipOpenRealmFolder": "Open realm folder in explorer",
+  "realmAdminTooltipMoveShelf": "Change shelf assignment",
+  "realmAdminTooltipEnterSubfolders": "Enter subfolders",
+  "realmAdminTooltipShelfMenu": "Shelf",
+  "realmAdminTooltipMoveRealm": "Move or rename realm on disk",
+  "realmAdminMoveRealmMenu": "Move to path…",
+  "realmAdminMoveRealmTitle": "Move realm",
+  "realmAdminMoveRealmBody": "New location under data/realms/. The destination must not exist. The database is closed briefly.",
+  "realmAdminMoveRealmTargetLabel": "New path (e.g. Lab/my_course)",
+  "realmAdminMoveRealmOk": "Moved to {path}",
+  "@realmAdminMoveRealmOk": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "realmAdminMoveRealmFailed": "Could not move (folder exists or files in use).",
+  "realmAdminMoveRealmButton": "Move",
+  "realmAdminShelvesIntro": "Only one active realm at a time (GateKeeper reads data/active_realm.txt). Core / Active / Seek are priority shelves (not physical folders).",
+  "realmAdminActiveLine": "Active: {id}",
+  "@realmAdminActiveLine": {
+    "placeholders": {
+      "id": {"type": "String"}
+    }
+  },
+  "realmAdminTierHeaderCore": "Most important / in use",
+  "realmAdminTierHeaderActive": "Regular work realms",
+  "realmAdminTierHeaderSeek": "Long tail and experiments",
+  "realmAdminEmptyTier": "Empty",
+  "realmAdminFolderIntro": "Lists what exists on disk under data/realms/ from the resolved repo root (not invented). Realm = folder with alexandria.db. Moving many folders: prefer apps closed if the DB is in use.",
+  "realmAdminRepoRootCaption": "Repo root (ALEXANDRIA_ROOT env, or search from the .exe, or C:\\\\Alexandria if it has data/realms):",
+  "realmAdminRealmsFolderCaption": "Realms folder (must match what the explorer opens):",
+  "realmAdminFolderEmpty": "Empty folder.",
+  "realmAdminLeafFolderWithoutDb": "Folder without alexandria.db or subfolders",
+  "realmAdminRootGroupLabel": "Root (no subfolder)",
+  "realmAdminDataRealmsChip": "data/realms",
+  "realmAdminShelfLabel": "Shelf: {tier}",
+  "@realmAdminShelfLabel": {
+    "placeholders": {
+      "tier": {"type": "String"}
+    }
+  },
+  "objectSearchUsageCaption": "Usage views: Core · Active · Seek (same loci; does not change structure).",
+  "realmAdminExplorerMissingFolder": "That folder does not exist on disk.\nResolved root: {root}\nAttempted path:\n{path}",
+  "@realmAdminExplorerMissingFolder": {
+    "placeholders": {
+      "root": {"type": "String"},
+      "path": {"type": "String"}
+    }
+  },
+  "realmAdminExplorerError": "Explorer: {error}\n{path}",
+  "@realmAdminExplorerError": {
+    "placeholders": {
+      "error": {"type": "String"},
+      "path": {"type": "String"}
+    }
+  },
+  "realmAdminFolderMissing": "Missing folder:\n{path}",
+  "@realmAdminFolderMissing": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "realmAdminOpenFailed": "Could not open: {error}",
+  "@realmAdminOpenFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "realmAdminEmptyFolderDialogTitle": "Empty folder",
+  "realmAdminEmptyFolderBody": "Organization only (no alexandria.db). Created under:\n{path}",
+  "@realmAdminEmptyFolderBody": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "realmAdminEmptyFolderNameLabel": "Folder name",
+  "realmAdminEmptyFolderNameHint": "e.g. Lab or Clients_2026",
+  "realmAdminEmptyFolderNameHelper": "One segment; no /",
+  "realmAdminSnackbarSingleSegment": "Use a single name without /",
+  "realmAdminSnackbarSubfolderCreateFailed": "Could not create (already a realm with DB there, or invalid name?).",
+  "realmAdminSnackbarFolderCreated": "Folder created",
+  "realmDialogNewTitle": "New realm",
+  "realmDialogFolderOptionalLabel": "Optional folder",
+  "realmDialogFolderHint": "e.g. Lab or Clients/2026",
+  "realmDialogFolderHelper": "Under data/realms/; empty = root. Folders tab fills from current view.",
+  "realmDialogIdLabel": "Realm id",
+  "realmDialogIdHint": "e.g. my_realm",
+  "realmDialogIdHelper": "Single name; no /",
+  "realmDialogTemplateCopyTitle": "Copy from template",
+  "realmDialogTemplateCopySubtitle": "Duplicates DB, bridge, snapshot, assets… from another realm.",
+  "realmDialogEmptyTitle": "Empty (same architecture)",
+  "realmDialogEmptySubtitle": "Same fixed tree (20 parcours + 400 objects under PARCOUR_MAIN), but no locus text, no recall/review, empty assets.",
+  "realmDialogTemplateLabel": "Template",
+  "realmDialogCreate": "Create",
+  "realmDialogIdInvalidChars": "Realm id cannot contain / or \\.",
+  "realmSnackbarCreateEmptyFailed": "Could not create empty (duplicate path or write error?).",
+  "realmSnackbarDuplicateFailed": "Could not copy (missing template, duplicate path?).",
+  "realmSnackbarActiveRealm": "Active realm: {id}",
+  "@realmSnackbarActiveRealm": {
+    "placeholders": {
+      "id": {"type": "String"}
+    }
+  },
+  "realmAdminNuclearTitle": "Delete all data",
+  "realmAdminNuclearDialogIntro": "All realms, assets, bridge, snapshots, manifests, PAO under data/pao, and realm_shelf.json will be deleted.\n\nOnly a new base will remain at:\ndata/realms/default/alexandria.db\n\nThe realm seed snapshot will also be written to:\ndata/realm_seed/alexandria.db\n\nActive realm: default.\n\nClose GateKeeper if it is open (file locking).\n\nTo confirm, type exactly:",
+  "realmAdminConfirmLabel": "Confirmation",
+  "realmAdminPhraseMismatch": "The phrase does not match exactly.",
+  "realmAdminNuclearButton": "Delete all",
+  "realmAdminNuclearSuccessSnackbar": "Data cleared: default/alexandria.db + data/realm_seed/alexandria.db. Run Library build or reopen the app to regenerate snapshot/viewer.",
+  "realmSeedDialogTitle": "Create realm seed",
+  "realmSeedDialogBody": "The active realm ({realm}) will be sanitized, Library build will run, and the database will be copied to:\ndata/realm_seed/alexandria.db\n\nClose GateKeeper if it is open.",
+  "@realmSeedDialogBody": {
+    "placeholders": {
+      "realm": {"type": "String"}
+    }
+  },
+  "realmSeedConfirm": "Create",
+  "realmSeedSavedSnackbar": "Realm seed saved: data/realm_seed/alexandria.db",
+  "realmSeedErrorPrefix": "Realm seed:",
+  "objectSearchTitle": "Search objects (FTS5)",
+  "objectSearchHint": "Locus title or body text…",
+  "objectSearchCardReaderTooltip": "Node card reader (full info)",
+  "objectSearchNoObjects": "No objects in the database.",
+  "objectSearchNoMatches": "No matches."
+}

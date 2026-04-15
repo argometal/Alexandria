@@ -1,0 +1,10 @@
+---
+description: No referenciar productos o realms ajenos a Alexandria en código, comentarios, UI ni docs del repo.
+globs: "**/*"
+alwaysApply: true
+---
+
+# Nombres de realms y productos
+
+- No mencionar ni citar **MemoryOS** (ni variantes) en este repositorio: no forma parte de Alexandria.
+- Usa ejemplos neutros: `default`, `Lab/mi_realm`, `example_realm`, comentarios genéricos como “otro realm” o “realm de ejemplo”.

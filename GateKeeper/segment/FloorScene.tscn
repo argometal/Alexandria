@@ -1,5 +1,9 @@
 [gd_scene format=3 uid="uid://ddcoxrd1xwra4"]
 
+[sub_resource type="StandardMaterial3D" id="floor_stone"]
+albedo_color = Color(0.3019608, 0.2784314, 0.21176471, 1)
+roughness = 0.92
+
 [sub_resource type="PlaneMesh" id="1"]
 size = Vector2(6, 5)
 
@@ -8,3 +12,4 @@ size = Vector2(6, 5)
 [node name="Mesh" type="MeshInstance3D" parent="."]
 transform = Transform3D(1,0,0, 0,1,0, 0,0,1, 0,0,0)
 mesh = SubResource("1")
+material_override = SubResource("floor_stone")

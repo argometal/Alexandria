@@ -2,7 +2,6 @@ using Godot;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.RegularExpressions;
 
 public partial class Spawner : Node3D
 {
@@ -50,6 +49,7 @@ public partial class Spawner : Node3D
 	// [Cambio 273] diagnóstico refresh — evitar spam (1 Hz)
 	private double _snapshotRefreshCheckTimer = 0;
 	private readonly Dictionary<string, string> _lastWallSignatureByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+	private readonly Dictionary<string, string> _lastFrameDisplaySignatureByKey = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>Tras rechazar snapshot (bridge ≠ JSON): backoff antes de reintentar con refresh_now.</summary>
 	private double _snapshotReloadBackoffSec;
@@ -57,14 +57,8 @@ public partial class Spawner : Node3D
 	private static string RealmSnapshotDir => Path.Combine(AlexandriaDataRoot.RealmDataRoot, "snapshot");
 	private static string SnapshotCurrentJsonPath => Path.Combine(RealmSnapshotDir, "current.json");
 
-	/// <summary>Hoja de objeto bajo parcour (p. ej. L1_O01). Siempre cámara en el primer marco.</summary>
-	private static readonly Regex ObjectLocusKeySuffix = new Regex(@"_O\d{2}$", RegexOptions.Compiled);
-
-	private static bool IsObjectLocusKey(string key) =>
-		!string.IsNullOrEmpty(key) && ObjectLocusKeySuffix.IsMatch(key);
-
 	// --- Corredor recto Z: QuadMesh Size=(PanelHeight,PanelWidth); con rot -90°Y la extensión en +Z es PanelHeight. ---
-	private const int FrameSlotCount = 20;
+	public const int FrameSlotCount = 20;
 	private const float PanelWidth = 3.32f;
 	private const float PanelHeight = 4.33f;
 	/// <summary>Metros del panel a lo largo del corredor (eje Z tras rotar el quad).</summary>
@@ -80,8 +74,14 @@ public partial class Spawner : Node3D
 	private const float ParcourOffset = 1.1f;
 	/// <summary>Centro del pasillo en X (cámara); el marco sigue en <see cref="MarcoStartX"/>.</summary>
 	private const float CorridorCameraRigX = 0f;
+	/// <summary>
+	/// Desplazamiento extra en X (negativo = alejarse del plano de collage en +X) para no quedar incrustado en la pared lateral.
+	/// </summary>
+	private const float CorridorCameraLateralAwayFromWallX = -2.95f;
+	/// <summary>En MAZE: empuja la cámara hacia el centro del pasillo (−<c>right</c>, mismo lado que el corredor Z).</summary>
+	private const float CameraMazeLateralAwayFromWallMeters = 2f;
 	/// <summary>Metros que retrocede la cámara desde el plano del marco hacia el interior del tramo (evita spawn pegado a collage/pared).</summary>
-	private const float CameraStandoffFromFrameMeters = 1.75f;
+	private const float CameraStandoffFromFrameMeters = 4.6f;
 	private const float WallWidthConst = 3.2f;
 	private const float FloorCeilingExtraLengthMeters = 3.5f;
 	/// <summary>Plano de pared en X (coincide con ancho de panel en eje X tras rotación -90°).</summary>
@@ -89,6 +89,9 @@ public partial class Spawner : Node3D
 	private const float MarcoStartX = 2.8f;
 	private const float MarcoStartY = 1.6f;
 	private const float MarcoStartZ = 10.0f;
+
+	/// <summary>Dirección del tramo de entrada al marco 0 (antes de cualquier <c>spatialTurn</c> en seq 0).</summary>
+	private static readonly Vector3 MazeIncomingToFrame0 = new Vector3(0f, 0f, 1f);
 
 	/// <summary>Metros rectos **después** del marco que declara el giro, antes de cambiar de dirección (buffer; no es “lead” del collage).</summary>
 	private const float MazeFrameTurnBufferMeters = 1.5f;
@@ -413,6 +416,7 @@ public partial class Spawner : Node3D
 		seg.Position = new Vector3(0f, y, midZ);
 		var s = len / 6f;
 		seg.Scale = new Vector3(1f, 1f, s);
+		CorridorVisualTheme.ApplyToFloorCeilingSegment(seg, y > 1.5f);
 		GD.Print($"[SPAWNER][FLOOR_CEIL] {nodeName} zA={zA} zB={zB} len={len}");
 	}
 
@@ -531,6 +535,7 @@ public partial class Spawner : Node3D
 		seg.RotationDegrees = new Vector3(0f, yawDeg, 0f);
 		var s = len / 6f;
 		seg.Scale = new Vector3(1f, 1f, s);
+		CorridorVisualTheme.ApplyToFloorCeilingSegment(seg, y > 1.5f);
 		GD.Print($"[SPAWNER][FLOOR_CEIL_MAZE] {nodeName} len={len} yaw={yawDeg}");
 	}
 
@@ -548,7 +553,9 @@ public partial class Spawner : Node3D
 			if (dest == 0)
 			{
 				var gap = ComputeSegmentGap(n);
-				pA = pB - GetPersistentDirection(0) * gap;
+				// No usar GetPersistentDirection(0): ese vector ya aplica el giro en seq 0 (arco hacia marco 1).
+				// El tramo que llega al marco 0 sigue siempre el eje +Z; si no, suelo/pared giran al revés que el marco 0.
+				pA = pB - MazeIncomingToFrame0 * gap;
 			}
 			else
 				pA = _mazeExpandedFramePositions[dest - 1];
@@ -629,6 +636,65 @@ public partial class Spawner : Node3D
 			_lastWallSignatureByKey.Remove(k);
 
 		return changed;
+	}
+
+	private void PrimeFrameDisplaySignatures()
+	{
+		_lastFrameDisplaySignatureByKey.Clear();
+		var keys = GatherKeysFromFrames();
+		for (var i = 0; i < keys.Length; i++)
+		{
+			var k = keys[i] ?? "";
+			if (string.IsNullOrWhiteSpace(k))
+				continue;
+			_lastFrameDisplaySignatureByKey[k] = AlexandriaAssets.GetFrameDisplaySignature(k);
+		}
+	}
+
+	private bool DidFrameDisplayChange()
+	{
+		var keys = GatherKeysFromFrames();
+		var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var changed = false;
+		for (var i = 0; i < keys.Length; i++)
+		{
+			var k = (keys[i] ?? "").Trim();
+			if (string.IsNullOrEmpty(k) || !seen.Add(k))
+				continue;
+			var sig = AlexandriaAssets.GetFrameDisplaySignature(k);
+			if (!_lastFrameDisplaySignatureByKey.TryGetValue(k, out var prev) || !string.Equals(prev, sig, StringComparison.Ordinal))
+			{
+				GD.Print($"[SPAWNER][FRAME_DISP_CHANGE] key={k} prev={(prev ?? "(none)")} next={sig}");
+				_lastFrameDisplaySignatureByKey[k] = sig;
+				changed = true;
+			}
+		}
+
+		var stale = new List<string>();
+		foreach (var k in _lastFrameDisplaySignatureByKey.Keys)
+		{
+			if (!seen.Contains(k))
+				stale.Add(k);
+		}
+		foreach (var k in stale)
+			_lastFrameDisplaySignatureByKey.Remove(k);
+
+		return changed;
+	}
+
+	private void RefreshAllFrameHeroMaterials()
+	{
+		if (_framesRoot == null)
+			return;
+		var fc = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
+		if (fc == null)
+			return;
+		var n = Mathf.Min(FrameSlotCount, fc.GetChildCount());
+		for (var i = 0; i < n; i++)
+		{
+			if (fc.GetChild(i) is FrameTemplate ft)
+				ft.RefreshHeroFromDisk();
+		}
 	}
 
 	private void ApplyCorridorGeometryAfterSnapshot()
@@ -744,6 +810,69 @@ public partial class Spawner : Node3D
 		return framePos;
 	}
 
+	/// <summary>
+	/// Marco cuyo locus (planta) está más cerca de la cámara — mantiene <c>current_seq.txt</c> al moverse por el parcour.
+	/// </summary>
+	public int ResolveNearestFrameSeqFromCameraPosition(Vector3 camGlobalPos)
+	{
+		if (GetLayoutMode() == "MAZE")
+		{
+			if (_mazeExpandedFramePositions != null && _mazeExpandedFramePositions.Length >= FrameSlotCount)
+			{
+				var flatC = new Vector2(camGlobalPos.X, camGlobalPos.Z);
+				var best = 0;
+				var bestD2 = float.MaxValue;
+				for (var s = 0; s < FrameSlotCount; s++)
+				{
+					var p = _mazeExpandedFramePositions[s];
+					var d2 = flatC.DistanceSquaredTo(new Vector2(p.X, p.Z));
+					if (d2 < bestD2)
+					{
+						bestD2 = d2;
+						best = s;
+					}
+				}
+				return best;
+			}
+
+			var bestM = 0;
+			var bestD2m = float.MaxValue;
+			var flatCm = new Vector2(camGlobalPos.X, camGlobalPos.Z);
+			for (var s = 0; s < FrameSlotCount; s++)
+			{
+				var p = GetPositionFromSeq(s);
+				var d2 = flatCm.DistanceSquaredTo(new Vector2(p.X, p.Z));
+				if (d2 < bestD2m)
+				{
+					bestD2m = d2;
+					bestM = s;
+				}
+			}
+			return bestM;
+		}
+
+		if (GetLayoutMode() == "CORRIDOR_Z")
+		{
+			if (!_corridorLayoutBuilt)
+				RebuildCorridorZLayout(EmptyKeysCorridor());
+			var zMarcoEst = camGlobalPos.Z + CameraStandoffFromFrameMeters;
+			var best = 0;
+			var bestAbs = float.MaxValue;
+			for (var s = 0; s < FrameSlotCount; s++)
+			{
+				var d = Mathf.Abs(_frameZPositions[s] - zMarcoEst);
+				if (d < bestAbs)
+				{
+					bestAbs = d;
+					best = s;
+				}
+			}
+			return best;
+		}
+
+		return Mathf.Clamp((int)Mathf.Round(camGlobalPos.Z / 6f), 0, FrameSlotCount - 1);
+	}
+
 
 	// [SCOPE:MAZE_CONTROL]
 	public void SetDirection(int seq, Vector3 dir)
@@ -802,9 +931,7 @@ public partial class Spawner : Node3D
 				else if (cmd == new Vector3(0, 0, -1))
 					currentDir = -currentDir;
 
-				// FORWARD (sin cambio)
-				else if (cmd == new Vector3(0, 0, 1))
-					currentDir = currentDir;
+				// FORWARD (sin cambio): no-op
 			}
 
 		}
@@ -963,6 +1090,7 @@ public partial class Spawner : Node3D
 		ApplyCorridorGeometryAfterSnapshot();
 		TryRestoreCameraAfterSnapshot();
 		PrimeWallManifestSignatures();
+		PrimeFrameDisplaySignatures();
 		_snapshotLoaded = true;
 
 		SetProcess(true);
@@ -1073,9 +1201,8 @@ public partial class Spawner : Node3D
 	}
 
 	/// <summary>
-	/// Parcour / realm (clave que no es hoja *_O##): primera vez en el nivel → marco 0;
-	/// al volver tras salir → seq guardado en last_position.byKey[context_key] (escribe LB al cambiar contexto).
-	/// Object (hoja *_O##): siempre primer marco (seq 0). No usar current_seq.txt como sustituto.
+	/// Object (hoja *_O##): siempre marco 0.
+	/// Parcour: último marco en <see cref="SessionRealmSpatial"/> para el realm activo (memoria de sesión GK, no disco).
 	/// </summary>
 	private void TryRestoreCameraAfterSnapshot()
 	{
@@ -1091,15 +1218,29 @@ public partial class Spawner : Node3D
 			return;
 
 		int seq;
-		if (IsObjectLocusKey(contextKey))
+		if (BridgeSpatial.IsObjectLocusKey(contextKey))
 		{
 			seq = 0;
 		}
 		else
 		{
-			var saved = BridgeSpatial.ReadSavedSeqForOpenKey(contextKey);
-			seq = saved ?? 0;
+			var realmId = AlexandriaDataRoot.ReadActiveRealmId();
+			seq = SessionRealmSpatial.GetParcourSeqForRealmOrDefault(realmId, 0);
 		}
+		if (seq < 0)
+			seq = 0;
+		if (seq >= FrameSlotCount)
+			seq = FrameSlotCount - 1;
+
+		PositionCameraAtParcourSeq(cam, seq);
+
+		var layout = GetLayoutMode();
+		GD.Print($"[SPAWNER][CAMERA_RESTORE] context_key={contextKey} seq={seq} pos={cam.GlobalPosition} layout={layout}");
+	}
+
+	/// <summary>Coloca la cámara frente al marco <paramref name="seq"/> (0..<see cref="FrameSlotCount"/>-1), coherente con restore tras snapshot.</summary>
+	private void PositionCameraAtParcourSeq(CameraRig cam, int seq)
+	{
 		if (seq < 0)
 			seq = 0;
 		if (seq >= FrameSlotCount)
@@ -1109,10 +1250,75 @@ public partial class Spawner : Node3D
 			? _mazeExpandedFramePositions[seq]
 			: GetPositionFromSeq(seq);
 		pos = ApplyCameraStandoffFromFrame(pos, seq);
-		// Rig en Y=0: la altura de ojos viene del Camera3D hijo en la escena (no duplicar con pos.Y).
-		var camX = GetLayoutMode() == "CORRIDOR_Z" ? CorridorCameraRigX : pos.X;
+		if (GetLayoutMode() == "MAZE" && _mazeExpandedFramePositions != null)
+		{
+			var walk = seq == 0
+				? new Vector3(0f, 0f, 1f)
+				: GetPersistentDirection(Mathf.Max(0, seq - 1));
+			var flat = new Vector3(walk.X, 0f, walk.Z);
+			if (flat.LengthSquared() > 1e-6f)
+			{
+				flat = flat.Normalized();
+				var right = Vector3.Up.Cross(flat).Normalized();
+				pos += -right * CameraMazeLateralAwayFromWallMeters;
+			}
+		}
+
+		var camX = GetLayoutMode() == "CORRIDOR_Z"
+			? CorridorCameraRigX + CorridorCameraLateralAwayFromWallX
+			: pos.X;
 		cam.GlobalPosition = new Vector3(camX, 0f, pos.Z);
-		GD.Print($"[SPAWNER][CAMERA_RESTORE] context_key={contextKey} seq={seq} pos={cam.GlobalPosition}");
+
+		var layout = GetLayoutMode();
+		if (layout == "MAZE" && _mazeExpandedFramePositions != null)
+		{
+			var walk = seq == 0
+				? new Vector3(0f, 0f, 1f)
+				: GetPersistentDirection(Mathf.Max(0, seq - 1)).Normalized();
+			if (walk.LengthSquared() > 1e-6f)
+			{
+				var yDeg = Mathf.RadToDeg(Mathf.Atan2(walk.X, walk.Z));
+				cam.RotationDegrees = new Vector3(0f, yDeg, 0f);
+			}
+		}
+		else if (layout == "CORRIDOR_Z")
+			cam.RotationDegrees = new Vector3(0f, 0f, 0f);
+	}
+
+	/// <summary>Locus asignado al marco (vacío = slot libre).</summary>
+	public string GetLocusKeyAtFrameSeq(int seq)
+	{
+		if (_framesRoot == null)
+			return "";
+		var fc = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
+		if (fc == null)
+			return "";
+		var s = Mathf.Clamp(seq, 0, FrameSlotCount - 1);
+		if (s >= fc.GetChildCount())
+			return "";
+		var ft = fc.GetChild(s) as FrameTemplate;
+		return ft?.GetLocusKey() ?? "";
+	}
+
+	/// <summary>Desatasco: salta al marco del parcour; actualiza sesión, <c>current_seq.txt</c> y <c>focus_key</c> si hay locus.</summary>
+	public void MoveCameraToParcourSeq(int seq)
+	{
+		seq = Mathf.Clamp(seq, 0, FrameSlotCount - 1);
+		var cam = GetNodeOrNull<CameraRig>("/root/Realm/CameraRig");
+		if (cam == null)
+		{
+			GD.PrintErr("[SPAWNER][MOVE_SEQ] no CameraRig");
+			return;
+		}
+
+		PositionCameraAtParcourSeq(cam, seq);
+		var realmId = AlexandriaDataRoot.ReadActiveRealmId();
+		SessionRealmSpatial.SetParcourSeqForRealm(realmId, seq);
+		BridgeSpatial.WriteCurrentSeq(seq);
+		var key = GetLocusKeyAtFrameSeq(seq);
+		if (!string.IsNullOrEmpty(key))
+			BridgeSpatial.WriteFocusKey(key);
+		GD.Print($"[SPAWNER][MOVE_SEQ] seq={seq} focus={(string.IsNullOrEmpty(key) ? "(empty)" : key)}");
 	}
 
 
@@ -1146,8 +1352,10 @@ public partial class Spawner : Node3D
 
 					_snapshotLoaded = false;
 					ApplyCorridorGeometryAfterSnapshot();
+					RefreshAllFrameHeroMaterials();
 					TryRestoreCameraAfterSnapshot();
 					PrimeWallManifestSignatures();
+					PrimeFrameDisplaySignatures();
 					_snapshotLoaded = true;
 					_snapshotReloadBackoffSec = 0;
 				}
@@ -1158,10 +1366,19 @@ public partial class Spawner : Node3D
 				}
 			}
 		}
-		else if (_snapshotLoaded && DidWallManifestChange())
+		else if (_snapshotLoaded)
 		{
-			GD.Print("[SPAWNER][WALL_MANIFEST_CHANGED] rebuild corridor geometry");
-			ApplyCorridorGeometryAfterSnapshot();
+			var wallCh = DidWallManifestChange();
+			var frameCh = DidFrameDisplayChange();
+			if (wallCh || frameCh)
+			{
+				GD.Print("[SPAWNER][VISUAL_ASSET_CHANGED] rebuild corridor geometry + frame textures");
+				ApplyCorridorGeometryAfterSnapshot();
+				RefreshAllFrameHeroMaterials();
+				TryRestoreCameraAfterSnapshot();
+				PrimeWallManifestSignatures();
+				PrimeFrameDisplaySignatures();
+			}
 		}
 
 		// [SCOPE:MAZE_TEST_INPUT]

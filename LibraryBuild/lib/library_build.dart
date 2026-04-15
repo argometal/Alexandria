@@ -9,13 +9,13 @@ import 'parcour_review.dart';
 import 'pao/pao_standard_store.dart';
 
 export 'locus_review_metrics.dart';
-export 'study/study_utils.dart' show isCastleActiveLocus;
+export 'study/study_utils.dart' show isRealmActiveLocus;
 export 'parcour_review.dart'
     show
         applyParcourReviewSession,
-        CastleCompletionResult,
+        RealmCompletionResult,
         computeCanonicalParcourScores,
-        computeCastleCompletionForParcour,
+        computeRealmCompletionForParcour,
         ensureParcourReviewSchema,
         formatParcourReviewOneLine,
         isLocusEligibleForParcourReview,
@@ -271,6 +271,88 @@ const List<String> kCognitiveRoles = [
   'object',
 ];
 
+/// Juego de cartas (emparejar imagen ↔ texto) en Library Build.
+///
+/// [lb_match_pairs.caption_text]: lema en escritura nativa; [transliteration] / [gloss] opcionales (ORM-16-08).
+///
+/// [lb_match_pairs.route_key]: `NULL` = pool global del realm (UI actual).
+/// Futuro: fila por “ruta” (p. ej. parcour) para repaso caminando el espacio — sin lógica aún.
+///
+/// [lb_match_pair_fsrs_state]: `fib_index` + `due_at` = repaso tipo Fibonacci (mismo eje que locus review); columnas FSRS legacy opcionales sin usar.
+void _ensureMatchCardsSchema(Database db) {
+  db.execute('''
+    CREATE TABLE IF NOT EXISTS lb_match_pairs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      image_basename TEXT NOT NULL,
+      caption_text TEXT NOT NULL,
+      route_key TEXT,
+      created_at TEXT NOT NULL
+    )
+  ''');
+  db.execute('''
+    CREATE TABLE IF NOT EXISTS lb_match_pair_fsrs_state (
+      pair_id INTEGER PRIMARY KEY,
+      stability REAL,
+      difficulty REAL,
+      elapsed_days REAL,
+      due_at TEXT,
+      last_review_at TEXT,
+      reps INTEGER NOT NULL DEFAULT 0
+    )
+  ''');
+
+  final pairCols = db
+      .select('PRAGMA table_info(lb_match_pairs)')
+      .map((r) => r['name'] as String)
+      .toList();
+  if (!pairCols.contains('transliteration')) {
+    db.execute('ALTER TABLE lb_match_pairs ADD COLUMN transliteration TEXT');
+  }
+  if (!pairCols.contains('gloss')) {
+    db.execute('ALTER TABLE lb_match_pairs ADD COLUMN gloss TEXT');
+  }
+  db.execute('''
+    CREATE TABLE IF NOT EXISTS lb_match_decks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  ''');
+  if (!pairCols.contains('deck_id')) {
+    db.execute('ALTER TABLE lb_match_pairs ADD COLUMN deck_id INTEGER');
+  }
+  final deckRows = db.select('SELECT COUNT(*) AS c FROM lb_match_decks');
+  final deckCount = deckRows.isEmpty
+      ? 0
+      : (deckRows.first['c'] as num).toInt();
+  if (deckCount == 0) {
+    db.execute(
+      'INSERT INTO lb_match_decks (name, created_at) VALUES (?, ?)',
+      [
+        'Default',
+        DateTime.now().toUtc().toIso8601String(),
+      ],
+    );
+  }
+  final firstDeck = db.select('SELECT id FROM lb_match_decks ORDER BY id ASC LIMIT 1');
+  if (firstDeck.isNotEmpty) {
+    final defaultDeckId = firstDeck.first['id'] as int;
+    db.execute(
+      'UPDATE lb_match_pairs SET deck_id = ? WHERE deck_id IS NULL',
+      [defaultDeckId],
+    );
+  }
+  final fsrsCols = db
+      .select('PRAGMA table_info(lb_match_pair_fsrs_state)')
+      .map((r) => r['name'] as String)
+      .toList();
+  if (!fsrsCols.contains('fib_index')) {
+    db.execute(
+      'ALTER TABLE lb_match_pair_fsrs_state ADD COLUMN fib_index INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+}
+
 void _ensureLocusReviewSchema(Database db) {
   db.execute('''
     CREATE TABLE IF NOT EXISTS locus_review_state (
@@ -301,6 +383,9 @@ void _ensureLocusReviewSchema(Database db) {
 void ensureLibrarySchema(Database db) {
   final info = db.select('PRAGMA table_info(entries)');
   final names = info.map((r) => r['name'] as String).toList();
+  if (!names.contains('title')) {
+    db.execute('ALTER TABLE entries ADD COLUMN title TEXT');
+  }
   if (!names.contains('body_text')) {
     db.execute('ALTER TABLE entries ADD COLUMN body_text TEXT');
   }
@@ -354,6 +439,7 @@ CREATE TABLE IF NOT EXISTS review_events (
 )
 ''');
   _ensureLocusReviewSchema(db);
+  _ensureMatchCardsSchema(db);
   ensureParcourReviewSchema(db);
   ensurePaoStandardSchema(db);
   // Filas sin rol (legacy o INSERT sin columna): default `'object'`; no afecta snapshot/viewer.
@@ -654,7 +740,9 @@ void _purgeDiskArtifactsForKey(String key) {
   try {
     final dir = Directory('${AlexandriaPaths.assetsRoot}/$key');
     if (dir.existsSync()) dir.deleteSync(recursive: true);
-  } catch (_) {}
+  } catch (e, st) {
+    print('[LB][purge] assets/$key: $e\n$st');
+  }
   for (final base in [
     AlexandriaPaths.snapshotRoot,
     AlexandriaPaths.viewerRoot,
@@ -663,11 +751,27 @@ void _purgeDiskArtifactsForKey(String key) {
     try {
       final f = File('$base/$key.json');
       if (f.existsSync()) f.deleteSync();
-    } catch (_) {}
+    } catch (e, st) {
+      print('[LB][purge] $base/$key.json: $e\n$st');
+    }
   }
 }
 
+/// Filas de Parcour Review que referencian [key] como locus o como parcour de sesión.
+void _deleteParcourReviewRowsForKey(Database db, String key) {
+  if (!_tableExists(db, 'parcour_review_sessions')) return;
+  ensureParcourReviewSchema(db);
+  db.execute('DELETE FROM parcour_review_session_loci WHERE locus_key = ?', [key]);
+  db.execute(
+    'DELETE FROM parcour_review_session_loci WHERE session_id IN (SELECT id FROM parcour_review_sessions WHERE parcour_key = ?)',
+    [key],
+  );
+  db.execute('DELETE FROM parcour_review_sessions WHERE parcour_key = ?', [key]);
+  db.execute('DELETE FROM parcour_review_state WHERE parcour_key = ?', [key]);
+}
+
 void _deleteEntryRowAndRelated(Database db, String key) {
+  _deleteParcourReviewRowsForKey(db, key);
   if (_tableExists(db, 'review_events')) {
     db.execute('DELETE FROM review_events WHERE entryKey = ?', [key]);
   }
@@ -682,6 +786,40 @@ void _deleteEntryRowAndRelated(Database db, String key) {
   }
   db.execute('DELETE FROM entries WHERE key = ?', [key]);
   _purgeDiskArtifactsForKey(key);
+}
+
+/// Borra [rootKey] y todo su subárbol en SQLite, limpia tablas satélite y disco bajo el realm,
+/// ajusta bridge, FTS y regenera snapshot/navigation (vía [runLibraryBuild]).
+///
+/// No permitido: `ROOT`, `PARCOUR_MAIN` (estructura del realm).
+void deleteEntrySubtreeAndSync(Database db, String rootKey) {
+  final k = rootKey.trim();
+  if (k.isEmpty) {
+    throw ArgumentError('empty key');
+  }
+  if (k == 'ROOT' || k == 'PARCOUR_MAIN') {
+    throw StateError('Cannot delete ROOT or PARCOUR_MAIN.');
+  }
+  ensureLibrarySchema(db);
+  ensureParcourReviewSchema(db);
+  final removed = _subtreeKeysDeepestFirst(db, k);
+  if (removed.isEmpty) {
+    return;
+  }
+  final removedSet = removed.toSet();
+  try {
+    db.execute('BEGIN IMMEDIATE');
+    _deleteSubtreeForRemap(db, k);
+    db.execute('COMMIT');
+  } catch (e) {
+    try {
+      db.execute('ROLLBACK');
+    } catch (_) {}
+    rethrow;
+  }
+  _bridgeResetIfKeysRemoved(removedSet);
+  rebuildEntriesFts5(db);
+  runLibraryBuild();
 }
 
 /// Quita filas y artefactos del subárbol en [rootKey] (hojas → raíz). Sin tocar el bridge
@@ -1059,7 +1197,12 @@ List<Map<String, dynamic>> parseBody(String? raw) {
 
       if (tLower == 'img') {
         final src = (m['src'] ?? m['assetKey'] ?? '').toString();
-        out.add({'type': 'img', 'src': src});
+        final roleRaw =
+            (m['role'] ?? m['imgRole'] ?? 'content').toString().toLowerCase().trim();
+        final role = (roleRaw == 'hero' || roleRaw == 'collage')
+            ? roleRaw
+            : 'content';
+        out.add({'type': 'img', 'src': src, 'role': role});
         continue;
       }
 
@@ -1095,6 +1238,35 @@ List<Map<String, dynamic>> parseBody(String? raw) {
         continue;
       }
 
+      if (tLower == 'card') {
+        final word = (m['word'] ?? '').toString().trim();
+        final image =
+            (m['image'] ?? m['src'] ?? '').toString().trim();
+        final phonetic = (m['phonetic'] ?? '').toString().trim();
+        final audio = (m['audio'] ?? '').toString().trim();
+        final related = <String>[];
+        final rawRel = m['related_to'];
+        if (rawRel is List) {
+          for (final e in rawRel) {
+            final s = e.toString().trim();
+            if (s.isNotEmpty) related.add(s);
+          }
+        }
+        if (word.isEmpty && image.isEmpty) {
+          continue;
+        }
+        final row = <String, dynamic>{
+          'type': 'card',
+          'word': word,
+        };
+        if (image.isNotEmpty) row['image'] = image;
+        if (phonetic.isNotEmpty) row['phonetic'] = phonetic;
+        if (audio.isNotEmpty) row['audio'] = audio;
+        if (related.isNotEmpty) row['related_to'] = related;
+        out.add(row);
+        continue;
+      }
+
       out.add({
         'type': 'p',
         'text': (m['text'] ?? '').toString(),
@@ -1105,6 +1277,51 @@ List<Map<String, dynamic>> parseBody(String? raw) {
   } catch (_) {
     return [];
   }
+}
+
+/// Ruta de archivo para miniatura en listas / búsqueda de objetos: bloque `img` con
+/// `role: hero`, luego `hero.*` en `assets/<key>/`, y como último recurso la primera
+/// `img` cuyo rol **no** sea `collage` (las collage son solo pared GK, no marco lista).
+String? resolveListHeroThumbPath(String entryKey, String? bodyText) {
+  final sep = Platform.pathSeparator;
+  final baseDir = Directory('${AlexandriaPaths.assetsRoot}$sep$entryKey');
+
+  String? resolveSrc(String src) {
+    if (src.isEmpty) return null;
+    final direct = File(src);
+    if (direct.existsSync()) return src;
+    final underKey = File('${baseDir.path}$sep$src');
+    if (underKey.existsSync()) return underKey.path;
+    final underRoot = File('${AlexandriaPaths.assetsRoot}$sep$src');
+    if (underRoot.existsSync()) return underRoot.path;
+    return null;
+  }
+
+  final blocks = parseBody(bodyText);
+
+  for (final b in blocks) {
+    if (b['type'] != 'img') continue;
+    final role = (b['role'] ?? 'content').toString().toLowerCase().trim();
+    if (role != 'hero') continue;
+    final src = (b['src'] ?? '').toString().trim();
+    final p = resolveSrc(src);
+    if (p != null) return p;
+  }
+
+  for (final name in ['hero.png', 'hero.jpg', 'hero.jpeg', 'hero.webp']) {
+    final f = File('${baseDir.path}$sep$name');
+    if (f.existsSync()) return f.path;
+  }
+
+  for (final b in blocks) {
+    if (b['type'] != 'img') continue;
+    final role = (b['role'] ?? 'content').toString().toLowerCase().trim();
+    if (role == 'collage') continue;
+    final src = (b['src'] ?? '').toString().trim();
+    final p = resolveSrc(src);
+    if (p != null) return p;
+  }
+  return null;
 }
 
 class _WallImageSelection {
@@ -1128,7 +1345,10 @@ List<_WallImageSelection> _extractWallImageFilenamesFromBodyText(String? raw) {
       );
       final t = (m['type'] ?? m['t'] ?? '').toString();
       if (t != 'img') continue;
-      final role = (m['role'] ?? '').toString().toLowerCase().trim();
+      final role = (m['role'] ?? m['imgRole'] ?? '')
+          .toString()
+          .toLowerCase()
+          .trim();
       if (role != 'collage') continue;
       final src = (m['src'] ?? m['assetKey'] ?? '').toString().trim();
       if (src.isEmpty) continue;
@@ -1543,6 +1763,43 @@ void _mergeLastPositionByKey(String previousKey, int seq) {
   }
 }
 
+/// Número de filas en `entries` del esqueleto ORM homogéneo:
+/// ROOT + PARCOUR_MAIN + L1…L20 + 400 objetos (Lk_O01…Lk_O20).
+const int kAlexandriaHomogeneousEntryCount = 422;
+
+/// Devuelve `true` si detectó el bootstrap erróneo histórico (A/B/C bajo ROOT) y lo reemplazó.
+bool _repairLegacyAbcBootstrapIfNeeded(Database db) {
+  final hadAbc = db.select(
+    "SELECT 1 FROM entries WHERE key IN ('A','B','C') LIMIT 1",
+  ).isNotEmpty;
+  final hadHub = db.select(
+    "SELECT 1 FROM entries WHERE key = ? LIMIT 1",
+    [_primaryParcourKey],
+  ).isNotEmpty;
+  if (!hadAbc || hadHub) return false;
+  print('[LB][SEED] reparando bootstrap legacy (A,B,C) → esqueleto ORM');
+  db.execute('DELETE FROM entries');
+  _insertHomogeneousSkeletonIfNeeded(db);
+  _normalizeRealmParcourLanguage(db);
+  ensureLibrarySchema(db);
+  _stripUserFacingData(db);
+  return true;
+}
+
+/// Si `entries` está vacía (o acaba de repararse el legacy), inserta el árbol ORM completo.
+void ensureAlexandriaRealmSeededIfEmpty(Database db) {
+  ensureLibrarySchema(db);
+  if (_repairLegacyAbcBootstrapIfNeeded(db)) return;
+  final c = _sqliteCountToInt(
+    db.select('SELECT COUNT(*) AS c FROM entries').first['c'],
+  );
+  if (c != 0) return;
+  print('[LB][SEED] esqueleto ORM homogéneo ($kAlexandriaHomogeneousEntryCount nodos)');
+  _insertHomogeneousSkeletonIfNeeded(db);
+  _normalizeRealmParcourLanguage(db);
+  ensureLibrarySchema(db);
+}
+
 void runLibraryBuild() {
 
   final dbPath = AlexandriaPaths.dbPath;
@@ -1552,19 +1809,8 @@ void runLibraryBuild() {
 
   try {
 
-  // [BOOTSTRAP][DEV_ONLY]
-  final count = db.select('SELECT COUNT(*) as c FROM entries').first['c'] as int;
-
-  if (count == 0) {
-    print('[LB][BOOTSTRAP] creando datos mínimos');
-
-    db.execute("INSERT INTO entries (key, parentKey, seq) VALUES ('ROOT', NULL, 0)");
-    db.execute("INSERT INTO entries (key, parentKey, seq) VALUES ('A', 'ROOT', 0)");
-    db.execute("INSERT INTO entries (key, parentKey, seq) VALUES ('B', 'ROOT', 1)");
-    db.execute("INSERT INTO entries (key, parentKey, seq) VALUES ('C', 'ROOT', 2)");
-  }
-
   ensureLibrarySchema(db);
+  ensureAlexandriaRealmSeededIfEmpty(db);
   writeParcourReviewBridgeSummary(db);
   _normalizeRealmParcourLanguage(db);
   _rebuildAllWallManifests(db);
@@ -1619,7 +1865,20 @@ void runLibraryBuild() {
 
 }
 
-/// Árbol fijo ORM: `ROOT` → `PARCOUR_MAIN` → `L1`…`L20` → `Lk_O01`…`Lk_O20` (421 filas de contenido + hub; ver `_normalizeRealmParcourLanguage`).
+/// GateKeeper (`Spawner`) lee `snapshot/current.json` bajo el realm activo; sin ese archivo no aplica
+/// el snapshot aunque `alexandria.db` exista. Ver ORM-16-05-LB-GK-DataRecovery.
+void ensureGatekeeperSnapshotArtifactsSync() {
+  final f = File(AlexandriaPaths.snapshotCurrentJsonPath);
+  if (f.existsSync()) return;
+  try {
+    print('[LB][GK] snapshot/current.json ausente → runLibraryBuild()');
+    runLibraryBuild();
+  } catch (e, st) {
+    print('[LB][GK_SYNC_ERR] $e\n$st');
+  }
+}
+
+/// Árbol fijo ORM: `ROOT` → `PARCOUR_MAIN` → `L1`…`L20` → `Lk_O01`…`Lk_O20` ([kAlexandriaHomogeneousEntryCount] filas; ver `_normalizeRealmParcourLanguage`).
 void _insertHomogeneousSkeletonIfNeeded(Database db) {
   if (db.select('SELECT 1 FROM entries WHERE key = ? LIMIT 1', [_realmKey]).isEmpty) {
     db.execute(
@@ -1640,6 +1899,22 @@ void _insertHomogeneousSkeletonIfNeeded(Database db) {
       );
     }
   }
+}
+
+/// Misma base SQLite que [createEmptyRealm]: esquema + árbol homogéneo + sin datos de usuario.
+void bootstrapEmptyRealmDatabase(Database db) {
+  db.execute('''
+CREATE TABLE IF NOT EXISTS entries (
+  key TEXT PRIMARY KEY,
+  parentKey TEXT,
+  seq INTEGER
+)
+''');
+  ensureLibrarySchema(db);
+  _insertHomogeneousSkeletonIfNeeded(db);
+  _normalizeRealmParcourLanguage(db);
+  ensureLibrarySchema(db);
+  _stripUserFacingData(db);
 }
 
 /// Quita **datos** (texto/imágenes en `body_text`, recall/review); la forma del árbol no cambia.
@@ -1666,6 +1941,83 @@ void _stripUserFacingData(Database db) {
   if (_tableExists(db, 'review_events')) {
     db.execute('DELETE FROM review_events');
   }
+  if (_tableExists(db, 'assets')) {
+    db.execute('DELETE FROM assets');
+  }
+}
+
+/// Carpetas bajo [AlexandriaPaths.assetsRoot] que no son `key` en `entries` ni whitelist (p. ej. PAO).
+const Set<String> kRealmSeedAssetDirWhitelist = {'pao'};
+
+/// Limpia textos (`body_text`), métricas en columnas de `entries`, tablas de eventos, Parcour Review,
+/// filas `assets` y PAO estándar; reconstruye FTS. **No** elimina filas de `entries` (árbol ORM intacto).
+void applyRealmSeedSanitization(Database db) {
+  ensureLibrarySchema(db);
+  ensureParcourReviewSchema(db);
+  ensurePaoStandardSchema(db);
+  _stripUserFacingData(db);
+  if (_tableExists(db, 'parcour_review_session_loci')) {
+    db.execute('DELETE FROM parcour_review_session_loci');
+  }
+  if (_tableExists(db, 'parcour_review_sessions')) {
+    db.execute('DELETE FROM parcour_review_sessions');
+  }
+  if (_tableExists(db, 'parcour_review_state')) {
+    db.execute('DELETE FROM parcour_review_state');
+  }
+  if (_tableExists(db, 'pao_standard')) {
+    db.execute('DELETE FROM pao_standard');
+  }
+  rebuildEntriesFts5(db);
+}
+
+/// Borra directorios en `assets/` cuyo nombre no es un `entries.key` ni está en [kRealmSeedAssetDirWhitelist].
+void pruneRealmAssetFoldersNotInEntries(Database db) {
+  final keyRows = db.select('SELECT key FROM entries');
+  final keys = keyRows.map((r) => r['key'] as String).toSet();
+  final root = Directory(AlexandriaPaths.assetsRoot);
+  if (!root.existsSync()) return;
+  for (final e in root.listSync()) {
+    if (e is! Directory) continue;
+    final name = e.path.split(Platform.pathSeparator).last;
+    if (kRealmSeedAssetDirWhitelist.contains(name)) continue;
+    if (keys.contains(name)) continue;
+    try {
+      e.deleteSync(recursive: true);
+      print('[RealmSeed] removed orphan asset dir: $name');
+    } catch (_) {}
+  }
+}
+
+/// Copia `alexandria.db` del **realm activo** a [AlexandriaPaths.realmSeedDbPath] (clon repetible versionable).
+void copyActiveRealmDbToRealmSeedSnapshotSync() {
+  final src = File(AlexandriaPaths.dbPath);
+  if (!src.existsSync()) {
+    print('[RealmSeed] skip copy: no DB at ${AlexandriaPaths.dbPath}');
+    return;
+  }
+  final outDir = Directory(AlexandriaPaths.realmSeedDir);
+  outDir.createSync(recursive: true);
+  final dst = File(AlexandriaPaths.realmSeedDbPath);
+  src.copySync(dst.path);
+  print('[RealmSeed] snapshot → ${dst.path}');
+}
+
+/// Limpia textos/métricas del realm activo, poda carpetas `assets/` huérfanas, [runLibraryBuild] y copia la DB a `data/realm_seed/`.
+void regenerateRealmSeedFromActiveRealmSync() {
+  final dbPath = AlexandriaPaths.dbPath;
+  if (!File(dbPath).existsSync()) {
+    throw StateError('No alexandria.db at $dbPath');
+  }
+  final db = sqlite3.open(dbPath);
+  try {
+    applyRealmSeedSanitization(db);
+    pruneRealmAssetFoldersNotInEntries(db);
+  } finally {
+    db.dispose();
+  }
+  runLibraryBuild();
+  copyActiveRealmDbToRealmSeedSnapshotSync();
 }
 
 /// Realm **nuevo** sin copiar otro: mismo **esqueleto** que un mundo completo (20 parcours + 400 objetos bajo el hub),
@@ -1686,18 +2038,7 @@ bool createEmptyRealm(String rawId) {
     final dbPath = '${AlexandriaPaths.realmDataRoot(id)}/alexandria.db';
     final db = sqlite3.open(dbPath);
     try {
-      db.execute('''
-CREATE TABLE IF NOT EXISTS entries (
-  key TEXT PRIMARY KEY,
-  parentKey TEXT,
-  seq INTEGER
-)
-''');
-      ensureLibrarySchema(db);
-      _insertHomogeneousSkeletonIfNeeded(db);
-      _normalizeRealmParcourLanguage(db);
-      ensureLibrarySchema(db);
-      _stripUserFacingData(db);
+      bootstrapEmptyRealmDatabase(db);
     } finally {
       db.dispose();
     }
@@ -1713,5 +2054,89 @@ CREATE TABLE IF NOT EXISTS entries (
     } catch (_) {}
     return false;
   }
+}
+
+/// Frase exacta que el usuario debe escribir para confirmar borrado total (mayúsculas/minúsculas).
+const String kAlexandriaNuclearDeletePhrase = 'Alexandria delete';
+
+void _deleteDirectoryRecursiveSync(Directory dir) {
+  if (!dir.existsSync()) return;
+  for (final e in dir.listSync(followLinks: false)) {
+    if (e is Directory) {
+      _deleteDirectoryRecursiveSync(Directory(e.path));
+    } else {
+      try {
+        e.deleteSync();
+      } catch (_) {}
+    }
+  }
+  try {
+    dir.deleteSync();
+  } catch (_) {}
+}
+
+/// Borra **toda** la data bajo `data/`: `realms/`, `realm_shelf.json`.
+/// Conserva `data/pao/` (plantilla PAO del repo).
+/// Deja `active_realm.txt` → `default` y `data/realms/default/alexandria.db` con esqueleto ORM ([kAlexandriaHomogeneousEntryCount] nodos, sin datos de usuario).
+/// Cierra cualquier conexión SQLite a ese archivo en el proceso **antes** de llamar.
+/// Si aún no existe `data/realms/default/alexandria.db` y hay plantilla en [AlexandriaPaths.bundledDefaultRealmRoot], copia todo el árbol (imágenes, snapshot, etc.).
+void ensureDefaultRealmOnDiskFromBundledTemplateSync() {
+  final sep = Platform.pathSeparator;
+  final dbPath = AlexandriaPaths.dbPath;
+  if (File(dbPath).existsSync()) return;
+  final bundledRoot = Directory(AlexandriaPaths.bundledDefaultRealmRoot);
+  final bundledDb = File('${bundledRoot.path}${sep}alexandria.db');
+  if (!bundledDb.existsSync()) return;
+  final destRoot = Directory(AlexandriaPaths.realmDataRoot('default'));
+  destRoot.createSync(recursive: true);
+  AlexandriaPaths.copyDirectoryTreeContents(bundledRoot, destRoot);
+  print(
+    '[LB][BUNDLED_DEFAULT] data/realms/default ← ${AlexandriaPaths.bundledDefaultRealmRoot}',
+  );
+}
+
+void performAlexandriaNuclearDataResetSync() {
+  final sep = Platform.pathSeparator;
+  final repo = AlexandriaPaths.repoRoot;
+  final dataDir = Directory('$repo${sep}data');
+  final realmsDir = Directory('$repo${sep}data${sep}realms');
+  if (realmsDir.existsSync()) {
+    _deleteDirectoryRecursiveSync(realmsDir);
+  }
+  final shelf = File('$repo${sep}data${sep}realm_shelf.json');
+  if (shelf.existsSync()) {
+    try {
+      shelf.deleteSync();
+    } catch (_) {}
+  }
+  dataDir.createSync(recursive: true);
+  File('$repo${sep}data${sep}active_realm.txt').writeAsStringSync('default');
+  final realmRoot = Directory(AlexandriaPaths.realmDataRoot('default'));
+  realmRoot.createSync(recursive: true);
+  final bundledRoot = Directory(AlexandriaPaths.bundledDefaultRealmRoot);
+  final bundledDb = File('${bundledRoot.path}${sep}alexandria.db');
+  if (bundledRoot.existsSync() && bundledDb.existsSync()) {
+    AlexandriaPaths.copyDirectoryTreeContents(bundledRoot, realmRoot);
+    copyActiveRealmDbToRealmSeedSnapshotSync();
+    print(
+      '[LB][NUCLEAR] default from bundled_default_realm + realm_seed; active_realm=default',
+    );
+    return;
+  }
+  final dbPath = '${realmRoot.path}/alexandria.db';
+  final existingDb = File(dbPath);
+  if (existingDb.existsSync()) {
+    try {
+      existingDb.deleteSync();
+    } catch (_) {}
+  }
+  final db = sqlite3.open(dbPath);
+  try {
+    bootstrapEmptyRealmDatabase(db);
+  } finally {
+    db.dispose();
+  }
+  copyActiveRealmDbToRealmSeedSnapshotSync();
+  print('[LB][NUCLEAR] reset: default/alexandria.db + data/realm_seed/alexandria.db + active_realm=default');
 }
 

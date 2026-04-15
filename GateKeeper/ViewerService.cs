@@ -49,6 +49,7 @@ public partial class ViewerService : CanvasLayer
 	/// Fuera del scroll: siempre visible aunque el body sea largo (frames 1..19).
 	private Control _enterButtonHost = null!;
 	private Label _titleLabel = null!;
+	private AudioStreamPlayer _audioPlayer = null!;
 
 	/// <summary>
 	/// El panel solo debe actualizarse / mostrarse tras un clic en marco o enlace (NotifyFrameOpened).
@@ -69,6 +70,12 @@ public partial class ViewerService : CanvasLayer
 		_panel.OffsetTop = 48;
 		_panel.OffsetRight = -48;
 		_panel.OffsetBottom = -48;
+		var panelStyle = new StyleBoxFlat();
+		panelStyle.BgColor = new Color(0.102f, 0.082f, 0.071f, 0.94f);
+		panelStyle.BorderColor = new Color(0.95f, 0.78f, 0.42f, 0.45f);
+		panelStyle.SetBorderWidthAll(1);
+		panelStyle.SetCornerRadiusAll(8);
+		_panel.AddThemeStyleboxOverride("panel", panelStyle);
 		AddChild(_panel);
 
 		var margin = new MarginContainer();
@@ -89,6 +96,7 @@ public partial class ViewerService : CanvasLayer
 		_titleLabel = new Label();
 		_titleLabel.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		_titleLabel.AddThemeFontSizeOverride("font_size", FontTitlePx);
+		_titleLabel.AddThemeColorOverride("font_color", new Color(1f, 0.85f, 0.45f));
 		_titleLabel.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		header.AddChild(_titleLabel);
 
@@ -118,6 +126,11 @@ public partial class ViewerService : CanvasLayer
 		_enterButtonHost.Visible = false;
 		_enterButtonHost.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		root.AddChild(_enterButtonHost);
+
+		_audioPlayer = new AudioStreamPlayer();
+		_audioPlayer.Name = "ViewerAudio";
+		_audioPlayer.Bus = "Master";
+		AddChild(_audioPlayer);
 	}
 
 	/// <summary>Abre panel y fuerza lectura de viewer/current.json (bridge dual: foco vía LB).</summary>
@@ -526,9 +539,9 @@ public partial class ViewerService : CanvasLayer
 				btn.Flat = true;
 				btn.Alignment = HorizontalAlignment.Left;
 				btn.AddThemeFontSizeOverride("font_size", FontLinkPx);
-				btn.AddThemeColorOverride("font_color", new Color(0.35f, 0.55f, 0.95f));
-				btn.AddThemeColorOverride("font_hover_color", new Color(0.55f, 0.72f, 1f));
-				btn.AddThemeColorOverride("font_pressed_color", new Color(0.25f, 0.4f, 0.85f));
+				btn.AddThemeColorOverride("font_color", new Color(0.627f, 0.769f, 1f));
+				btn.AddThemeColorOverride("font_hover_color", new Color(0.78f, 0.86f, 1f));
+				btn.AddThemeColorOverride("font_pressed_color", new Color(0.48f, 0.62f, 0.95f));
 				var kNavigate = destKey;
 				btn.Pressed += () => RequestFocusNavigation(kNavigate);
 				btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -565,9 +578,9 @@ public partial class ViewerService : CanvasLayer
 				wBtn.Flat = true;
 				wBtn.Alignment = HorizontalAlignment.Left;
 				wBtn.AddThemeFontSizeOverride("font_size", FontLinkPx);
-				wBtn.AddThemeColorOverride("font_color", new Color(0.45f, 0.75f, 0.55f));
-				wBtn.AddThemeColorOverride("font_hover_color", new Color(0.55f, 0.9f, 0.65f));
-				wBtn.AddThemeColorOverride("font_pressed_color", new Color(0.3f, 0.55f, 0.4f));
+				wBtn.AddThemeColorOverride("font_color", new Color(0.95f, 0.72f, 0.35f));
+				wBtn.AddThemeColorOverride("font_hover_color", new Color(1f, 0.84f, 0.52f));
+				wBtn.AddThemeColorOverride("font_pressed_color", new Color(0.82f, 0.58f, 0.22f));
 				var wNav = wKey;
 				wBtn.Pressed += () => RequestFocusNavigation(wNav);
 				wBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -587,6 +600,158 @@ public partial class ViewerService : CanvasLayer
 				tagLbl.Text = "# " + tagText;
 				tagLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 				_stack.AddChild(tagLbl);
+				continue;
+			}
+
+			if (type == "card")
+			{
+				var word = d.ContainsKey("word") ? d["word"].AsString().Trim() : "";
+				var imageSrc = "";
+				if (d.ContainsKey("image"))
+					imageSrc = d["image"].AsString().Trim();
+				else if (d.ContainsKey("src"))
+					imageSrc = d["src"].AsString().Trim();
+				var phoneticSrc = d.ContainsKey("phonetic") ? d["phonetic"].AsString().Trim() : "";
+				var audioSrc = d.ContainsKey("audio") ? d["audio"].AsString().Trim() : "";
+
+				var cardVBox = new VBoxContainer();
+				cardVBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+				cardVBox.AddThemeConstantOverride("separation", 10);
+
+				var frame = new PanelContainer();
+				var frameStyle = new StyleBoxFlat();
+				frameStyle.BgColor = new Color(0.14f, 0.11f, 0.09f, 0.95f);
+				frameStyle.BorderColor = new Color(0.95f, 0.75f, 0.35f, 0.45f);
+				frameStyle.SetBorderWidthAll(1);
+				frameStyle.SetCornerRadiusAll(10);
+				frame.AddThemeStyleboxOverride("panel", frameStyle);
+				frame.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+
+				var inner = new VBoxContainer();
+				inner.AddThemeConstantOverride("separation", 8);
+				inner.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+				frame.AddChild(inner);
+
+				if (!string.IsNullOrEmpty(word))
+				{
+					var wl = new Label();
+					wl.Text = word;
+					wl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+					wl.HorizontalAlignment = HorizontalAlignment.Center;
+					wl.AddThemeFontSizeOverride("font_size", FontTitlePx + 8);
+					wl.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.58f));
+					wl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+					inner.AddChild(wl);
+				}
+
+				if (!string.IsNullOrEmpty(imageSrc))
+				{
+					var imgPath = ResolveImagePath(key, imageSrc);
+					if (!string.IsNullOrEmpty(imgPath) && File.Exists(imgPath))
+					{
+						var image = new Image();
+						if (image.Load(imgPath) == Error.Ok)
+						{
+							var tex = ImageTexture.CreateFromImage(image);
+							var tr = new TextureRect();
+							tr.Texture = tex;
+							tr.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
+							tr.ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional;
+							tr.CustomMinimumSize = new Vector2(0, 220);
+							tr.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+							inner.AddChild(tr);
+						}
+					}
+				}
+
+				if (!string.IsNullOrEmpty(phoneticSrc))
+				{
+					var pPath = ResolveImagePath(key, phoneticSrc);
+					if (!string.IsNullOrEmpty(pPath) && File.Exists(pPath))
+					{
+						var ext = Path.GetExtension(pPath).ToLowerInvariant();
+						if (ext == ".txt")
+						{
+							try
+							{
+								var pt = File.ReadAllText(pPath).Trim();
+								if (!string.IsNullOrEmpty(pt))
+								{
+									var pl = new Label();
+									pl.Text = pt;
+									pl.HorizontalAlignment = HorizontalAlignment.Center;
+									pl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+									pl.AddThemeFontSizeOverride("font_size", FontBodyPx - 1);
+									pl.AddThemeColorOverride("font_color", new Color(0.82f, 0.88f, 0.95f));
+									pl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+									inner.AddChild(pl);
+								}
+							}
+							catch
+							{
+								// ignore phonetic read errors
+							}
+						}
+					}
+				}
+
+				if (!string.IsNullOrEmpty(audioSrc))
+				{
+					var ap = ResolveImagePath(key, audioSrc);
+					var playBtn = new Button();
+					playBtn.Flat = true;
+					playBtn.Text = File.Exists(ap) ? "▶  " + audioSrc : "▶  (missing) " + audioSrc;
+					playBtn.Alignment = HorizontalAlignment.Center;
+					playBtn.AddThemeFontSizeOverride("font_size", FontLinkPx);
+					var captured = ap;
+					playBtn.Pressed += () => TryPlayAudioFile(captured);
+					playBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+					inner.AddChild(playBtn);
+				}
+
+				var relatedKeys = new System.Collections.Generic.List<string>();
+				if (d.ContainsKey("related_to") && d["related_to"].VariantType == Variant.Type.Array)
+				{
+					foreach (Variant rv in d["related_to"].AsGodotArray())
+					{
+						if (rv.VariantType != Variant.Type.String)
+							continue;
+						var rk = rv.AsString().Trim();
+						if (!string.IsNullOrEmpty(rk))
+							relatedKeys.Add(rk);
+					}
+				}
+
+				if (relatedKeys.Count > 0)
+				{
+					var relLbl = new Label();
+					relLbl.Text = "Related";
+					relLbl.AddThemeFontSizeOverride("font_size", FontBodyPx - 2);
+					relLbl.AddThemeColorOverride("font_color", new Color(0.7f, 0.65f, 0.58f));
+					inner.AddChild(relLbl);
+
+					var flow = new VBoxContainer();
+					flow.AddThemeConstantOverride("separation", 4);
+					foreach (var rk in relatedKeys)
+					{
+						var rb = new Button();
+						rb.Text = rk;
+						rb.Flat = true;
+						rb.Alignment = HorizontalAlignment.Left;
+						rb.AddThemeFontSizeOverride("font_size", FontLinkPx);
+						rb.AddThemeColorOverride("font_color", new Color(0.627f, 0.769f, 1f));
+						rb.AddThemeColorOverride("font_hover_color", new Color(0.78f, 0.86f, 1f));
+						rb.AddThemeColorOverride("font_pressed_color", new Color(0.48f, 0.62f, 0.95f));
+						var navK = rk;
+						rb.Pressed += () => RequestFocusNavigation(navK);
+						rb.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+						flow.AddChild(rb);
+					}
+					inner.AddChild(flow);
+				}
+
+				cardVBox.AddChild(frame);
+				_stack.AddChild(cardVBox);
 				continue;
 			}
 
@@ -691,5 +856,33 @@ public partial class ViewerService : CanvasLayer
 			return;
 		GD.Print($"[VIEWER][LINK] request focus navigation key={destKey}");
 		FocusKeyNavigationRequested?.Invoke(destKey.Trim());
+	}
+
+	private void TryPlayAudioFile(string absolutePath)
+	{
+		if (string.IsNullOrEmpty(absolutePath) || !File.Exists(absolutePath))
+			return;
+
+		try
+		{
+			AudioStream stream;
+			var ext = Path.GetExtension(absolutePath).ToLowerInvariant();
+			if (ext == ".ogg")
+				stream = AudioStreamOggVorbis.LoadFromFile(absolutePath);
+			else if (ext == ".mp3")
+				stream = AudioStreamMP3.LoadFromFile(absolutePath);
+			else if (ext == ".wav")
+				stream = AudioStreamWav.LoadFromFile(absolutePath);
+			else
+				return;
+
+			_audioPlayer.Stop();
+			_audioPlayer.Stream = stream;
+			_audioPlayer.Play();
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[VIEWER][AUDIO] " + e.Message);
+		}
 	}
 }

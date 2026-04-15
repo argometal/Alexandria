@@ -11,6 +11,7 @@ import 'package:sqlite3/sqlite3.dart' hide Row;
 import '../alexandria_paths.dart';
 import '../library_build.dart';
 import 'pao_clipboard_image.dart';
+import 'pao_individual_drill_page.dart';
 
 File? paoAbsFileForRel(String rel) {
   final t = rel.trim();
@@ -267,6 +268,17 @@ class _PaoStandardPageState extends State<PaoStandardPage> {
       appBar: AppBar(
         title: const Text('PAO (00–99)'),
         actions: [
+          IconButton(
+            tooltip: 'Práctica individual (triple drill)',
+            icon: const Icon(Icons.school_outlined),
+            onPressed: () {
+              Navigator.of(context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => PaoIndividualDrillPage(db: widget.db),
+                ),
+              );
+            },
+          ),
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'tpl') {

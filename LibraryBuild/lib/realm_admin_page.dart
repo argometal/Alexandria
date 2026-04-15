@@ -1,14 +1,31 @@
 import 'package:flutter/material.dart';
 
+import 'l10n/app_localizations.dart';
+import 'usage_tier_l10n.dart';
 import 'alexandria_paths.dart';
 import 'library_build.dart';
 import 'realm_shelf.dart';
 
 /// Un **realm** = `data/realms/<ruta>/` (p.ej. `default` o `Lab/experimento`) con `alexandria.db` y artefactos (~420 nodos + ROOT en DB; ORM).
 class RealmAdminPage extends StatefulWidget {
-  const RealmAdminPage({super.key, required this.onRealmChanged});
+  const RealmAdminPage({
+    super.key,
+    required this.onRealmChanged,
+    required this.onNuclearDataReset,
+    required this.onRegenerateRealmSeed,
+    this.onReleaseDatabase,
+  });
 
   final VoidCallback onRealmChanged;
+
+  /// Cerrar SQLite antes de mover/renombrar carpetas bajo `data/realms/` (obligatorio para integridad).
+  final VoidCallback? onReleaseDatabase;
+
+  /// Padre cierra la DB, ejecuta [performAlexandriaNuclearDataResetSync] y reabre.
+  final Future<void> Function() onNuclearDataReset;
+
+  /// Padre cierra la DB, ejecuta [regenerateRealmSeedFromActiveRealmSync] y reabre.
+  final Future<void> Function() onRegenerateRealmSeed;
 
   @override
   State<RealmAdminPage> createState() => _RealmAdminPageState();
@@ -96,6 +113,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
   }
 
   Future<void> _openExplorerForContext() async {
+    final l = AppLocalizations.of(context)!;
     final prefix = _tabController.index == 0 ? _navPrefix : '';
     final path = AlexandriaPaths.realmsPrefixAbsolutePath(prefix);
     try {
@@ -105,7 +123,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Esa carpeta no existe en disco.\nRaíz resuelta: ${AlexandriaPaths.repoRoot}\nRuta intentada:\n$path',
+              l.realmAdminExplorerMissingFolder(AlexandriaPaths.repoRoot, path),
             ),
           ),
         );
@@ -113,69 +131,81 @@ class _RealmAdminPageState extends State<RealmAdminPage>
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Explorador: $e\n$path')),
+        SnackBar(content: Text(l.realmAdminExplorerError(e.toString(), path))),
       );
     }
   }
 
   Future<void> _openExplorerForRealmPath(String fullPathId) async {
+    final l = AppLocalizations.of(context)!;
     final path = AlexandriaPaths.realmsPrefixAbsolutePath(fullPathId);
     try {
       final ok = await AlexandriaPaths.openDirectoryInFileManager(path);
       if (!mounted) return;
       if (!ok) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Carpeta inexistente:\n$path')),
+          SnackBar(content: Text(l.realmAdminFolderMissing(path))),
         );
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo abrir: $e')),
+        SnackBar(content: Text(l.realmAdminOpenFailed(e.toString()))),
       );
     }
   }
 
   Future<void> _onCreateEmptySubfolder(BuildContext context) async {
+    final l = AppLocalizations.of(context)!;
     final ctrl = TextEditingController();
     try {
       final ok = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Carpeta vacía'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Solo organización (sin alexandria.db). '
-                'Se crea bajo:\n${AlexandriaPaths.realmsPrefixAbsolutePath(_navPrefix)}',
-                style: Theme.of(ctx).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre de carpeta',
-                  hintText: 'ej. Lab o Clientes_2026',
-                  helperText: 'Un segmento; sin /',
+        builder: (ctx) {
+          final dl = AppLocalizations.of(ctx)!;
+          return AlertDialog(
+            title: Text(dl.realmAdminEmptyFolderDialogTitle),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  dl.realmAdminEmptyFolderBody(
+                    AlexandriaPaths.realmsPrefixAbsolutePath(_navPrefix),
+                  ),
+                  style: Theme.of(ctx).textTheme.bodySmall,
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: dl.realmAdminEmptyFolderNameLabel,
+                    hintText: dl.realmAdminEmptyFolderNameHint,
+                    helperText: dl.realmAdminEmptyFolderNameHelper,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(dl.cancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(dl.realmDialogCreate),
               ),
             ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Crear')),
-          ],
-        ),
+          );
+        },
       );
       if (ok != true || !context.mounted) return;
       final name = ctrl.text.trim();
       if (name.isEmpty) return;
       if (RegExp(r'[/\\]').hasMatch(name)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Usa un solo nombre sin /')),
+          SnackBar(content: Text(l.realmAdminSnackbarSingleSegment)),
         );
         return;
       }
@@ -185,20 +215,90 @@ class _RealmAdminPageState extends State<RealmAdminPage>
       );
       if (!created) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'No se pudo crear (¿ya existe un realm con DB ahí, o nombre inválido?).',
-            ),
-          ),
+          SnackBar(content: Text(l.realmAdminSnackbarSubfolderCreateFailed)),
         );
         return;
       }
       _reloadShelf();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Carpeta creada')),
+        SnackBar(content: Text(l.realmAdminSnackbarFolderCreated)),
       );
     } finally {
       ctrl.dispose();
+    }
+  }
+
+  Future<void> _promptMoveRealm(BuildContext context, String realmId) async {
+    final l = AppLocalizations.of(context)!;
+    final ctrl = TextEditingController(text: realmId);
+    final proceed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text(l.realmAdminMoveRealmTitle),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    l.realmAdminMoveRealmBody,
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: l.realmAdminMoveRealmTargetLabel,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(l.cancel),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text(l.realmAdminMoveRealmButton),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    final raw = ctrl.text.trim();
+    ctrl.dispose();
+    if (!proceed || !context.mounted) return;
+    final to = AlexandriaPaths.sanitizeRealmPath(raw);
+    if (to.isEmpty || to == realmId) return;
+
+    widget.onReleaseDatabase?.call();
+    var moved = false;
+    try {
+      moved = AlexandriaPaths.moveRealmDataDirectory(realmId, to);
+      if (moved) {
+        RealmShelfStore.renameRealmKey(realmId, to);
+        if (AlexandriaPaths.readActiveRealmId() == realmId) {
+          AlexandriaPaths.writeActiveRealmId(to);
+        }
+      }
+    } catch (_) {
+      moved = false;
+    } finally {
+      widget.onRealmChanged();
+    }
+    if (!context.mounted) return;
+    if (moved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.realmAdminMoveRealmOk(to))),
+      );
+      _reloadShelf();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.realmAdminMoveRealmFailed)),
+      );
     }
   }
 
@@ -209,6 +309,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
     RealmShelfStore.reconcile(ids, current);
     final shelf = RealmShelfStore.read();
     final cs = Theme.of(context).colorScheme;
+    final l = AppLocalizations.of(context)!;
     final folderMode = _tabController.index == 0;
     final showNavBack = folderMode && _navPrefix.isNotEmpty;
 
@@ -228,7 +329,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
             ),
             const SizedBox(width: 8),
             Text(
-              t.label,
+              l10nRealmShelfTierShort(l, t),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     color: cs.primary,
                     fontWeight: FontWeight.w800,
@@ -263,18 +364,39 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            PopupMenuButton<String>(
+              tooltip: l.realmAdminTooltipMoveRealm,
+              itemBuilder: (ctx) => [
+                PopupMenuItem(
+                  value: 'move',
+                  child: Text(l.realmAdminMoveRealmMenu),
+                ),
+              ],
+              onSelected: (v) {
+                if (v == 'move') _promptMoveRealm(context, id);
+              },
+            ),
             if (isActive) Icon(Icons.check_circle, color: cs.primary),
             IconButton(
-              tooltip: 'Abrir carpeta en el explorador',
+              tooltip: l.realmAdminTooltipOpenRealmFolder,
               icon: const Icon(Icons.folder_open, size: 22),
               onPressed: () => _openExplorerForRealmPath(id),
             ),
             PopupMenuButton<RealmShelfTier>(
-              tooltip: 'Mover de estante',
-              itemBuilder: (ctx) => const [
-                PopupMenuItem(value: RealmShelfTier.core, child: Text('Core — núcleo')),
-                PopupMenuItem(value: RealmShelfTier.active, child: Text('Active — regular')),
-                PopupMenuItem(value: RealmShelfTier.seek, child: Text('Seek — resto')),
+              tooltip: l.realmAdminTooltipMoveShelf,
+              itemBuilder: (ctx) => [
+                PopupMenuItem(
+                  value: RealmShelfTier.core,
+                  child: Text(l10nRealmShelfPopup(l, RealmShelfTier.core)),
+                ),
+                PopupMenuItem(
+                  value: RealmShelfTier.active,
+                  child: Text(l10nRealmShelfPopup(l, RealmShelfTier.active)),
+                ),
+                PopupMenuItem(
+                  value: RealmShelfTier.seek,
+                  child: Text(l10nRealmShelfPopup(l, RealmShelfTier.seek)),
+                ),
               ],
               onSelected: (tier) {
                 RealmShelfStore.setTier(id, tier);
@@ -299,8 +421,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Text(
-          'Solo un realm activo a la vez (GK lee `data/active_realm.txt`). '
-          'Core / Active / Seek son estantes de prioridad (no son carpetas físicas).',
+          l.realmAdminShelvesIntro,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: cs.onSurfaceVariant,
               ),
@@ -310,26 +431,26 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: SegmentedButton<RealmShelfTier?>(
           multiSelectionEnabled: false,
-          segments: const [
+          segments: [
             ButtonSegment<RealmShelfTier?>(
               value: null,
-              label: Text('Todos'),
-              icon: Icon(Icons.view_agenda_outlined, size: 18),
+              label: Text(l.usageBandAll),
+              icon: const Icon(Icons.view_agenda_outlined, size: 18),
             ),
             ButtonSegment<RealmShelfTier?>(
               value: RealmShelfTier.core,
-              label: Text('Core'),
-              icon: Icon(Icons.bolt_outlined, size: 18),
+              label: Text(l.usageBandCore),
+              icon: const Icon(Icons.bolt_outlined, size: 18),
             ),
             ButtonSegment<RealmShelfTier?>(
               value: RealmShelfTier.active,
-              label: Text('Active'),
-              icon: Icon(Icons.autorenew, size: 18),
+              label: Text(l.usageBandActive),
+              icon: const Icon(Icons.autorenew, size: 18),
             ),
             ButtonSegment<RealmShelfTier?>(
               value: RealmShelfTier.seek,
-              label: Text('Seek'),
-              icon: Icon(Icons.travel_explore_outlined, size: 18),
+              label: Text(l.usageBandSeek),
+              icon: const Icon(Icons.travel_explore_outlined, size: 18),
             ),
           ],
           selected: {_tierFilter},
@@ -344,7 +465,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
         child: Text(
-          'Activo: $current',
+          l.realmAdminActiveLine(current),
           style: Theme.of(context).textTheme.titleMedium,
         ),
       ),
@@ -357,9 +478,9 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         tierHeader(
           t,
           switch (t) {
-            RealmShelfTier.core => 'Lo más importante / usado',
-            RealmShelfTier.active => 'Realms de trabajo habitual',
-            RealmShelfTier.seek => 'Cola larga y experimentación',
+            RealmShelfTier.core => l.realmAdminTierHeaderCore,
+            RealmShelfTier.active => l.realmAdminTierHeaderActive,
+            RealmShelfTier.seek => l.realmAdminTierHeaderSeek,
           },
         ),
       );
@@ -368,7 +489,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
             child: Text(
-              'Vacío',
+              l.realmAdminEmptyTier,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: cs.outline,
                   ),
@@ -407,7 +528,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
                     Icon(Icons.folder_open_outlined, size: 18, color: cs.outline),
                     const SizedBox(width: 8),
                     Text(
-                      'Raíz (sin subcarpeta)',
+                      l.realmAdminRootGroupLabel,
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
@@ -429,8 +550,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
         child: Text(
-          'Lista lo que hay en disco bajo data/realms/ de la raíz resuelta (no es “inventado”). '
-          'Realm = carpeta con alexandria.db. Mover muchas carpetas: mejor con apps cerradas si la DB está en uso.',
+          l.realmAdminFolderIntro,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: cs.onSurfaceVariant,
               ),
@@ -442,7 +562,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Raíz del repo (env ALEXANDRIA_ROOT, o búsqueda desde el .exe, o C:\\\\Alexandria si tiene data/realms):',
+              l.realmAdminRepoRootCaption,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: cs.primary,
                     fontWeight: FontWeight.w600,
@@ -458,7 +578,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
             ),
             const SizedBox(height: 8),
             Text(
-              'Carpeta realms (debe coincidir con lo que abre el explorador):',
+              l.realmAdminRealmsFolderCaption,
               style: Theme.of(context).textTheme.labelSmall,
             ),
             const SizedBox(height: 4),
@@ -479,7 +599,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
             final crumbs = <Widget>[
               ActionChip(
                 avatar: const Icon(Icons.home, size: 18),
-                label: const Text('data/realms'),
+                label: Text(l.realmAdminDataRealmsChip),
                 onPressed: () => setState(() => _navPrefix = ''),
               ),
             ];
@@ -507,26 +627,26 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: SegmentedButton<RealmShelfTier?>(
           multiSelectionEnabled: false,
-          segments: const [
+          segments: [
             ButtonSegment<RealmShelfTier?>(
               value: null,
-              label: Text('Todos'),
-              icon: Icon(Icons.filter_alt_off_outlined, size: 18),
+              label: Text(l.usageBandAll),
+              icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
             ),
             ButtonSegment<RealmShelfTier?>(
               value: RealmShelfTier.core,
-              label: Text('Core'),
-              icon: Icon(Icons.bolt_outlined, size: 18),
+              label: Text(l.usageBandCore),
+              icon: const Icon(Icons.bolt_outlined, size: 18),
             ),
             ButtonSegment<RealmShelfTier?>(
               value: RealmShelfTier.active,
-              label: Text('Active'),
-              icon: Icon(Icons.autorenew, size: 18),
+              label: Text(l.usageBandActive),
+              icon: const Icon(Icons.autorenew, size: 18),
             ),
             ButtonSegment<RealmShelfTier?>(
               value: RealmShelfTier.seek,
-              label: Text('Seek'),
-              icon: Icon(Icons.travel_explore_outlined, size: 18),
+              label: Text(l.usageBandSeek),
+              icon: const Icon(Icons.travel_explore_outlined, size: 18),
             ),
           ],
           selected: {_tierFilter},
@@ -541,7 +661,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
         child: Text(
-          'Activo: $current',
+          l.realmAdminActiveLine(current),
           style: Theme.of(context).textTheme.titleSmall,
         ),
       ),
@@ -552,7 +672,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Carpeta vacía.',
+            l.realmAdminFolderEmpty,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.outline),
           ),
         ),
@@ -561,7 +681,8 @@ class _RealmAdminPageState extends State<RealmAdminPage>
 
     for (final c in folderChildren) {
       final tier = shelf[c.fullPathId];
-      final tierLabel = tier?.label ?? '—';
+      final tierLabel =
+          tier == null ? '—' : l10nRealmShelfTierShort(l, tier);
 
       if (c.hasAlexandriaDb && !_tierVisible(c.fullPathId, shelf)) {
         continue;
@@ -608,7 +729,10 @@ class _RealmAdminPageState extends State<RealmAdminPage>
                       ),
                 ),
                 const SizedBox(height: 2),
-                Text('Estante: $tierLabel', style: Theme.of(context).textTheme.labelSmall),
+                Text(
+                  l.realmAdminShelfLabel(tierLabel),
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
               ],
             ),
             trailing: Row(
@@ -616,22 +740,43 @@ class _RealmAdminPageState extends State<RealmAdminPage>
               children: [
                 if (c.hasSubdirectories)
                   IconButton(
-                    tooltip: 'Entrar en subcarpetas',
+                    tooltip: l.realmAdminTooltipEnterSubfolders,
                     icon: const Icon(Icons.drive_file_move_rtl),
                     onPressed: () => setState(() => _navPrefix = c.fullPathId),
                   ),
+                PopupMenuButton<String>(
+                  tooltip: l.realmAdminTooltipMoveRealm,
+                  itemBuilder: (ctx) => [
+                    PopupMenuItem(
+                      value: 'move',
+                      child: Text(l.realmAdminMoveRealmMenu),
+                    ),
+                  ],
+                  onSelected: (v) {
+                    if (v == 'move') _promptMoveRealm(context, c.fullPathId);
+                  },
+                ),
                 if (isActive) Icon(Icons.check_circle, color: cs.primary),
                 IconButton(
-                  tooltip: 'Abrir carpeta en el explorador',
+                  tooltip: l.realmAdminTooltipOpenRealmFolder,
                   icon: const Icon(Icons.folder_open, size: 22),
                   onPressed: () => _openExplorerForRealmPath(c.fullPathId),
                 ),
                 PopupMenuButton<RealmShelfTier>(
-                  tooltip: 'Estante',
-                  itemBuilder: (ctx) => const [
-                    PopupMenuItem(value: RealmShelfTier.core, child: Text('Core')),
-                    PopupMenuItem(value: RealmShelfTier.active, child: Text('Active')),
-                    PopupMenuItem(value: RealmShelfTier.seek, child: Text('Seek')),
+                  tooltip: l.realmAdminTooltipShelfMenu,
+                  itemBuilder: (ctx) => [
+                    PopupMenuItem(
+                      value: RealmShelfTier.core,
+                      child: Text(l.usageBandCore),
+                    ),
+                    PopupMenuItem(
+                      value: RealmShelfTier.active,
+                      child: Text(l.usageBandActive),
+                    ),
+                    PopupMenuItem(
+                      value: RealmShelfTier.seek,
+                      child: Text(l.usageBandSeek),
+                    ),
                   ],
                   onSelected: (tier) {
                     RealmShelfStore.setTier(c.fullPathId, tier);
@@ -655,7 +800,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
           ListTile(
             leading: Icon(Icons.folder_off_outlined, color: cs.outline),
             title: Text(c.segment),
-            subtitle: const Text('Carpeta sin alexandria.db ni subcarpetas'),
+            subtitle: Text(l.realmAdminLeafFolderWithoutDb),
           ),
         );
       }
@@ -663,7 +808,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Realms'),
+        title: Text(l.realmsTitle),
         leading: showNavBack
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
@@ -674,26 +819,36 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         actions: [
           if (folderMode)
             IconButton(
-              tooltip: 'Carpeta vacía (solo organización, sin realm)',
+              tooltip: l.realmAdminTooltipEmptySubfolder,
               icon: const Icon(Icons.create_new_folder_outlined),
               onPressed: () => _onCreateEmptySubfolder(context),
             ),
           IconButton(
-            tooltip: 'Actualizar lista',
+            tooltip: l.realmAdminTooltipRefresh,
             icon: const Icon(Icons.refresh),
             onPressed: _reloadShelf,
           ),
           IconButton(
-            tooltip: 'Abrir esta carpeta en el explorador',
+            tooltip: l.realmAdminTooltipOpenExplorer,
             icon: const Icon(Icons.open_in_new),
             onPressed: _openExplorerForContext,
+          ),
+          IconButton(
+            tooltip: l.realmAdminTooltipCreateSeed,
+            icon: const Icon(Icons.layers_outlined),
+            onPressed: () => _onRegenerateRealmSeed(context),
+          ),
+          IconButton(
+            tooltip: l.realmAdminTooltipNuclear,
+            icon: Icon(Icons.delete_forever, color: Theme.of(context).colorScheme.error),
+            onPressed: () => _onNuclearDeleteAllData(context),
           ),
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.folder_outlined), text: 'Carpetas'),
-            Tab(icon: Icon(Icons.view_agenda_outlined), text: 'Estantes'),
+          tabs: [
+            Tab(icon: const Icon(Icons.folder_outlined), text: l.realmAdminTabFolders),
+            Tab(icon: const Icon(Icons.view_agenda_outlined), text: l.realmAdminTabShelves),
           ],
         ),
       ),
@@ -713,7 +868,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _onNewRealm(context),
         icon: const Icon(Icons.add),
-        label: const Text('Nuevo realm'),
+        label: Text(l.realmAdminFabCreate),
       ),
     );
   }
@@ -729,6 +884,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         context: context,
         builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) {
+            final dl = AppLocalizations.of(ctx)!;
             final templates = AlexandriaPaths.listRealmIds();
             final tList = templates.isEmpty ? <String>['default'] : templates;
             if (!tList.contains(templateId)) {
@@ -736,7 +892,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
             }
 
             return AlertDialog(
-              title: const Text('Nuevo realm'),
+              title: Text(dl.realmDialogNewTitle),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -744,39 +900,34 @@ class _RealmAdminPageState extends State<RealmAdminPage>
                   children: [
                     TextField(
                       controller: folderCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Carpeta opcional',
-                        hintText: 'ej. Lab o Clientes/2026',
-                        helperText: 'Bajo data/realms/; vacío = raíz. En Carpetas se rellena con la vista actual.',
+                      decoration: InputDecoration(
+                        labelText: dl.realmDialogFolderOptionalLabel,
+                        hintText: dl.realmDialogFolderHint,
+                        helperText: dl.realmDialogFolderHelper,
                       ),
                     ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: idCtrl,
                       autofocus: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Id del realm',
-                        hintText: 'ej. mi_castillo',
-                        helperText: 'Un solo nombre; sin /',
+                      decoration: InputDecoration(
+                        labelText: dl.realmDialogIdLabel,
+                        hintText: dl.realmDialogIdHint,
+                        helperText: dl.realmDialogIdHelper,
                       ),
                     ),
                     const SizedBox(height: 12),
                     RadioListTile<bool>(
-                      title: const Text('Copiar desde plantilla'),
-                      subtitle: const Text(
-                        'Duplica DB, bridge, snapshot, assets… de otro realm.',
-                      ),
+                      title: Text(dl.realmDialogTemplateCopyTitle),
+                      subtitle: Text(dl.realmDialogTemplateCopySubtitle),
                       value: false,
                       groupValue: empty,
                       onChanged: (_) =>
                           setDialogState(() => empty = false),
                     ),
                     RadioListTile<bool>(
-                      title: const Text('Vacío (misma arquitectura)'),
-                      subtitle: const Text(
-                        'Mismo árbol fijo (20 parcours + 400 objetos bajo PARCOUR_MAIN), '
-                        'pero sin texto en loci, sin recall/review y assets vacío.',
-                      ),
+                      title: Text(dl.realmDialogEmptyTitle),
+                      subtitle: Text(dl.realmDialogEmptySubtitle),
                       value: true,
                       groupValue: empty,
                       onChanged: (_) => setDialogState(() => empty = true),
@@ -785,8 +936,8 @@ class _RealmAdminPageState extends State<RealmAdminPage>
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
                         value: templateId,
-                        decoration: const InputDecoration(
-                          labelText: 'Plantilla',
+                        decoration: InputDecoration(
+                          labelText: dl.realmDialogTemplateLabel,
                         ),
                         items: tList
                             .map(
@@ -806,11 +957,11 @@ class _RealmAdminPageState extends State<RealmAdminPage>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('Cancelar'),
+                  child: Text(dl.cancel),
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(ctx, true),
-                  child: const Text('Crear'),
+                  child: Text(dl.realmDialogCreate),
                 ),
               ],
             );
@@ -819,14 +970,13 @@ class _RealmAdminPageState extends State<RealmAdminPage>
       );
 
       if (ok != true || !context.mounted) return;
+      final loc = AppLocalizations.of(context)!;
       final leaf = idCtrl.text.trim();
       final folderRaw = folderCtrl.text.trim();
       if (leaf.isEmpty) return;
       if (RegExp(r'[/\\]').hasMatch(leaf)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('El id del realm no puede contener / ni \\.'),
-          ),
+          SnackBar(content: Text(loc.realmDialogIdInvalidChars)),
         );
         return;
       }
@@ -847,8 +997,8 @@ class _RealmAdminPageState extends State<RealmAdminPage>
           SnackBar(
             content: Text(
               empty
-                  ? 'No se pudo crear vacío (¿ruta duplicada o error al escribir?).'
-                  : 'No se pudo copiar (¿plantilla inexistente, ruta duplicada?).',
+                  ? loc.realmSnackbarCreateEmptyFailed
+                  : loc.realmSnackbarDuplicateFailed,
             ),
           ),
         );
@@ -865,7 +1015,7 @@ class _RealmAdminPageState extends State<RealmAdminPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Realm activo: ${AlexandriaPaths.readActiveRealmId()}',
+              loc.realmSnackbarActiveRealm(AlexandriaPaths.readActiveRealmId()),
             ),
           ),
         );
@@ -880,5 +1030,123 @@ class _RealmAdminPageState extends State<RealmAdminPage>
     final l = AlexandriaPaths.listRealmIds();
     if (l.isEmpty) return 'default';
     return l.first;
+  }
+
+  Future<void> _onNuclearDeleteAllData(BuildContext context) async {
+    final ctrl = TextEditingController();
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          final dl = AppLocalizations.of(ctx)!;
+          return AlertDialog(
+            title: Text(dl.realmAdminNuclearTitle),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    dl.realmAdminNuclearDialogIntro,
+                    style: Theme.of(ctx).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  SelectableText(
+                    kAlexandriaNuclearDeletePhrase,
+                    style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                          fontFamily: 'monospace',
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(ctx).colorScheme.error,
+                        ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ctrl,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: dl.realmAdminConfirmLabel,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: Text(dl.cancel),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(ctx).colorScheme.error,
+                  foregroundColor: Theme.of(ctx).colorScheme.onError,
+                ),
+                onPressed: () {
+                  if (ctrl.text == kAlexandriaNuclearDeletePhrase) {
+                    Navigator.pop(ctx, true);
+                  } else {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text(dl.realmAdminPhraseMismatch)),
+                    );
+                  }
+                },
+                child: Text(dl.realmAdminNuclearButton),
+              ),
+            ],
+          );
+        },
+      );
+      if (confirmed != true || !context.mounted) return;
+      await widget.onNuclearDataReset();
+      if (!context.mounted) return;
+      _reloadShelf();
+      final loc = AppLocalizations.of(context)!;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(loc.realmAdminNuclearSuccessSnackbar)),
+      );
+    } finally {
+      ctrl.dispose();
+    }
+  }
+
+  Future<void> _onRegenerateRealmSeed(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dl = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(dl.realmSeedDialogTitle),
+          content: Text(
+            dl.realmSeedDialogBody(AlexandriaPaths.readActiveRealmId()),
+            style: Theme.of(ctx).textTheme.bodyMedium,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dl.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dl.realmSeedConfirm),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true || !context.mounted) return;
+    final loc = AppLocalizations.of(context)!;
+    try {
+      await widget.onRegenerateRealmSeed();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(loc.realmSeedSavedSnackbar)),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${loc.realmSeedErrorPrefix} $e')),
+      );
+    }
   }
 }

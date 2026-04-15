@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 public partial class RealmController : Node
@@ -9,21 +10,31 @@ public partial class RealmController : Node
 
 	// [SCOPE:CAMERA_CONTROL]
 	private CameraRig _camera;
+	private Spawner _spawner;
 	private ViewerService _viewer;
 	private Label _intentHud = null!;
 	private double _intentPoll;
+	private double _bridgeSeqSyncTimer;
+	private int _lastBridgeSeqWritten = -999;
+	private string _lastRealmIdForSessionSeq = "";
+
+	/// <summary>
+	/// Historial de foco dentro del viewer (enlaces / tarjetas): Back restaura el foco anterior sin cambiar context_key.
+	/// </summary>
+	private readonly Stack<string> _viewerFocusStack = new();
 
 	public override void _Ready()
 	{
 		GD.Print("[RC][INIT]");
 
 		_camera = GetNode<CameraRig>("/root/Realm/CameraRig");
+		_spawner = GetNodeOrNull<Spawner>("/root/Realm/Spawner");
 		_viewer = GetNodeOrNull<ViewerService>("/root/Realm/ViewerService");
 		if (_viewer != null)
 		{
 			_viewer.EnterLevelRequested += OnEnterLevelRequested;
 			_viewer.FocusKeyNavigationRequested += ApplyFocusOnlyFromViewer;
-			_viewer.BackLevelRequested += OnBackLevelRequested;
+			_viewer.BackLevelRequested += OnViewerBackWithFocusStack;
 		}
 		GD.Print(_camera == null ? "[RC][CAMERA NULL]" : "[RC][CAMERA OK]");
 		GD.Print(_viewer == null ? "[RC][VIEWER NULL] path=/root/Realm/ViewerService" : "[RC][VIEWER OK]");
@@ -45,6 +56,9 @@ public partial class RealmController : Node
 		_intentHud.OffsetBottom = 36f;
 		_intentHud.Text = "Intent: " + BridgeSpatial.ReadNavigationIntent();
 		hudRoot.AddChild(_intentHud);
+
+		SetupGkHudMenu(hudRoot);
+		SetupGkUserHelp();
 
 		SetProcess(true);
 		SetProcessInput(true);
@@ -69,6 +83,12 @@ public partial class RealmController : Node
 		try
 		{
 			Directory.CreateDirectory(BridgeSpatial.BridgeDir);
+			var prev = BridgeSpatial.ReadFocusKey().Trim();
+			var next = k.Trim();
+			if (!string.IsNullOrEmpty(prev) && !string.IsNullOrEmpty(next) &&
+				!string.Equals(prev, next, StringComparison.Ordinal))
+				_viewerFocusStack.Push(prev);
+
 			BridgeSpatial.WriteFocusKey(k);
 		}
 		catch (Exception e)
@@ -89,6 +109,8 @@ public partial class RealmController : Node
 		if (string.IsNullOrEmpty(key))
 			return;
 
+		_viewerFocusStack.Clear();
+
 		try
 		{
 			Directory.CreateDirectory(BridgeSpatial.BridgeDir);
@@ -108,10 +130,37 @@ public partial class RealmController : Node
 		_viewer?.ClosePanel();
 	}
 
+	/// <summary>Back del viewer: primero deshace navegaciones de foco; si no hay pila, sube de nivel.</summary>
+	private void OnViewerBackWithFocusStack(string hierarchyTarget)
+	{
+		if (_viewerFocusStack.Count > 0)
+		{
+			var prevFocus = _viewerFocusStack.Pop();
+			try
+			{
+				Directory.CreateDirectory(BridgeSpatial.BridgeDir);
+				BridgeSpatial.WriteFocusKey(prevFocus);
+			}
+			catch (Exception e)
+			{
+				GD.PrintErr("[RC][FOCUS_BACK_ERR] " + e.Message);
+				return;
+			}
+
+			GD.Print($"[RC][FOCUS_BACK] focus_key={prevFocus}");
+			_viewer?.NotifyFrameOpened(prevFocus);
+			return;
+		}
+
+		OnBackLevelRequested(hierarchyTarget);
+	}
+
 	private void OnBackLevelRequested(string parentKey)
 	{
 		if (string.IsNullOrEmpty(parentKey))
 			return;
+
+		_viewerFocusStack.Clear();
 
 		try
 		{
@@ -143,26 +192,47 @@ public partial class RealmController : Node
 			return;
 		}
 
+		if (@event is InputEventKey f1 && f1.Pressed && !f1.Echo && f1.Keycode == Key.F1)
+		{
+			if (_gkMenuOpen)
+				SetGkMenuVisible(false);
+			ToggleGkUserHelp();
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
+		if (@event is InputEventKey esc && esc.Pressed && !esc.Echo && esc.Keycode == Key.Escape)
+		{
+			if (_gkHelpOpen)
+			{
+				ToggleGkUserHelp();
+				GetViewport().SetInputAsHandled();
+				return;
+			}
+
+			if (_gkMenuOpen)
+			{
+				SetGkMenuVisible(false);
+				GetViewport().SetInputAsHandled();
+				return;
+			}
+
+			if (Input.MouseMode == Input.MouseModeEnum.Captured)
+				Input.MouseMode = Input.MouseModeEnum.Visible;
+			else
+				Input.MouseMode = Input.MouseModeEnum.Captured;
+			return;
+		}
+
+		if (_gkHelpOpen || _gkMenuOpen)
+			return;
+
 		if (@event is InputEventMouseMotion motion)
 		{
 			if (Input.MouseMode != Input.MouseModeEnum.Captured)
 				return;
 
 			_camera.RotateYaw((float)motion.Relative.X);
-		}
-
-		if (@event is InputEventKey key && key.Pressed && key.Keycode == Key.Escape)
-		{
-			if (Input.MouseMode == Input.MouseModeEnum.Captured)
-			{
-				Input.MouseMode = Input.MouseModeEnum.Visible;
-				// GD.Print("[RC][ESC_RELEASE_MOUSE]");
-			}
-			else
-			{
-				Input.MouseMode = Input.MouseModeEnum.Captured;
-				// GD.Print("[RC][ESC_CAPTURE_MOUSE]");
-			}
 		}
 	}
 
@@ -175,6 +245,33 @@ public partial class RealmController : Node
 		{
 			GD.PrintErr("[RC][FAIL][CAMERA_NULL_PROCESS]");
 			return;
+		}
+
+		// Parcour: memoria de sesión por realm (no disco). Object: no actualiza seq (no pisar parcour al visitar objeto).
+		_bridgeSeqSyncTimer += delta;
+		if (_bridgeSeqSyncTimer >= 0.25)
+		{
+			_bridgeSeqSyncTimer = 0;
+			if (_spawner != null)
+			{
+				var realmId = AlexandriaDataRoot.ReadActiveRealmId();
+				if (realmId != _lastRealmIdForSessionSeq)
+				{
+					_lastRealmIdForSessionSeq = realmId;
+					_lastBridgeSeqWritten = -999;
+				}
+
+				var ctx = BridgeSpatial.ReadContextKey()?.Trim() ?? "";
+				if (!string.IsNullOrEmpty(ctx) && !BridgeSpatial.IsObjectLocusKey(ctx))
+				{
+					var nearest = _spawner.ResolveNearestFrameSeqFromCameraPosition(_camera.GlobalPosition);
+					if (nearest != _lastBridgeSeqWritten)
+					{
+						_lastBridgeSeqWritten = nearest;
+						SessionRealmSpatial.SetParcourSeqForRealm(realmId, nearest);
+					}
+				}
+			}
 		}
 
 		// _camera.RotateYaw(1f); // [SCOPE:DEBUG_ROTATION_REMOVED]

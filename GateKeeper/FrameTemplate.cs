@@ -1,3 +1,4 @@
+using System.IO;
 using Godot;
 
 public partial class FrameTemplate : Node3D
@@ -23,6 +24,9 @@ public partial class FrameTemplate : Node3D
 		ApplyHeroMaterial();
 	}
 
+	/// <summary>Vuelve a leer disco (tras cambiar solo manifest/collage u otro asset sin snapshot).</summary>
+	public void RefreshHeroFromDisk() => ApplyHeroMaterial();
+
 	/// <summary>Índice de slot (0..19). Actualiza etiqueta espacial "Locus N" (N = seq + 1).</summary>
 	public void SetSeq(int seq)
 	{
@@ -46,6 +50,7 @@ public partial class FrameTemplate : Node3D
 		}
 
 		_label.Text = $"Locus {_seq + 1}";
+		_label.Modulate = new Color(1f, 0.88f, 0.55f);
 	}
 
 	public override void _Ready()
@@ -76,9 +81,9 @@ public partial class FrameTemplate : Node3D
 		else
 		{
 			mat = new StandardMaterial3D();
-			mat.AlbedoColor = new Color(0.04f, 0.06f, 0.1f);
-			mat.Metallic = 0.2f;
-			mat.Roughness = 0.3f;
+			mat.AlbedoColor = new Color(0.149f, 0.118f, 0.098f);
+			mat.Metallic = 0.25f;
+			mat.Roughness = 0.42f;
 		}
 
 		// QuadMesh: una sola cara delgada; sin culling doble el marco puede verse negro según el ángulo del pasillo.
@@ -97,7 +102,15 @@ public partial class FrameTemplate : Node3D
 				mat.AlbedoColor = Colors.White;
 				mat.ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded;
 				mat.EmissionEnabled = false;
-				GD.Print($"[FRAME][IMG] {_key} ← {imgPath}");
+				try
+				{
+					var fi = new FileInfo(imgPath);
+					GD.Print($"[FRAME][HERO] seq={_seq} key={_key} file={fi.Name} len={fi.Length} writeUtcTicks={fi.LastWriteTimeUtc.Ticks}");
+				}
+				catch
+				{
+					GD.Print($"[FRAME][IMG] {_key} ← {imgPath}");
+				}
 			}
 			else
 				GD.PrintErr($"[FRAME][IMG_LOAD_FAIL] {imgPath}");

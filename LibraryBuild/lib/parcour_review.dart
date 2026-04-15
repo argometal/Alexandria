@@ -5,8 +5,10 @@ import 'dart:math' as math;
 import 'package:sqlite3/sqlite3.dart';
 
 import 'alexandria_paths.dart';
+import 'fib_locale_text.dart';
+import 'l10n/app_localizations.dart';
 import 'fts_object_search.dart';
-import 'study/study_utils.dart' show countEvaluableBlocks, isCastleActiveLocus;
+import 'study/study_utils.dart' show countEvaluableBlocks, isRealmActiveLocus;
 
 // --- Fibonacci (días), mismo eje que locus_review_metrics ---------------------------------
 
@@ -459,40 +461,36 @@ ParcourReviewUiSummary loadParcourReviewSummary(
   );
 }
 
-String formatParcourReviewOneLine(ParcourReviewUiSummary s, [DateTime? now]) {
+String formatParcourReviewOneLine(
+  ParcourReviewUiSummary s,
+  AppLocalizations l, [
+  DateTime? now,
+]) {
   final n = now ?? DateTime.now();
-  final fib = 'fib ${s.fibIndex}';
-  final due = s.nextDueAt == null
-      ? 'due —'
+  final dueStr = s.nextDueAt == null
+      ? l.parcourFibDueDash
       : (!s.nextDueAt!.isAfter(n))
-          ? 'due vencido'
-          : 'due ${_relFuture(s.nextDueAt!, n)}';
-  final score = s.lastScoreNorm == null
-      ? 'score —'
-      : 'score ${s.lastScoreNorm!.toStringAsFixed(2)}';
-  return 'Parcour · $fib · $due · $score';
+          ? l.parcourFibDueOverdue
+          : l.parcourFibDueIn(fibFormatRelFuture(s.nextDueAt!, n, l));
+  final scoreStr = s.lastScoreNorm == null
+      ? l.parcourFibScoreDash
+      : l.parcourFibScoreValue(s.lastScoreNorm!.toStringAsFixed(2));
+  return l.parcourFibFullLine(s.fibIndex, dueStr, scoreStr);
 }
 
-String _relFuture(DateTime t, DateTime now) {
-  final d = t.difference(now);
-  if (d.inMinutes < 90) return 'en ${d.inMinutes}m';
-  if (d.inHours < 48) return 'en ${d.inHours}h';
-  return 'en ${d.inDays}d';
-}
+// --- Realm completitud (ORM-16-04): hijos directos, ridiculous_story, último good por sesión ---
 
-// --- Castle completitud (ORM-16-04): hijos directos, ridiculous_story, último good por sesión ---
-
-/// Resultado de [computeCastleCompletionForParcour]. Si [isNA] es true, [percent] es null (mostrar N/A, no 0%).
-class CastleCompletionResult {
-  const CastleCompletionResult({
+/// Resultado de [computeRealmCompletionForParcour]. Si [isNA] es true, [percent] es null (mostrar N/A, no 0%).
+class RealmCompletionResult {
+  const RealmCompletionResult({
     required this.isNA,
-    required this.castleActiveCount,
+    required this.realmActiveCount,
     required this.goodCount,
     this.percent,
   });
 
   final bool isNA;
-  final int castleActiveCount;
+  final int realmActiveCount;
   final int goodCount;
   final double? percent;
 }
@@ -519,10 +517,10 @@ Map<String, String> latestParcourRatingByLocus(
   return latestResultByLocus;
 }
 
-/// Completitud Castle: solo **hijos directos** del parcour. Activo = [isCastleActiveLocus].
+/// Completitud realm: solo **hijos directos** del parcour. Activo = [isRealmActiveLocus].
 /// **Good** = último resultado Parcour Review por locus en sesiones de este parcour (`good`).
-/// Sin sesiones en este parcour, o sin ningún locus activo Castle → [CastleCompletionResult.isNA].
-CastleCompletionResult computeCastleCompletionForParcour(
+/// Sin sesiones en este parcour, o sin ningún locus activo realm → [RealmCompletionResult.isNA].
+RealmCompletionResult computeRealmCompletionForParcour(
   Database db,
   String parcourKey,
 ) {
@@ -549,24 +547,24 @@ CastleCompletionResult computeCastleCompletionForParcour(
   for (final row in objects) {
     final key = row['key'] as String;
     final body = row['body_text'] as String?;
-    if (!isCastleActiveLocus(body)) continue;
+    if (!isRealmActiveLocus(body)) continue;
     active++;
     final res = latestResultByLocus[key];
     if (res == 'good') good++;
   }
 
   if (sessionCount == 0 || active == 0) {
-    return CastleCompletionResult(
+    return RealmCompletionResult(
       isNA: true,
-      castleActiveCount: active,
+      realmActiveCount: active,
       goodCount: good,
       percent: null,
     );
   }
 
-  return CastleCompletionResult(
+  return RealmCompletionResult(
     isNA: false,
-    castleActiveCount: active,
+    realmActiveCount: active,
     goodCount: good,
     percent: active > 0 ? good / active : null,
   );

@@ -4,10 +4,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
 
-import 'alexandria_paths.dart';
 import 'fts_object_search.dart';
 import 'library_build.dart';
+import 'l10n/app_localizations.dart';
 import 'node_card_reader_page.dart';
+import 'usage_tier_l10n.dart';
 
 /// Resultado al elegir un locus desde la búsqueda (bridge + lista principal).
 class ObjectSearchPick {
@@ -99,30 +100,8 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
     return s.isEmpty ? '—' : s;
   }
 
-  String? _heroPath(String entryKey, String? bodyText) {
-    final sep = Platform.pathSeparator;
-    final baseDir = Directory('${AlexandriaPaths.assetsRoot}$sep$entryKey');
-    for (final name in ['hero.png', 'hero.jpg', 'hero.jpeg', 'hero.webp']) {
-      final f = File('${baseDir.path}$sep$name');
-      if (f.existsSync()) return f.path;
-    }
-    final blocks = parseBody(bodyText);
-    for (final b in blocks) {
-      if (b['type'] != 'img') continue;
-      final src = (b['src'] ?? '').toString().trim();
-      if (src.isEmpty) continue;
-      final direct = File(src);
-      if (direct.existsSync()) return src;
-      final underKey = File('${baseDir.path}$sep$src');
-      if (underKey.existsSync()) return underKey.path;
-      final underRoot = File('${AlexandriaPaths.assetsRoot}$sep$src');
-      if (underRoot.existsSync()) return underRoot.path;
-    }
-    return null;
-  }
-
   Widget _leading(String key, String? body) {
-    final path = _heroPath(key, body);
+    final path = resolveListHeroThumbPath(key, body);
     if (path != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
@@ -167,7 +146,10 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
     return copy;
   }
 
-  List<Widget> _buildSections(List<ObjectSearchHit> ordered) {
+  List<Widget> _buildSections(
+    List<ObjectSearchHit> ordered,
+    AppLocalizations l,
+  ) {
     final cs = Theme.of(context).colorScheme;
     Widget bandHeader(UsageBand b) {
       return Padding(
@@ -185,7 +167,7 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
             ),
             const SizedBox(width: 8),
             Text(
-              b.label,
+              l10nUsageBandShort(l, b),
               style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     color: cs.primary,
                     fontWeight: FontWeight.w700,
@@ -194,11 +176,7 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                switch (b) {
-                  UsageBand.core => 'Núcleo de uso (mayor engagement)',
-                  UsageBand.active => 'Recurrente',
-                  UsageBand.seek => 'Exploración / cola larga',
-                },
+                l10nUsageBandSubtitle(l, b),
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: cs.onSurfaceVariant,
                     ),
@@ -277,7 +255,7 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
                 ),
               ),
               IconButton(
-                tooltip: 'Lector tipo tarjeta (toda la info)',
+                tooltip: AppLocalizations.of(context)!.objectSearchCardReaderTooltip,
                 icon: const Icon(Icons.chrome_reader_mode_outlined),
                 onPressed: () {
                   Navigator.of(context).push<void>(
@@ -299,17 +277,18 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final ordered = _orderedHits();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Buscar objetos (FTS5)'),
+        title: Text(l.objectSearchTitle),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(52),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: SearchBar(
               controller: _controller,
-              hintText: 'Título o texto del locus…',
+              hintText: l.objectSearchHint,
               leading: const Icon(Icons.search),
               trailing: [
                 if (_controller.text.isNotEmpty)
@@ -334,26 +313,26 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
             child: SegmentedButton<UsageBand?>(
               multiSelectionEnabled: false,
-              segments: const [
+              segments: [
                 ButtonSegment<UsageBand?>(
                   value: null,
-                  label: Text('Todos'),
-                  icon: Icon(Icons.view_agenda_outlined, size: 18),
+                  label: Text(l.usageBandAll),
+                  icon: const Icon(Icons.view_agenda_outlined, size: 18),
                 ),
                 ButtonSegment<UsageBand?>(
                   value: UsageBand.core,
-                  label: Text('Core'),
-                  icon: Icon(Icons.bolt_outlined, size: 18),
+                  label: Text(l.usageBandCore),
+                  icon: const Icon(Icons.bolt_outlined, size: 18),
                 ),
                 ButtonSegment<UsageBand?>(
                   value: UsageBand.active,
-                  label: Text('Active'),
-                  icon: Icon(Icons.autorenew, size: 18),
+                  label: Text(l.usageBandActive),
+                  icon: const Icon(Icons.autorenew, size: 18),
                 ),
                 ButtonSegment<UsageBand?>(
                   value: UsageBand.seek,
-                  label: Text('Seek'),
-                  icon: Icon(Icons.travel_explore_outlined, size: 18),
+                  label: Text(l.usageBandSeek),
+                  icon: const Icon(Icons.travel_explore_outlined, size: 18),
                 ),
               ],
               selected: {_bandFilter},
@@ -368,7 +347,7 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: Text(
-              'Vistas por uso: Core · Active · Seek (mismos loci; no cambia estructura).',
+              l.objectSearchUsageCaption,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
@@ -401,8 +380,8 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
                         Center(
                           child: Text(
                             _query.trim().isEmpty
-                                ? 'No hay objetos en la base.'
-                                : 'Sin coincidencias.',
+                                ? l.objectSearchNoObjects
+                                : l.objectSearchNoMatches,
                             style: Theme.of(context).textTheme.bodyLarge,
                           ),
                         ),
@@ -411,7 +390,7 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
                   : ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                      children: _buildSections(ordered),
+                      children: _buildSections(ordered, l),
                     ),
             ),
           ),

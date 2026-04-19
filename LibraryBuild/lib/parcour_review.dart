@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'package:sqlite3/sqlite3.dart';
 
 import 'alexandria_paths.dart';
-import 'fib_locale_text.dart';
 import 'l10n/app_localizations.dart';
 import 'fts_object_search.dart';
 import 'study/study_utils.dart' show countEvaluableBlocks, isRealmActiveLocus;
@@ -81,7 +80,7 @@ LocusRatingKind? parseLocusRatingLabel(String? raw) {
   }
   final n = ratings.length;
   final norm = raw / n;
-  return (raw: raw, norm: norm, pass: norm >= 0.8);
+  return (raw: raw, norm: norm, pass: norm >= currentParcourPassNormSync());
 }
 
 // --- Schema -----------------------------------------------------------------------------
@@ -150,9 +149,34 @@ class ParcourLocusEval {
   final bool wasReviewed;
 }
 
-/// Umbrales: pass ≥ 0.8; fail fuerte (solo rama estable) ≤ 0.3.
-const double kParcourPassNorm = 0.8;
+/// Umbral atleta: sesión aprobada solo con norma plena (100%).
+const double kParcourPassNormAthlete = 1.0;
+
+/// Umbral estándar (histórico ~80%).
+const double kParcourPassNormStandard = 0.8;
+
+/// Fail fuerte (solo rama estable) ≤ 0.3.
 const double kParcourStrongFailNorm = 0.3;
+
+/// Lee `bridge/memory_athlete_mode.txt` del realm activo (`1` = atleta 100%, `0` = estándar 80%).
+double currentParcourPassNormSync() {
+  try {
+    final f = File(AlexandriaPaths.memoryAthleteModePath);
+    if (!f.existsSync()) return kParcourPassNormAthlete;
+    final t = f.readAsStringSync().trim().toLowerCase();
+    if (t == '0' ||
+        t == 'false' ||
+        t == 'no' ||
+        t == 'off' ||
+        t == 'normal' ||
+        t == 'standard') {
+      return kParcourPassNormStandard;
+    }
+    return kParcourPassNormAthlete;
+  } catch (_) {
+    return kParcourPassNormAthlete;
+  }
+}
 
 int _bootstrapTargetFib(double scoreNorm) {
   final t = (scoreNorm * 10.0).floor();
@@ -461,17 +485,31 @@ ParcourReviewUiSummary loadParcourReviewSummary(
   );
 }
 
+/// Parcour due copy: no calendar dates, no hour pressure — only **due** vs **in N days**
+/// (whole calendar days). Same calendar day as today counts as due. Next interval still
+/// comes from the last session result in [applyParcourReviewSession].
+String formatParcourDueSoft(
+  DateTime? nextDue,
+  AppLocalizations l, [
+  DateTime? now,
+]) {
+  final n = now ?? DateTime.now();
+  if (nextDue == null) return l.parcourFibDueDash;
+  if (!nextDue.isAfter(n)) return l.parcourFibDueReady;
+  final startToday = DateTime(n.year, n.month, n.day);
+  final startDue = DateTime(nextDue.year, nextDue.month, nextDue.day);
+  final calendarDays = startDue.difference(startToday).inDays;
+  if (calendarDays <= 0) return l.parcourFibDueReady;
+  return l.parcourFibDueInDaysCount(calendarDays);
+}
+
 String formatParcourReviewOneLine(
   ParcourReviewUiSummary s,
   AppLocalizations l, [
   DateTime? now,
 ]) {
   final n = now ?? DateTime.now();
-  final dueStr = s.nextDueAt == null
-      ? l.parcourFibDueDash
-      : (!s.nextDueAt!.isAfter(n))
-          ? l.parcourFibDueOverdue
-          : l.parcourFibDueIn(fibFormatRelFuture(s.nextDueAt!, n, l));
+  final dueStr = formatParcourDueSoft(s.nextDueAt, l, n);
   final scoreStr = s.lastScoreNorm == null
       ? l.parcourFibScoreDash
       : l.parcourFibScoreValue(s.lastScoreNorm!.toStringAsFixed(2));

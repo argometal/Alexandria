@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Globalization;
 
@@ -30,9 +31,9 @@ public partial class ViewerService : CanvasLayer
 			return "";
 		return k switch
 		{
-			"hint" => "Hint",
-			"place" => "Place",
-			"ridiculous_story" => "Ridiculous story",
+			"hint" => GkUiLocale.LabelHint(),
+			"place" => GkUiLocale.LabelPlace(),
+			"ridiculous_story" => GkUiLocale.LabelRidiculousStory(),
 			_ => "",
 		};
 	}
@@ -50,6 +51,7 @@ public partial class ViewerService : CanvasLayer
 	private Control _enterButtonHost = null!;
 	private Label _titleLabel = null!;
 	private AudioStreamPlayer _audioPlayer = null!;
+	private PlaceRecallStrip _placeRecallStrip = null!;
 
 	/// <summary>
 	/// El panel solo debe actualizarse / mostrarse tras un clic en marco o enlace (NotifyFrameOpened).
@@ -104,7 +106,7 @@ public partial class ViewerService : CanvasLayer
 		closeBtn.Text = "×";
 		closeBtn.CustomMinimumSize = new Vector2(40, 40);
 		closeBtn.FocusMode = Control.FocusModeEnum.None;
-		closeBtn.TooltipText = "Cerrar";
+		closeBtn.TooltipText = GkUiLocale.CloseTooltip();
 		closeBtn.Pressed += DismissPanel;
 		header.AddChild(closeBtn);
 
@@ -131,6 +133,11 @@ public partial class ViewerService : CanvasLayer
 		_audioPlayer.Name = "ViewerAudio";
 		_audioPlayer.Bus = "Master";
 		AddChild(_audioPlayer);
+
+		var strip = GetParent()?.GetNodeOrNull<PlaceRecallStrip>("PlaceRecallStrip");
+		_placeRecallStrip = strip!;
+		if (strip == null)
+			GD.PrintErr("[VIEWER] PlaceRecallStrip node missing under Realm — place recall gate UI disabled.");
 	}
 
 	/// <summary>Abre panel y fuerza lectura de viewer/current.json (bridge dual: foco vía LB).</summary>
@@ -143,7 +150,7 @@ public partial class ViewerService : CanvasLayer
 		_burstRemainSec = 3.0;
 		_burstAccumSec = 0;
 		_panel.Visible = true;
-		_titleLabel.Text = string.IsNullOrEmpty(key) ? "Hueco (sin KEY)" : key;
+		_titleLabel.Text = string.IsNullOrEmpty(key) ? GkUiLocale.NoFocusKeyTitle() : key;
 		foreach (Node child in _stack.GetChildren())
 			child.QueueFree();
 		ClearEnterButtonHost();
@@ -156,7 +163,7 @@ public partial class ViewerService : CanvasLayer
 			hint.ScrollActive = false;
 			hint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 			hint.AddThemeFontSizeOverride("font_size", FontBodyPx);
-			hint.Text = "Este slot no tiene KEY en el snapshot. Revisa seq en data/bridge/current_seq.txt.";
+			hint.Text = GkUiLocale.EmptySlotNoKey();
 			hint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(hint);
 			GD.Print("[VIEWER][OPEN] empty slot (no LB sync)");
@@ -169,7 +176,7 @@ public partial class ViewerService : CanvasLayer
 		sync.ScrollActive = false;
 		sync.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 		sync.AddThemeFontSizeOverride("font_size", FontBodyPx);
-		sync.Text = "Sincronizando con LibraryBuild…";
+			sync.Text = GkUiLocale.SyncingLibraryBuild();
 		sync.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 		_stack.AddChild(sync);
 		GD.Print($"[VIEWER][OPEN] frame click key={key}");
@@ -202,7 +209,7 @@ public partial class ViewerService : CanvasLayer
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
-		if (!_panel.Visible)
+		if (!_viewerOpenByUser)
 			return;
 		if (@event is InputEventKey k && k.Pressed && !k.Echo && k.Keycode == Key.Escape)
 		{
@@ -220,6 +227,9 @@ public partial class ViewerService : CanvasLayer
 	/// <summary>Fase 2 GK: navegación tipo “link” / foco — mismo contrato que clic en frame (sin warp).</summary>
 	public event Action<string> FocusKeyNavigationRequested;
 
+	/// <summary>Place recall: acierto en sesión (sin persistir en DB).</summary>
+	public event Action<string> PlaceRecallUnlockedInSession;
+
 	public void ClosePanel()
 	{
 		DismissPanel();
@@ -232,6 +242,7 @@ public partial class ViewerService : CanvasLayer
 		_burstAccumSec = 0;
 		_checkTimer = 0;
 		_panel.Visible = false;
+		_placeRecallStrip?.ClearStrip();
 	}
 
 	private void CheckForContent()
@@ -290,6 +301,39 @@ public partial class ViewerService : CanvasLayer
 		var reviewCount = ReadViewerInt(data, "reviewCount");
 		var cognitiveRole = ReadViewerString(data, "cognitiveRole");
 		var nextReviewAtIso = ReadViewerString(data, "nextReviewAt");
+		var placeRecallGloballyEnabled = BridgeSpatial.ReadPlaceRecallGloballyEnabled();
+
+		var recallCropQuizPreset = new Godot.Collections.Array();
+		if (data.ContainsKey("recallCropQuiz") && data["recallCropQuiz"].VariantType == Variant.Type.Array)
+			recallCropQuizPreset = data["recallCropQuiz"].AsGodotArray();
+
+		var recallCropSrcResolved = ReadViewerString(data, "recallCropSrc");
+		if (string.IsNullOrEmpty(recallCropSrcResolved))
+			recallCropSrcResolved = ReadViewerString(data, "recall_crop");
+		if (string.IsNullOrEmpty(recallCropSrcResolved))
+			recallCropSrcResolved = ViewerRecallCropGk.TryReadRecallCropSrc(DataRoot, key);
+
+		var recallAssetPath = "";
+		if (!string.IsNullOrEmpty(recallCropSrcResolved))
+		{
+			var under = Path.Combine(DataRoot, "assets", key, recallCropSrcResolved);
+			if (File.Exists(under))
+				recallAssetPath = under;
+			else
+			{
+				var flat = Path.Combine(DataRoot, recallCropSrcResolved.TrimStart('/', '\\'));
+				if (File.Exists(flat))
+					recallAssetPath = flat;
+			}
+		}
+
+		var isObjectRole = string.Equals(cognitiveRole, "object", StringComparison.OrdinalIgnoreCase);
+		var placeRecallLocked = placeRecallGloballyEnabled && isObjectRole &&
+			!string.IsNullOrEmpty(recallAssetPath) &&
+			!PlaceRecallSessionState.IsUnlocked(key);
+
+		GD.Print(
+			$"[VIEWER][PLACE_RECALL] key={key} global={placeRecallGloballyEnabled} recallSrc={(string.IsNullOrEmpty(recallCropSrcResolved) ? "(none)" : recallCropSrcResolved)} assetOk={!string.IsNullOrEmpty(recallAssetPath)} unlocked={PlaceRecallSessionState.IsUnlocked(key)} locked={placeRecallLocked} presetOpts={recallCropQuizPreset.Count}");
 
 		// Si caemos en current.json pero el foco pide otra KEY, el parentKey sería el de otra fila
 		// (p. ej. ROOT) y ← Back saltaría a realm sin pasar por parcour. No pintar hasta alinear LB.
@@ -311,7 +355,7 @@ public partial class ViewerService : CanvasLayer
 				bodyEmpty = new Godot.Collections.Array();
 			else
 				bodyEmpty = data["body"].AsGodotArray();
-			ShowContent("", bodyEmpty, false, "", 0, 0, 0, 0, "", "");
+			ShowContent("", bodyEmpty, false, "", 0, 0, 0, 0, "", "", false, new Godot.Collections.Array());
 			_lastKeyShown = "";
 			_lastVersionShown = version;
 			_lastHasChildrenShown = false;
@@ -328,7 +372,7 @@ public partial class ViewerService : CanvasLayer
 		else
 			body = data["body"].AsGodotArray();
 		ShowContent(key, body, hasChildren, parentKey, recallScore, stabilityDays, memoryStrength, reviewCount,
-			cognitiveRole, nextReviewAtIso);
+			cognitiveRole, nextReviewAtIso, placeRecallLocked, recallCropQuizPreset);
 
 		_lastKeyShown = key;
 		_lastVersionShown = version;
@@ -414,6 +458,23 @@ public partial class ViewerService : CanvasLayer
 		};
 	}
 
+	private static bool ReadViewerBool(Godot.Collections.Dictionary data, string key, bool defaultValue = false)
+	{
+		if (!data.ContainsKey(key))
+			return defaultValue;
+		var v = data[key];
+		return v.VariantType switch
+		{
+			Variant.Type.Bool => v.AsBool(),
+			Variant.Type.Int => v.AsInt32() != 0,
+			Variant.Type.Float => Math.Abs(v.AsDouble()) > 1e-9,
+			Variant.Type.String =>
+				string.Equals(v.AsString().Trim(), "true", StringComparison.OrdinalIgnoreCase)
+				|| v.AsString().Trim() == "1",
+			_ => defaultValue,
+		};
+	}
+
 	private static string StripDangerousBbcode(string raw)
 	{
 		if (string.IsNullOrEmpty(raw))
@@ -431,8 +492,8 @@ public partial class ViewerService : CanvasLayer
 			return "";
 		var t = iso.Trim();
 		if (DateTime.TryParse(t, null, DateTimeStyles.RoundtripKind, out var dt))
-			return "Next review: " + dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-		return "Next review: " + t;
+			return GkUiLocale.NextReviewPrefix() + ": " + dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+		return GkUiLocale.NextReviewPrefix() + ": " + t;
 	}
 
 	private void ClearEnterButtonHost()
@@ -442,20 +503,47 @@ public partial class ViewerService : CanvasLayer
 		_enterButtonHost.Visible = false;
 	}
 
-	private void ShowContent(string key, Godot.Collections.Array body, bool hasChildren, string parentKey, double recallScore, double stabilityDays, double memoryStrength, int reviewCount, string cognitiveRole, string nextReviewAtIso)
+	private void OnPlaceRecallAnsweredCorrect(string key)
+	{
+		if (string.IsNullOrEmpty(key))
+			return;
+		PlaceRecallSessionState.Unlock(key.Trim());
+		PlaceRecallUnlockedInSession?.Invoke(key.Trim());
+		_lastVersionShown = -1;
+		CheckForContent();
+	}
+
+	private void ShowContent(string key, Godot.Collections.Array body, bool hasChildren, string parentKey, double recallScore, double stabilityDays, double memoryStrength, int reviewCount, string cognitiveRole, string nextReviewAtIso, bool placeRecallLocked, Godot.Collections.Array recallCropQuizPreset)
 	{
 		foreach (Node child in _stack.GetChildren())
 			child.QueueFree();
 		ClearEnterButtonHost();
 
-		_titleLabel.Text = string.IsNullOrEmpty(key) ? "Sin KEY de foco" : key;
+		var isObject = string.Equals(cognitiveRole, "object", StringComparison.OrdinalIgnoreCase);
+		if (placeRecallLocked && isObject)
+		{
+			_panel.Visible = false;
+			PartitionBodyForObject(body, out _, out _, out var placeHintForQuiz);
+			var navBackTarget = ResolveBackTargetForNavigation(key, parentKey);
+			var showBack = !string.IsNullOrEmpty(navBackTarget);
+			var showEnter = hasChildren && !string.IsNullOrEmpty(key);
+			_placeRecallStrip?.PresentGate(key, DataRoot, placeHintForQuiz, recallCropQuizPreset,
+				() => OnPlaceRecallAnsweredCorrect(key),
+				showBack, showEnter, navBackTarget,
+				t => BackLevelRequested?.Invoke(t),
+				k => EnterLevelRequested?.Invoke(k));
+			return;
+		}
+
+		_placeRecallStrip?.ClearStrip();
+		_titleLabel.Text = string.IsNullOrEmpty(key) ? GkUiLocale.NoFocusKey() : key;
 		_panel.Visible = true;
 
 		if (!string.IsNullOrEmpty(cognitiveRole) || !string.IsNullOrEmpty(nextReviewAtIso))
 		{
-			var parts = new System.Collections.Generic.List<string>();
+			var parts = new List<string>();
 			if (!string.IsNullOrEmpty(cognitiveRole))
-				parts.Add("Role: " + cognitiveRole);
+				parts.Add(GkUiLocale.RolePrefix() + ": " + cognitiveRole);
 			var dueLine = FormatNextReviewBadge(nextReviewAtIso);
 			if (!string.IsNullOrEmpty(dueLine))
 				parts.Add(dueLine);
@@ -478,7 +566,7 @@ public partial class ViewerService : CanvasLayer
 			stats.ScrollActive = false;
 			stats.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 			stats.AddThemeFontSizeOverride("font_size", FontBodyPx - 1);
-			stats.Text = $"Recall score {recallScore:0.00} · Stability {stabilityDays:0.0}d · Strength {memoryStrength:0.00} · Reviews {reviewCount}";
+			stats.Text = GkUiLocale.RecallStatsLine(recallScore, stabilityDays, memoryStrength, reviewCount);
 			stats.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(stats);
 		}
@@ -491,296 +579,44 @@ public partial class ViewerService : CanvasLayer
 			emptyHint.ScrollActive = false;
 			emptyHint.AutowrapMode = TextServer.AutowrapMode.WordSmart;
 			emptyHint.AddThemeFontSizeOverride("font_size", FontBodyPx);
-			emptyHint.Text = "Sin contenido aún";
+			emptyHint.Text = GkUiLocale.NoBodyYet();
 			emptyHint.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(emptyHint);
 		}
+		else if (isObject)
+		{
+			PartitionBodyForObject(body, out var lore, out var rest, out _);
+			if (lore.Count > 0)
+			{
+				AddSectionTitle(GkUiLocale.SectionObjectLore());
+				foreach (Variant item in lore)
+				{
+					if (item.VariantType != Variant.Type.Dictionary)
+						continue;
+					ProcessBodyDictionary(item.AsGodotDictionary(), key);
+				}
+			}
+
+			if (rest.Count > 0)
+			{
+				if (lore.Count > 0)
+					AddSectionTitle(GkUiLocale.SectionOtherContent());
+				foreach (Variant item in rest)
+				{
+					if (item.VariantType != Variant.Type.Dictionary)
+						continue;
+					ProcessBodyDictionary(item.AsGodotDictionary(), key);
+				}
+			}
+		}
 		else
 		{
-		foreach (Variant item in body)
-		{
-			if (item.VariantType != Variant.Type.Dictionary)
-				continue;
-
-			var d = item.AsGodotDictionary();
-			var type = d.ContainsKey("type") ? d["type"].AsString() : "p";
-
-			if (type == "img")
+			foreach (Variant item in body)
 			{
-				var src = d.ContainsKey("src") ? d["src"].AsString() : "";
-				var path = ResolveImagePath(key, src);
-				if (string.IsNullOrEmpty(path) || !File.Exists(path))
+				if (item.VariantType != Variant.Type.Dictionary)
 					continue;
-
-				var image = new Image();
-				if (image.Load(path) != Error.Ok)
-					continue;
-
-				var tex = ImageTexture.CreateFromImage(image);
-				var tr = new TextureRect();
-				tr.Texture = tex;
-				tr.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
-				tr.ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional;
-				tr.CustomMinimumSize = new Vector2(0, 200);
-				tr.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				_stack.AddChild(tr);
-				continue;
+				ProcessBodyDictionary(item.AsGodotDictionary(), key);
 			}
-
-			if (type == "link")
-			{
-				var destKey = d.ContainsKey("key") ? d["key"].AsString().Trim() : "";
-				var linkText = d.ContainsKey("text") ? d["text"].AsString() : destKey;
-				if (string.IsNullOrEmpty(destKey))
-					continue;
-
-				var btn = new Button();
-				btn.Text = string.IsNullOrEmpty(linkText) ? destKey : linkText;
-				btn.Flat = true;
-				btn.Alignment = HorizontalAlignment.Left;
-				btn.AddThemeFontSizeOverride("font_size", FontLinkPx);
-				btn.AddThemeColorOverride("font_color", new Color(0.627f, 0.769f, 1f));
-				btn.AddThemeColorOverride("font_hover_color", new Color(0.78f, 0.86f, 1f));
-				btn.AddThemeColorOverride("font_pressed_color", new Color(0.48f, 0.62f, 0.95f));
-				var kNavigate = destKey;
-				btn.Pressed += () => RequestFocusNavigation(kNavigate);
-				btn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				_stack.AddChild(btn);
-				continue;
-			}
-
-			if (type == "audio")
-			{
-				var src = d.ContainsKey("src") ? d["src"].AsString() : "";
-				var path = ResolveImagePath(key, src);
-				var audioLbl = new RichTextLabel();
-				audioLbl.BbcodeEnabled = false;
-				audioLbl.FitContent = true;
-				audioLbl.ScrollActive = false;
-				audioLbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-				audioLbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
-				audioLbl.Text = string.IsNullOrEmpty(src)
-					? "Audio: (missing src)"
-					: (File.Exists(path) ? "Audio: " + src : "Audio (file missing): " + src);
-				audioLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				_stack.AddChild(audioLbl);
-				continue;
-			}
-
-			if (type == "warp")
-			{
-				var wKey = d.ContainsKey("key") ? d["key"].AsString().Trim() : "";
-				var wText = d.ContainsKey("text") ? d["text"].AsString() : "";
-				if (string.IsNullOrEmpty(wKey))
-					continue;
-				var wBtn = new Button();
-				wBtn.Text = string.IsNullOrEmpty(wText) ? "Warp → " + wKey : wText + " → " + wKey;
-				wBtn.Flat = true;
-				wBtn.Alignment = HorizontalAlignment.Left;
-				wBtn.AddThemeFontSizeOverride("font_size", FontLinkPx);
-				wBtn.AddThemeColorOverride("font_color", new Color(0.95f, 0.72f, 0.35f));
-				wBtn.AddThemeColorOverride("font_hover_color", new Color(1f, 0.84f, 0.52f));
-				wBtn.AddThemeColorOverride("font_pressed_color", new Color(0.82f, 0.58f, 0.22f));
-				var wNav = wKey;
-				wBtn.Pressed += () => RequestFocusNavigation(wNav);
-				wBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				_stack.AddChild(wBtn);
-				continue;
-			}
-
-			if (type == "tag")
-			{
-				var tagText = d.ContainsKey("text") ? d["text"].AsString() : "";
-				var tagLbl = new RichTextLabel();
-				tagLbl.BbcodeEnabled = false;
-				tagLbl.FitContent = true;
-				tagLbl.ScrollActive = false;
-				tagLbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-				tagLbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
-				tagLbl.Text = "# " + tagText;
-				tagLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				_stack.AddChild(tagLbl);
-				continue;
-			}
-
-			if (type == "card")
-			{
-				var word = d.ContainsKey("word") ? d["word"].AsString().Trim() : "";
-				var imageSrc = "";
-				if (d.ContainsKey("image"))
-					imageSrc = d["image"].AsString().Trim();
-				else if (d.ContainsKey("src"))
-					imageSrc = d["src"].AsString().Trim();
-				var phoneticSrc = d.ContainsKey("phonetic") ? d["phonetic"].AsString().Trim() : "";
-				var audioSrc = d.ContainsKey("audio") ? d["audio"].AsString().Trim() : "";
-
-				var cardVBox = new VBoxContainer();
-				cardVBox.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				cardVBox.AddThemeConstantOverride("separation", 10);
-
-				var frame = new PanelContainer();
-				var frameStyle = new StyleBoxFlat();
-				frameStyle.BgColor = new Color(0.14f, 0.11f, 0.09f, 0.95f);
-				frameStyle.BorderColor = new Color(0.95f, 0.75f, 0.35f, 0.45f);
-				frameStyle.SetBorderWidthAll(1);
-				frameStyle.SetCornerRadiusAll(10);
-				frame.AddThemeStyleboxOverride("panel", frameStyle);
-				frame.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-
-				var inner = new VBoxContainer();
-				inner.AddThemeConstantOverride("separation", 8);
-				inner.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				frame.AddChild(inner);
-
-				if (!string.IsNullOrEmpty(word))
-				{
-					var wl = new Label();
-					wl.Text = word;
-					wl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-					wl.HorizontalAlignment = HorizontalAlignment.Center;
-					wl.AddThemeFontSizeOverride("font_size", FontTitlePx + 8);
-					wl.AddThemeColorOverride("font_color", new Color(1f, 0.92f, 0.58f));
-					wl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-					inner.AddChild(wl);
-				}
-
-				if (!string.IsNullOrEmpty(imageSrc))
-				{
-					var imgPath = ResolveImagePath(key, imageSrc);
-					if (!string.IsNullOrEmpty(imgPath) && File.Exists(imgPath))
-					{
-						var image = new Image();
-						if (image.Load(imgPath) == Error.Ok)
-						{
-							var tex = ImageTexture.CreateFromImage(image);
-							var tr = new TextureRect();
-							tr.Texture = tex;
-							tr.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
-							tr.ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional;
-							tr.CustomMinimumSize = new Vector2(0, 220);
-							tr.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-							inner.AddChild(tr);
-						}
-					}
-				}
-
-				if (!string.IsNullOrEmpty(phoneticSrc))
-				{
-					var pPath = ResolveImagePath(key, phoneticSrc);
-					if (!string.IsNullOrEmpty(pPath) && File.Exists(pPath))
-					{
-						var ext = Path.GetExtension(pPath).ToLowerInvariant();
-						if (ext == ".txt")
-						{
-							try
-							{
-								var pt = File.ReadAllText(pPath).Trim();
-								if (!string.IsNullOrEmpty(pt))
-								{
-									var pl = new Label();
-									pl.Text = pt;
-									pl.HorizontalAlignment = HorizontalAlignment.Center;
-									pl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-									pl.AddThemeFontSizeOverride("font_size", FontBodyPx - 1);
-									pl.AddThemeColorOverride("font_color", new Color(0.82f, 0.88f, 0.95f));
-									pl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-									inner.AddChild(pl);
-								}
-							}
-							catch
-							{
-								// ignore phonetic read errors
-							}
-						}
-					}
-				}
-
-				if (!string.IsNullOrEmpty(audioSrc))
-				{
-					var ap = ResolveImagePath(key, audioSrc);
-					var playBtn = new Button();
-					playBtn.Flat = true;
-					playBtn.Text = File.Exists(ap) ? "▶  " + audioSrc : "▶  (missing) " + audioSrc;
-					playBtn.Alignment = HorizontalAlignment.Center;
-					playBtn.AddThemeFontSizeOverride("font_size", FontLinkPx);
-					var captured = ap;
-					playBtn.Pressed += () => TryPlayAudioFile(captured);
-					playBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-					inner.AddChild(playBtn);
-				}
-
-				var relatedKeys = new System.Collections.Generic.List<string>();
-				if (d.ContainsKey("related_to") && d["related_to"].VariantType == Variant.Type.Array)
-				{
-					foreach (Variant rv in d["related_to"].AsGodotArray())
-					{
-						if (rv.VariantType != Variant.Type.String)
-							continue;
-						var rk = rv.AsString().Trim();
-						if (!string.IsNullOrEmpty(rk))
-							relatedKeys.Add(rk);
-					}
-				}
-
-				if (relatedKeys.Count > 0)
-				{
-					var relLbl = new Label();
-					relLbl.Text = "Related";
-					relLbl.AddThemeFontSizeOverride("font_size", FontBodyPx - 2);
-					relLbl.AddThemeColorOverride("font_color", new Color(0.7f, 0.65f, 0.58f));
-					inner.AddChild(relLbl);
-
-					var flow = new VBoxContainer();
-					flow.AddThemeConstantOverride("separation", 4);
-					foreach (var rk in relatedKeys)
-					{
-						var rb = new Button();
-						rb.Text = rk;
-						rb.Flat = true;
-						rb.Alignment = HorizontalAlignment.Left;
-						rb.AddThemeFontSizeOverride("font_size", FontLinkPx);
-						rb.AddThemeColorOverride("font_color", new Color(0.627f, 0.769f, 1f));
-						rb.AddThemeColorOverride("font_hover_color", new Color(0.78f, 0.86f, 1f));
-						rb.AddThemeColorOverride("font_pressed_color", new Color(0.48f, 0.62f, 0.95f));
-						var navK = rk;
-						rb.Pressed += () => RequestFocusNavigation(navK);
-						rb.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-						flow.AddChild(rb);
-					}
-					inner.AddChild(flow);
-				}
-
-				cardVBox.AddChild(frame);
-				_stack.AddChild(cardVBox);
-				continue;
-			}
-
-			var txt = d.ContainsKey("text") ? d["text"].AsString() : "";
-			var textKindRaw = d.ContainsKey("textKind") ? d["textKind"].AsString() : "text";
-			var kindCaption = ViewerLabelForTextKind(textKindRaw);
-			if (!string.IsNullOrEmpty(kindCaption))
-			{
-				var kindLbl = new RichTextLabel();
-				kindLbl.BbcodeEnabled = false;
-				kindLbl.FitContent = true;
-				kindLbl.ScrollActive = false;
-				kindLbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-				kindLbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
-				kindLbl.Text = kindCaption;
-				kindLbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-				_stack.AddChild(kindLbl);
-			}
-
-			var lbl = new RichTextLabel();
-			lbl.BbcodeEnabled = true;
-			lbl.FitContent = true;
-			lbl.ScrollActive = false;
-			lbl.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-			lbl.AddThemeFontSizeOverride("font_size", FontBodyPx);
-			lbl.Text = StripDangerousBbcode(txt);
-			lbl.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-			_stack.AddChild(lbl);
-		}
 		}
 
 		var backTarget = ResolveBackTargetForNavigation(key, parentKey);
@@ -798,8 +634,8 @@ public partial class ViewerService : CanvasLayer
 		{
 			var backBtn = new Button();
 			backBtn.Text = string.Equals(backTarget, ParcourKey, StringComparison.OrdinalIgnoreCase)
-				? "← Parcour"
-				: "← Back";
+				? GkUiLocale.BackParcour()
+				: GkUiLocale.Back();
 			backBtn.Pressed += () => BackLevelRequested?.Invoke(backTarget);
 			backBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			row.AddChild(backBtn);
@@ -808,7 +644,7 @@ public partial class ViewerService : CanvasLayer
 		if (hasEnter)
 		{
 			var enterBtn = new Button();
-			enterBtn.Text = "→ Entrar";
+			enterBtn.Text = GkUiLocale.EnterChild();
 			var warpKey = key;
 			enterBtn.Pressed += () => EnterLevelRequested?.Invoke(warpKey);
 			enterBtn.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;

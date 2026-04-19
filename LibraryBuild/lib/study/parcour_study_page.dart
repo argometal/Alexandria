@@ -19,6 +19,8 @@ String? _resolveHeroPath(String entryKey, String? bodyText) {
   final blocks = parseBody(bodyText);
   for (final b in blocks) {
     if (b['type'] != 'img') continue;
+    final role = (b['role'] ?? 'content').toString().toLowerCase().trim();
+    if (role == 'collage' || role == 'recall_crop') continue;
     final src = (b['src'] ?? '').toString().trim();
     if (src.isEmpty) continue;
     final direct = File(src);

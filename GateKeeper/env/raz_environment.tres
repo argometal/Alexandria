@@ -1,12 +1,17 @@
-[gd_resource type="Environment" format=3 uid="uid://c6rf5ntanj50u"]
+[gd_resource type="Environment" load_steps=3 format=3 uid="uid://c6rf5ntanj50u"]
 
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_c6gwx"]
-sky_top_color = Color(0.11372549, 0.11764706, 0.09411765, 1)
-sky_horizon_color = Color(0.22352941, 0.20784314, 0.16862746, 1)
-ground_bottom_color = Color(0.3019608, 0.2784314, 0.21176471, 1)
+[ext_resource type="Shader" path="res://env/alexandria_starry_sky.gdshader" id="1_starry_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_starry"]
+shader = ExtResource("1_starry_shader")
+shader_parameter/sky_top_color = Color(0.11372549, 0.11764706, 0.09411765, 1)
+shader_parameter/sky_horizon_color = Color(0.22352941, 0.20784314, 0.16862746, 1)
+shader_parameter/ground_bottom_color = Color(0.3019608, 0.2784314, 0.21176471, 1)
+shader_parameter/star_brightness = 0.7
+shader_parameter/star_twinkle = 0.09
 
 [sub_resource type="Sky" id="Sky_c6gwx"]
-sky_material = SubResource("ProceduralSkyMaterial_c6gwx")
+sky_material = SubResource("ShaderMaterial_starry")
 
 [resource]
 background_mode = 2

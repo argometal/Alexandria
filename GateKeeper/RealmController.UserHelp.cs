@@ -6,6 +6,9 @@ public partial class RealmController
 	private CanvasLayer _gkHelpLayer;
 	private Control _gkHelpRoot;
 	private bool _gkHelpOpen;
+	private Label _gkHelpTitle;
+	private Label _gkHelpBody;
+	private Button _gkHelpCloseBtn;
 
 	private void SetupGkUserHelp()
 	{
@@ -39,13 +42,12 @@ public partial class RealmController
 
 		var title = new Label
 		{
-			Text = "Alexandria — " + (System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "es"
-				? "Ayuda"
-				: "Help"),
+			Text = GkHelpTitleText(),
 			HorizontalAlignment = HorizontalAlignment.Center,
 		};
 		title.AddThemeFontSizeOverride("font_size", 18);
 		vbox.AddChild(title);
+		_gkHelpTitle = title;
 
 		var scroll = new ScrollContainer
 		{
@@ -61,12 +63,14 @@ public partial class RealmController
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 		};
 		scroll.AddChild(body);
+		_gkHelpBody = body;
 
 		var closeRow = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
 		vbox.AddChild(closeRow);
-		var closeBtn = new Button { Text = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "es" ? "Cerrar" : "Close" };
+		var closeBtn = new Button { Text = GkUiLocale.CloseTooltip() };
 		closeBtn.Pressed += () => SetGkUserHelpVisible(false);
 		closeRow.AddChild(closeBtn);
+		_gkHelpCloseBtn = closeBtn;
 
 		_gkHelpRoot = dim;
 		_gkHelpLayer.AddChild(dim);
@@ -79,6 +83,18 @@ public partial class RealmController
 			SetGkUserHelpVisible(false);
 	}
 
+	private static string GkHelpTitleText() =>
+		"Alexandria — " + (GkUiLocale.ReadGkUiLanguageCode() == "es" ? "Ayuda" : "Help");
+
+	private void RefreshGkUserHelpTexts()
+	{
+		if (_gkHelpTitle == null || _gkHelpBody == null || _gkHelpCloseBtn == null)
+			return;
+		_gkHelpTitle.Text = GkHelpTitleText();
+		_gkHelpBody.Text = AlexandriaGkUserHelpCopy.GetBody();
+		_gkHelpCloseBtn.Text = GkUiLocale.CloseTooltip();
+	}
+
 	private void SetGkUserHelpVisible(bool open)
 	{
 		if (_gkHelpRoot == null)
@@ -87,6 +103,7 @@ public partial class RealmController
 		_gkHelpRoot.Visible = open;
 		if (open)
 		{
+			RefreshGkUserHelpTexts();
 			if (_gkMenuOpen)
 				SetGkMenuVisible(false);
 			Input.MouseMode = Input.MouseModeEnum.Visible;

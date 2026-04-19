@@ -198,6 +198,7 @@ ORDER BY seq ASC, key ASC
     if (blocks.isEmpty) return raw?.trim().isNotEmpty == true ? raw!.trim() : '—';
     final buf = StringBuffer();
     for (final b in blocks) {
+      if (shouldOmitFromLocusReadingExport(b)) continue;
       final t = (b['type'] ?? 'p').toString();
       if (t == 'img') {
         buf.writeln('[imagen: ${b['src']}]');

@@ -817,56 +817,41 @@ public partial class Spawner : Node3D
 	{
 		if (GetLayoutMode() == "MAZE")
 		{
-			if (_mazeExpandedFramePositions != null && _mazeExpandedFramePositions.Length >= FrameSlotCount)
-			{
-				var flatC = new Vector2(camGlobalPos.X, camGlobalPos.Z);
-				var best = 0;
-				var bestD2 = float.MaxValue;
-				for (var s = 0; s < FrameSlotCount; s++)
-				{
-					var p = _mazeExpandedFramePositions[s];
-					var d2 = flatC.DistanceSquaredTo(new Vector2(p.X, p.Z));
-					if (d2 < bestD2)
-					{
-						bestD2 = d2;
-						best = s;
-					}
-				}
-				return best;
-			}
-
-			var bestM = 0;
-			var bestD2m = float.MaxValue;
-			var flatCm = new Vector2(camGlobalPos.X, camGlobalPos.Z);
+			var flatC = new Vector2(camGlobalPos.X, camGlobalPos.Z);
+			var best = 0;
+			var bestD2 = float.MaxValue;
 			for (var s = 0; s < FrameSlotCount; s++)
 			{
-				var p = GetPositionFromSeq(s);
-				var d2 = flatCm.DistanceSquaredTo(new Vector2(p.X, p.Z));
-				if (d2 < bestD2m)
+				var camAt = ComputeCameraGlobalPositionForParcourSeq(s);
+				var d2 = flatC.DistanceSquaredTo(new Vector2(camAt.X, camAt.Z));
+				if (d2 < bestD2)
 				{
-					bestD2m = d2;
-					bestM = s;
+					bestD2 = d2;
+					best = s;
 				}
 			}
-			return bestM;
+
+			return best;
 		}
 
 		if (GetLayoutMode() == "CORRIDOR_Z")
 		{
 			if (!_corridorLayoutBuilt)
 				RebuildCorridorZLayout(EmptyKeysCorridor());
-			var zMarcoEst = camGlobalPos.Z + CameraStandoffFromFrameMeters;
+			var flatC = new Vector2(camGlobalPos.X, camGlobalPos.Z);
 			var best = 0;
-			var bestAbs = float.MaxValue;
+			var bestD2 = float.MaxValue;
 			for (var s = 0; s < FrameSlotCount; s++)
 			{
-				var d = Mathf.Abs(_frameZPositions[s] - zMarcoEst);
-				if (d < bestAbs)
+				var camAt = ComputeCameraGlobalPositionForParcourSeq(s);
+				var d2 = flatC.DistanceSquaredTo(new Vector2(camAt.X, camAt.Z));
+				if (d2 < bestD2)
 				{
-					bestAbs = d;
+					bestD2 = d2;
 					best = s;
 				}
 			}
+
 			return best;
 		}
 
@@ -1238,8 +1223,11 @@ public partial class Spawner : Node3D
 		GD.Print($"[SPAWNER][CAMERA_RESTORE] context_key={contextKey} seq={seq} pos={cam.GlobalPosition} layout={layout}");
 	}
 
-	/// <summary>Coloca la cámara frente al marco <paramref name="seq"/> (0..<see cref="FrameSlotCount"/>-1), coherente con restore tras snapshot.</summary>
-	private void PositionCameraAtParcourSeq(CameraRig cam, int seq)
+	/// <summary>
+	/// Posición global de cámara frente al marco <paramref name="seq"/> — misma geometría que <see cref="PositionCameraAtParcourSeq"/>.
+	/// Usada para <see cref="ResolveNearestFrameSeqFromCameraPosition"/> (antes se comparaba solo el centro del marco y el índice se quedaba “pegado”).
+	/// </summary>
+	private Vector3 ComputeCameraGlobalPositionForParcourSeq(int seq)
 	{
 		if (seq < 0)
 			seq = 0;
@@ -1267,7 +1255,18 @@ public partial class Spawner : Node3D
 		var camX = GetLayoutMode() == "CORRIDOR_Z"
 			? CorridorCameraRigX + CorridorCameraLateralAwayFromWallX
 			: pos.X;
-		cam.GlobalPosition = new Vector3(camX, 0f, pos.Z);
+		return new Vector3(camX, 0f, pos.Z);
+	}
+
+	/// <summary>Coloca la cámara frente al marco <paramref name="seq"/> (0..<see cref="FrameSlotCount"/>-1), coherente con restore tras snapshot.</summary>
+	private void PositionCameraAtParcourSeq(CameraRig cam, int seq)
+	{
+		if (seq < 0)
+			seq = 0;
+		if (seq >= FrameSlotCount)
+			seq = FrameSlotCount - 1;
+
+		cam.GlobalPosition = ComputeCameraGlobalPositionForParcourSeq(seq);
 
 		var layout = GetLayoutMode();
 		if (layout == "MAZE" && _mazeExpandedFramePositions != null)
@@ -1298,6 +1297,40 @@ public partial class Spawner : Node3D
 			return "";
 		var ft = fc.GetChild(s) as FrameTemplate;
 		return ft?.GetLocusKey() ?? "";
+	}
+
+	/// <summary>Tras <see cref="PlaceRecallSessionState.ClearSession"/>: reaplica estado locked/unlocked en todos los marcos.</summary>
+	public void RefreshAllPlaceRecallVisuals()
+	{
+		if (_framesRoot == null)
+			return;
+		var fc = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
+		if (fc == null)
+			return;
+		for (var i = 0; i < fc.GetChildCount(); i++)
+		{
+			if (fc.GetChild(i) is FrameTemplate ft)
+				ft.RefreshPlaceRecallVisual();
+		}
+	}
+
+	/// <summary>Tras desbloquear place recall en sesión: quita degradado del hero en el marco 3D.</summary>
+	public void RefreshPlaceRecallVisualForKey(string entryKey)
+	{
+		if (_framesRoot == null || string.IsNullOrEmpty(entryKey))
+			return;
+		var fc = _framesRoot.GetNodeOrNull<Node3D>("FramesContainer");
+		if (fc == null)
+			return;
+		for (var i = 0; i < fc.GetChildCount(); i++)
+		{
+			if (fc.GetChild(i) is not FrameTemplate ft)
+				continue;
+			if (!string.Equals(ft.GetLocusKey(), entryKey, StringComparison.OrdinalIgnoreCase))
+				continue;
+			ft.RefreshPlaceRecallVisual();
+			return;
+		}
 	}
 
 	/// <summary>Desatasco: salta al marco del parcour; actualiza sesión, <c>current_seq.txt</c> y <c>focus_key</c> si hay locus.</summary>

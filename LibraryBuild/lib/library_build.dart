@@ -4,9 +4,12 @@ import 'dart:math' as math;
 import 'package:sqlite3/sqlite3.dart';
 
 import 'alexandria_paths.dart';
+import 'app_locale_preferences.dart';
 import 'fts_object_search.dart';
 import 'parcour_review.dart';
+import 'pao/pao_phonetic_store.dart';
 import 'pao/pao_standard_store.dart';
+import 'poker_memory/poker_memory_store.dart';
 
 export 'locus_review_metrics.dart';
 export 'study/study_utils.dart' show isRealmActiveLocus;
@@ -17,10 +20,14 @@ export 'parcour_review.dart'
         computeCanonicalParcourScores,
         computeRealmCompletionForParcour,
         ensureParcourReviewSchema,
+        formatParcourDueSoft,
         formatParcourReviewOneLine,
         isLocusEligibleForParcourReview,
+        kParcourFibDays,
         kParcourHubKey,
-        kParcourPassNorm,
+        currentParcourPassNormSync,
+        kParcourPassNormAthlete,
+        kParcourPassNormStandard,
         kParcourStrongFailNorm,
         latestParcourRatingByLocus,
         listHubParcourKeys,
@@ -33,17 +40,54 @@ export 'parcour_review.dart'
         ParcourReviewUiSummary,
         writeParcourReviewBridgeSummary;
 export 'fts_object_search.dart' show rebuildEntriesFts5, UsageBand;
+export 'pao/pao_phonetic_store.dart'
+    show
+        PaoPhoneticRow,
+        ensurePaoPhoneticSchema,
+        loadPaoPhoneticMerged,
+        upsertPaoPhonetic;
 export 'pao/pao_standard_store.dart'
     show
+        PaoCodeTier,
         PaoStandardRow,
-        ensurePaoStandardSchema,
+        emptyPaoLibraryJsonMapV2,
         emptyPaoStandardJsonMap,
+        ensurePaoStandardSchema,
+        exportPaoLibraryJsonV2,
         exportPaoStandardCsv,
         exportPaoStandardJson,
+        importPaoJsonAuto,
+        importPaoLibraryFromJsonString,
         importPaoStandardFromJsonString,
+        kPaoLibrarySchemaVersion,
+        loadPaoDigitMerged,
         loadPaoStandardMerged,
+        loadPaoTripleMerged,
         missingPaoJsonKeys,
+        paoCodeIsValid,
+        paoTierForCode,
         upsertPaoStandard;
+export 'poker_memory/poker_memory_store.dart'
+    show
+        PokerCardRef,
+        PokerNumberCardMapping,
+        PokerSuitRange,
+        buildPokerMappingTable,
+        cardForNumber,
+        ensurePokerMemorySchema,
+        formatPokerCardShort,
+        formatPokerNumberForDisplay,
+        kPokerRanksPerSuit,
+        kPokerSuitClubs,
+        kPokerSuitDiamonds,
+        kPokerSuitHearts,
+        kPokerSuitSpades,
+        loadPokerMemoryRanges,
+        numberForCard,
+        pokerRankChar,
+        pokerSuitSymbol,
+        savePokerMemoryRanges,
+        validatePokerRanges;
 
 /// [Cambio 341] Evita re-escritura de viewer si el foco (dual bridge) no cambió.
 String? _lastViewerKey;
@@ -183,9 +227,51 @@ void ensureDualBridgeDefaults() {
       intent.writeAsStringSync('explore');
       print('[LB][BRIDGE_DEFAULT] navigation_intent.txt → explore');
     }
+    final placeRecall = File(AlexandriaPaths.placeRecallEnabledPath);
+    if (!placeRecall.existsSync()) {
+      placeRecall.writeAsStringSync('0');
+      print('[LB][BRIDGE_DEFAULT] place_recall_enabled.txt → 0');
+    }
+    final memAth = File(AlexandriaPaths.memoryAthleteModePath);
+    if (!memAth.existsSync()) {
+      memAth.writeAsStringSync('1');
+      print('[LB][BRIDGE_DEFAULT] memory_athlete_mode.txt → 1');
+    }
+    final gkLang = File(AlexandriaPaths.gkUiLangPath);
+    if (!gkLang.existsSync()) {
+      gkLang.writeAsStringSync('en\n');
+      print('[LB][BRIDGE_DEFAULT] gk_ui_lang.txt → en');
+    }
   } catch (e) {
     print('[LB][BRIDGE_DEFAULT_ERR] $e');
   }
+}
+
+/// Syncs GateKeeper UI language (`bridge/gk_ui_lang.txt`) with Library Build preference.
+/// Values: `en`, `es`, `pt`. `null` or empty saved preference → `en` (default English for GK).
+void writeGkUiLangBridge(String? languageCode) {
+  try {
+    final f = File(AlexandriaPaths.gkUiLangPath);
+    f.parent.createSync(recursive: true);
+    String normalized;
+    if (languageCode == null || languageCode.isEmpty) {
+      normalized = 'en';
+    } else {
+      final two = languageCode.length >= 2
+          ? languageCode.toLowerCase().substring(0, 2)
+          : 'en';
+      normalized = (two == 'es' || two == 'pt') ? two : 'en';
+    }
+    f.writeAsStringSync('$normalized\n');
+  } catch (e) {
+    print('[LB][GK_UI_LANG_ERR] $e');
+  }
+}
+
+/// Writes [gk_ui_lang.txt] from saved app locale (e.g. after realm switch or startup).
+Future<void> syncGkUiLangBridgeFromPreference() async {
+  final code = await AppLocalePreferences.loadSavedLanguageCode();
+  writeGkUiLangBridge(code);
 }
 
 /// Solo `context_key.txt`. Sin `open_key`. Ausente o vacío → lógica `ROOT` (snapshot parent).
@@ -351,6 +437,29 @@ void _ensureMatchCardsSchema(Database db) {
       'ALTER TABLE lb_match_pair_fsrs_state ADD COLUMN fib_index INTEGER NOT NULL DEFAULT 0',
     );
   }
+  if (!fsrsCols.contains('fail_count')) {
+    db.execute(
+      'ALTER TABLE lb_match_pair_fsrs_state ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+  if (!fsrsCols.contains('pass_count')) {
+    db.execute(
+      'ALTER TABLE lb_match_pair_fsrs_state ADD COLUMN pass_count INTEGER NOT NULL DEFAULT 0',
+    );
+  }
+}
+
+/// Progreso de problemas Go 9×9 (catálogo integrado o futuros packs); tablas mínimas.
+void _ensureGoStudySchema(Database db) {
+  db.execute('''
+    CREATE TABLE IF NOT EXISTS lb_go_problem_progress (
+      problem_id TEXT PRIMARY KEY,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      success_count INTEGER NOT NULL DEFAULT 0,
+      last_played_at TEXT,
+      mastered INTEGER NOT NULL DEFAULT 0
+    )
+  ''');
 }
 
 void _ensureLocusReviewSchema(Database db) {
@@ -424,6 +533,9 @@ void ensureLibrarySchema(Database db) {
       "ALTER TABLE entries ADD COLUMN spatial_turn TEXT",
     );
   }
+  if (!names.contains('place_recall_active')) {
+    db.execute('ALTER TABLE entries ADD COLUMN place_recall_active INTEGER');
+  }
 
   db.execute('''
 CREATE TABLE IF NOT EXISTS review_events (
@@ -440,8 +552,11 @@ CREATE TABLE IF NOT EXISTS review_events (
 ''');
   _ensureLocusReviewSchema(db);
   _ensureMatchCardsSchema(db);
+  ensurePokerMemorySchema(db);
+  _ensureGoStudySchema(db);
   ensureParcourReviewSchema(db);
   ensurePaoStandardSchema(db);
+  ensurePaoPhoneticSchema(db);
   // Filas sin rol (legacy o INSERT sin columna): default `'object'`; no afecta snapshot/viewer.
   db.execute(
     "UPDATE entries SET cognitiveRole = 'object' WHERE cognitiveRole IS NULL OR TRIM(COALESCE(cognitiveRole, '')) = ''",
@@ -1199,7 +1314,9 @@ List<Map<String, dynamic>> parseBody(String? raw) {
         final src = (m['src'] ?? m['assetKey'] ?? '').toString();
         final roleRaw =
             (m['role'] ?? m['imgRole'] ?? 'content').toString().toLowerCase().trim();
-        final role = (roleRaw == 'hero' || roleRaw == 'collage')
+        final role = (roleRaw == 'hero' ||
+                roleRaw == 'collage' ||
+                roleRaw == 'recall_crop')
             ? roleRaw
             : 'content';
         out.add({'type': 'img', 'src': src, 'role': role});
@@ -1279,9 +1396,18 @@ List<Map<String, dynamic>> parseBody(String? raw) {
   }
 }
 
+/// Imágenes `recall_crop`: solo para el quiz place recall en el visor 3D. Omitir en
+/// lector de nodo, PDF y vistas de lectura; el editor y el estudio por parcour siguen
+/// usando el cuerpo completo.
+bool shouldOmitFromLocusReadingExport(Map<String, dynamic> b) {
+  if ((b['type'] ?? 'p').toString() != 'img') return false;
+  final role = (b['role'] ?? 'content').toString().toLowerCase().trim();
+  return role == 'recall_crop';
+}
+
 /// Ruta de archivo para miniatura en listas / búsqueda de objetos: bloque `img` con
 /// `role: hero`, luego `hero.*` en `assets/<key>/`, y como último recurso la primera
-/// `img` cuyo rol **no** sea `collage` (las collage son solo pared GK, no marco lista).
+/// `img` cuyo rol **no** sea `collage` ni `recall_crop` (pared GK / quiz LB).
 String? resolveListHeroThumbPath(String entryKey, String? bodyText) {
   final sep = Platform.pathSeparator;
   final baseDir = Directory('${AlexandriaPaths.assetsRoot}$sep$entryKey');
@@ -1316,7 +1442,7 @@ String? resolveListHeroThumbPath(String entryKey, String? bodyText) {
   for (final b in blocks) {
     if (b['type'] != 'img') continue;
     final role = (b['role'] ?? 'content').toString().toLowerCase().trim();
-    if (role == 'collage') continue;
+    if (role == 'collage' || role == 'recall_crop') continue;
     final src = (b['src'] ?? '').toString().trim();
     final p = resolveSrc(src);
     if (p != null) return p;
@@ -1513,6 +1639,64 @@ Map<String, dynamic> _snapshotEnvelope(String contextKey, List<Map<String, dynam
   };
 }
 
+String? _recallCropSrcFromParsedBody(List<Map<String, dynamic>> fullBody) {
+  for (final b in fullBody) {
+    if (b['type'] != 'img') continue;
+    final r = (b['role'] ?? '').toString().toLowerCase().trim();
+    if (r == 'recall_crop') {
+      final s = (b['src'] ?? '').toString().trim();
+      if (s.isNotEmpty) return s;
+    }
+  }
+  return null;
+}
+
+/// Cuatro opciones (1 correcta + 3 distractores del mismo parcour) para GateKeeper; vacío si faltan archivos.
+List<Map<String, dynamic>> _buildRecallCropQuizOptions(
+  Database db,
+  String focusKey,
+  String parentKey,
+  String currentSrc,
+) {
+  if (focusKey.isEmpty || parentKey.isEmpty || currentSrc.isEmpty) return [];
+  final sep = Platform.pathSeparator;
+  final assetsRoot = AlexandriaPaths.assetsRoot;
+
+  bool fileOk(String ek, String src) {
+    if (ek.isEmpty || src.isEmpty) return false;
+    final normalized = src.replaceAll('/', sep);
+    final f = File('$assetsRoot$sep$ek$sep$normalized');
+    return f.existsSync();
+  }
+
+  if (!fileOk(focusKey, currentSrc)) return [];
+
+  final rows = db.select(
+    'SELECT key, body_text FROM entries WHERE parentKey = ? AND key != ?',
+    [parentKey, focusKey],
+  );
+  final distractors = <({String k, String s})>[];
+  for (final r in rows) {
+    final k = r['key']?.toString().trim() ?? '';
+    if (k.isEmpty) continue;
+    final parsed = parseBody(r['body_text']?.toString());
+    final src = _recallCropSrcFromParsedBody(parsed);
+    if (src == null || src.isEmpty) continue;
+    if (!fileOk(k, src)) continue;
+    distractors.add((k: k, s: src));
+  }
+  distractors.shuffle(math.Random());
+  if (distractors.length < 3) return [];
+  final picked = distractors.sublist(0, 3);
+  final out = <Map<String, dynamic>>[
+    {'entryKey': focusKey, 'src': currentSrc, 'correct': true},
+    for (final d in picked)
+      {'entryKey': d.k, 'src': d.s, 'correct': false},
+  ];
+  out.shuffle(math.Random());
+  return out;
+}
+
 Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
   if (focusKey.isEmpty) {
     return {
@@ -1534,11 +1718,12 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
   }
 
   final rows = db.select(
-    'SELECT body_text, next_review_at, memory_strength, stability_days, recall_score, review_count, success_count, failure_count, cognitiveRole FROM entries WHERE key = ? LIMIT 1',
+    'SELECT body_text, next_review_at, memory_strength, stability_days, recall_score, review_count, success_count, failure_count, cognitiveRole, COALESCE(place_recall_active, 0) AS place_recall_active FROM entries WHERE key = ? LIMIT 1',
     [focusKey],
   );
 
   var body = <Map<String, dynamic>>[];
+  var fullParsed = <Map<String, dynamic>>[];
   String nextReviewAt = '';
   String cognitiveRole = '';
   double memoryStrength = 0.0;
@@ -1547,9 +1732,15 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
   int reviewCount = 0;
   int successCount = 0;
   int failureCount = 0;
+  var placeRecallActive = false;
   if (rows.isNotEmpty) {
     final raw = rows.first['body_text'] as String?;
-    body = parseBody(raw);
+    fullParsed = parseBody(raw);
+    body = fullParsed.where((b) {
+      if (b['type'] != 'img') return true;
+      final r = (b['role'] ?? 'content').toString().toLowerCase().trim();
+      return r != 'collage' && r != 'recall_crop';
+    }).toList();
     nextReviewAt = rows.first['next_review_at']?.toString() ?? '';
     cognitiveRole = rows.first['cognitiveRole']?.toString().trim() ?? '';
     memoryStrength = _asDouble(rows.first['memory_strength'], 0.0);
@@ -1558,6 +1749,7 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
     reviewCount = _asInt(rows.first['review_count'], 0);
     successCount = _asInt(rows.first['success_count'], 0);
     failureCount = _asInt(rows.first['failure_count'], 0);
+    placeRecallActive = _asInt(rows.first['place_recall_active'], 0) != 0;
   }
 
   final assetsList = <Map<String, dynamic>>[];
@@ -1595,6 +1787,17 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
     parentKey = parentRows.first['parentKey'].toString();
   }
 
+  var recallCropSrc = '';
+  var recallCropQuiz = <Map<String, dynamic>>[];
+  final extractedCrop = _recallCropSrcFromParsedBody(fullParsed);
+  if (extractedCrop != null &&
+      extractedCrop.isNotEmpty &&
+      parentKey.isNotEmpty) {
+    recallCropSrc = extractedCrop;
+    final q = _buildRecallCropQuizOptions(db, focusKey, parentKey, extractedCrop);
+    if (q.length >= 4) recallCropQuiz = q;
+  }
+
   return {
     'key': focusKey,
     'parentKey': parentKey,
@@ -1609,6 +1812,9 @@ Map<String, dynamic> _buildViewerPayload(Database db, String focusKey) {
     'reviewCount': reviewCount,
     'successCount': successCount,
     'failureCount': failureCount,
+    'placeRecallActive': placeRecallActive,
+    'recallCropSrc': recallCropSrc,
+    'recallCropQuiz': recallCropQuiz,
     'version': DateTime.now().millisecondsSinceEpoch,
   };
 }
@@ -1955,6 +2161,7 @@ void applyRealmSeedSanitization(Database db) {
   ensureLibrarySchema(db);
   ensureParcourReviewSchema(db);
   ensurePaoStandardSchema(db);
+  ensurePaoPhoneticSchema(db);
   _stripUserFacingData(db);
   if (_tableExists(db, 'parcour_review_session_loci')) {
     db.execute('DELETE FROM parcour_review_session_loci');
@@ -1968,6 +2175,13 @@ void applyRealmSeedSanitization(Database db) {
   if (_tableExists(db, 'pao_standard')) {
     db.execute('DELETE FROM pao_standard');
   }
+  if (_tableExists(db, 'pao_phonetic')) {
+    db.execute('DELETE FROM pao_phonetic');
+  }
+  if (_tableExists(db, 'lb_poker_memory_ranges')) {
+    db.execute('DELETE FROM lb_poker_memory_ranges');
+  }
+  ensurePokerMemorySchema(db);
   rebuildEntriesFts5(db);
 }
 
@@ -2075,8 +2289,150 @@ void _deleteDirectoryRecursiveSync(Directory dir) {
   } catch (_) {}
 }
 
+/// Copia tablas PAO + Match cards desde [backupDbPath] hacia [targetDbPath] (realm nuevo).
+void _mergePreservedLibraryTrainingDataSync(String targetDbPath, String backupDbPath) {
+  if (!File(backupDbPath).existsSync()) return;
+  final db = sqlite3.open(targetDbPath);
+  try {
+    db.execute('PRAGMA foreign_keys = OFF');
+    final esc = backupDbPath.replaceAll('\\', '/').replaceAll("'", "''");
+    db.execute("ATTACH '$esc' AS _pres");
+    bool hasPres(String t) {
+      final r = db.select(
+        "SELECT 1 FROM _pres.sqlite_master WHERE type='table' AND name=? LIMIT 1",
+        [t],
+      );
+      return r.isNotEmpty;
+    }
+    if (hasPres('lb_match_pair_fsrs_state')) {
+      db.execute('DELETE FROM lb_match_pair_fsrs_state');
+    }
+    if (hasPres('lb_match_pairs')) {
+      db.execute('DELETE FROM lb_match_pairs');
+    }
+    if (hasPres('lb_match_decks')) {
+      db.execute('DELETE FROM lb_match_decks');
+    }
+    if (hasPres('pao_standard')) {
+      db.execute('DELETE FROM pao_standard');
+    }
+    if (hasPres('pao_phonetic')) {
+      db.execute('DELETE FROM pao_phonetic');
+    }
+    if (hasPres('lb_match_decks')) {
+      db.execute('INSERT INTO lb_match_decks SELECT * FROM _pres.lb_match_decks');
+    }
+    if (hasPres('lb_match_pairs')) {
+      db.execute('INSERT INTO lb_match_pairs SELECT * FROM _pres.lb_match_pairs');
+    }
+    if (hasPres('lb_match_pair_fsrs_state')) {
+      db.execute(
+        'INSERT INTO lb_match_pair_fsrs_state SELECT * FROM _pres.lb_match_pair_fsrs_state',
+      );
+    }
+    if (hasPres('pao_standard')) {
+      db.execute('INSERT INTO pao_standard SELECT * FROM _pres.pao_standard');
+    }
+    if (hasPres('pao_phonetic')) {
+      db.execute('INSERT INTO pao_phonetic SELECT * FROM _pres.pao_phonetic');
+    }
+    db.execute('DETACH DATABASE _pres');
+    db.execute('PRAGMA foreign_keys = ON');
+  } catch (e, st) {
+    print('[LB][NUCLEAR_MERGE] $e\n$st');
+    try {
+      db.execute('DETACH DATABASE _pres');
+    } catch (_) {}
+  } finally {
+    db.dispose();
+  }
+}
+
+void _nuclearRestorePreservedTrainingData(Directory staging) {
+  final sep = Platform.pathSeparator;
+  final backupDb = File('${staging.path}${sep}preserved.sqlite');
+  final matchStaging = Directory('${staging.path}${sep}lb_match_cards');
+  if (backupDb.existsSync()) {
+    _mergePreservedLibraryTrainingDataSync(AlexandriaPaths.dbPath, backupDb.path);
+  }
+  if (matchStaging.existsSync()) {
+    final dst = Directory('${AlexandriaPaths.assetsRoot}${sep}lb_match_cards');
+    if (dst.existsSync()) {
+      _deleteDirectoryRecursiveSync(dst);
+    }
+    AlexandriaPaths.copyDirectoryTreeContents(matchStaging, dst);
+  }
+  try {
+    _deleteDirectoryRecursiveSync(staging);
+  } catch (_) {}
+}
+
+/// Quita JSON de usuario en `data/pao/` (conserva `*.template.json` y nombres con `.template.`).
+void _pruneNonTemplatePaoDatasetJsonFilesSync() {
+  final dir = Directory(AlexandriaPaths.paoDatasetDir);
+  if (!dir.existsSync()) return;
+  for (final e in dir.listSync()) {
+    if (e is! File) continue;
+    final name = e.path.split(Platform.pathSeparator).last;
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.template.json')) continue;
+    if (lower.contains('.template.')) continue;
+    if (!lower.endsWith('.json')) continue;
+    try {
+      e.deleteSync();
+    } catch (_) {}
+  }
+}
+
+/// Limpia tablas PAO en la DB del realm activo y JSON opcional en `data/pao/`.
+void performPaoLibraryDataCleanupSync() {
+  final p = AlexandriaPaths.dbPath;
+  if (!File(p).existsSync()) return;
+  final db = sqlite3.open(p);
+  try {
+    ensureLibrarySchema(db);
+    if (_tableExists(db, 'pao_standard')) {
+      db.execute('DELETE FROM pao_standard');
+    }
+    if (_tableExists(db, 'pao_phonetic')) {
+      db.execute('DELETE FROM pao_phonetic');
+    }
+  } finally {
+    db.dispose();
+  }
+  _pruneNonTemplatePaoDatasetJsonFilesSync();
+}
+
+/// Limpia Match cards en la DB del realm activo y `assets/lb_match_cards/`.
+void performMatchCardsLibraryDataCleanupSync() {
+  final p = AlexandriaPaths.dbPath;
+  if (!File(p).existsSync()) return;
+  final db = sqlite3.open(p);
+  try {
+    ensureLibrarySchema(db);
+    if (_tableExists(db, 'lb_match_pair_fsrs_state')) {
+      db.execute('DELETE FROM lb_match_pair_fsrs_state');
+    }
+    if (_tableExists(db, 'lb_match_pairs')) {
+      db.execute('DELETE FROM lb_match_pairs');
+    }
+    if (_tableExists(db, 'lb_match_decks')) {
+      db.execute('DELETE FROM lb_match_decks');
+    }
+    ensureLibrarySchema(db);
+  } finally {
+    db.dispose();
+  }
+  final sep = Platform.pathSeparator;
+  final d = Directory('${AlexandriaPaths.assetsRoot}${sep}lb_match_cards');
+  if (d.existsSync()) {
+    _deleteDirectoryRecursiveSync(d);
+  }
+}
+
 /// Borra **toda** la data bajo `data/`: `realms/`, `realm_shelf.json`.
-/// Conserva `data/pao/` (plantilla PAO del repo).
+/// **No** borra `data/pao/` en disco; las tablas PAO y Match cards del realm activo se **preservan**
+/// en la nueva `data/realms/default/alexandria.db` (y las imágenes en `assets/lb_match_cards/`).
 /// Deja `active_realm.txt` → `default` y `data/realms/default/alexandria.db` con esqueleto ORM ([kAlexandriaHomogeneousEntryCount] nodos, sin datos de usuario).
 /// Cierra cualquier conexión SQLite a ese archivo en el proceso **antes** de llamar.
 /// Si aún no existe `data/realms/default/alexandria.db` y hay plantilla en [AlexandriaPaths.bundledDefaultRealmRoot], copia todo el árbol (imágenes, snapshot, etc.).
@@ -2098,6 +2454,29 @@ void ensureDefaultRealmOnDiskFromBundledTemplateSync() {
 void performAlexandriaNuclearDataResetSync() {
   final sep = Platform.pathSeparator;
   final repo = AlexandriaPaths.repoRoot;
+  final staging = Directory('$repo${sep}data${sep}.lb_nuclear_preserve');
+  if (staging.existsSync()) {
+    _deleteDirectoryRecursiveSync(staging);
+  }
+  staging.createSync(recursive: true);
+  final backupDb = File('${staging.path}${sep}preserved.sqlite');
+  final currentDbPath = AlexandriaPaths.dbPath;
+  if (File(currentDbPath).existsSync()) {
+    try {
+      File(currentDbPath).copySync(backupDb.path);
+    } catch (e) {
+      print('[LB][NUCLEAR_BACKUP_DB] $e');
+    }
+  }
+  final activeBefore = AlexandriaPaths.readActiveRealmId();
+  final matchSrc = Directory(
+    '${AlexandriaPaths.realmDataRoot(activeBefore)}${sep}assets${sep}lb_match_cards',
+  );
+  final matchStaging = Directory('${staging.path}${sep}lb_match_cards');
+  if (matchSrc.existsSync()) {
+    AlexandriaPaths.copyDirectoryTreeContents(matchSrc, matchStaging);
+  }
+
   final dataDir = Directory('$repo${sep}data');
   final realmsDir = Directory('$repo${sep}data${sep}realms');
   if (realmsDir.existsSync()) {
@@ -2117,9 +2496,10 @@ void performAlexandriaNuclearDataResetSync() {
   final bundledDb = File('${bundledRoot.path}${sep}alexandria.db');
   if (bundledRoot.existsSync() && bundledDb.existsSync()) {
     AlexandriaPaths.copyDirectoryTreeContents(bundledRoot, realmRoot);
+    _nuclearRestorePreservedTrainingData(staging);
     copyActiveRealmDbToRealmSeedSnapshotSync();
     print(
-      '[LB][NUCLEAR] default from bundled_default_realm + realm_seed; active_realm=default',
+      '[LB][NUCLEAR] default from bundled_default_realm + realm_seed; active_realm=default (PAO/Match preserved)',
     );
     return;
   }
@@ -2136,7 +2516,10 @@ void performAlexandriaNuclearDataResetSync() {
   } finally {
     db.dispose();
   }
+  _nuclearRestorePreservedTrainingData(staging);
   copyActiveRealmDbToRealmSeedSnapshotSync();
-  print('[LB][NUCLEAR] reset: default/alexandria.db + data/realm_seed/alexandria.db + active_realm=default');
+  print(
+    '[LB][NUCLEAR] reset: default/alexandria.db + data/realm_seed/alexandria.db + active_realm=default (PAO/Match preserved)',
+  );
 }
 

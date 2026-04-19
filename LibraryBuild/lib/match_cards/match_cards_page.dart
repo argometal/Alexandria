@@ -64,10 +64,17 @@ bool _isImagePathAllowed(String path) {
 }
 
 /// Lista de pares imagen ↔ texto y acceso a sesión de emparejamiento (solo LB).
+///
+/// [embedded]: si es true, no usa [Scaffold] propio (cabecera + FAB van dentro del padre, p. ej. [LbHome]).
 class MatchCardsPage extends StatefulWidget {
-  const MatchCardsPage({super.key, required this.db});
+  const MatchCardsPage({
+    super.key,
+    required this.db,
+    this.embedded = false,
+  });
 
   final Database db;
+  final bool embedded;
 
   @override
   State<MatchCardsPage> createState() => _MatchCardsPageState();
@@ -264,6 +271,7 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
         builder: (_) => MatchCardsSessionPage(
           db: widget.db,
           deckId: deckId,
+          decks: _decks,
         ),
       ),
     );
@@ -501,6 +509,56 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
     }
   }
 
+  Widget _deckOverflowMenu(AppLocalizations l10n) {
+    return PopupMenuButton<String>(
+      tooltip: l10n.matchCardsDeckMenuTooltip,
+      icon: const Icon(Icons.more_vert),
+      itemBuilder: (ctx) => [
+        PopupMenuItem(
+          value: 'new',
+          child: Text(l10n.matchCardsNewDeckMenu),
+        ),
+        PopupMenuItem(
+          value: 'rename',
+          child: Text(l10n.matchCardsRenameDeckMenu),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          enabled: _decks.length > 1,
+          child: Text(l10n.matchCardsDeleteDeckMenu),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'export',
+          child: Text(l10n.matchCardsExportMenu),
+        ),
+        PopupMenuItem(
+          value: 'import',
+          child: Text(l10n.matchCardsImportMenu),
+        ),
+      ],
+      onSelected: (v) {
+        switch (v) {
+          case 'new':
+            _promptNewDeck();
+            break;
+          case 'rename':
+            _promptRenameDeck();
+            break;
+          case 'delete':
+            _confirmDeleteDeck();
+            break;
+          case 'export':
+            _exportDeck();
+            break;
+          case 'import':
+            _importDeck();
+            break;
+        }
+      },
+    );
+  }
+
   Widget _buildBodyContent(AppLocalizations l10n) {
     final lemmaCounts = _lemmaCountByNormalized();
     final filtered = _buildFilteredRows(lemmaCounts);
@@ -511,6 +569,35 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.embedded)
+          Material(
+            color: cs.surfaceContainerHighest,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.style_outlined, color: cs.primary, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n.matchCardsTitle,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  _deckOverflowMenu(l10n),
+                  if (_rows.length >= 2 && _selectedDeckId != null)
+                    TextButton(
+                      onPressed: _openSession,
+                      child: Text(l10n.matchCardsPractice),
+                    ),
+                ],
+              ),
+            ),
+          ),
         if (_decks.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -745,56 +832,33 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
           )
         : core;
 
+    final fab = FloatingActionButton.extended(
+      onPressed: _addPair,
+      icon: const Icon(Icons.add),
+      label: Text(l10n.matchCardsAddPair),
+      backgroundColor: AlexandriaLbTheme.gold.withValues(alpha: 0.92),
+      foregroundColor: AlexandriaLbTheme.stoneDeep,
+    );
+
+    if (widget.embedded) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(child: wrapped),
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: fab,
+          ),
+        ],
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(l10n.matchCardsTitle),
         actions: [
-          PopupMenuButton<String>(
-            tooltip: l10n.matchCardsDeckMenuTooltip,
-            itemBuilder: (ctx) => [
-              PopupMenuItem(
-                value: 'new',
-                child: Text(l10n.matchCardsNewDeckMenu),
-              ),
-              PopupMenuItem(
-                value: 'rename',
-                child: Text(l10n.matchCardsRenameDeckMenu),
-              ),
-              PopupMenuItem(
-                value: 'delete',
-                enabled: _decks.length > 1,
-                child: Text(l10n.matchCardsDeleteDeckMenu),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'export',
-                child: Text(l10n.matchCardsExportMenu),
-              ),
-              PopupMenuItem(
-                value: 'import',
-                child: Text(l10n.matchCardsImportMenu),
-              ),
-            ],
-            onSelected: (v) {
-              switch (v) {
-                case 'new':
-                  _promptNewDeck();
-                  break;
-                case 'rename':
-                  _promptRenameDeck();
-                  break;
-                case 'delete':
-                  _confirmDeleteDeck();
-                  break;
-                case 'export':
-                  _exportDeck();
-                  break;
-                case 'import':
-                  _importDeck();
-                  break;
-              }
-            },
-          ),
+          _deckOverflowMenu(l10n),
           if (_rows.length >= 2 && _selectedDeckId != null)
             TextButton(
               onPressed: _openSession,
@@ -803,13 +867,7 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
         ],
       ),
       body: wrapped,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addPair,
-        icon: const Icon(Icons.add),
-        label: Text(l10n.matchCardsAddPair),
-        backgroundColor: AlexandriaLbTheme.gold.withValues(alpha: 0.92),
-        foregroundColor: AlexandriaLbTheme.stoneDeep,
-      ),
+      floatingActionButton: fab,
     );
   }
 }

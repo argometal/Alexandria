@@ -180,6 +180,15 @@ class AlexandriaPaths {
   /// place / hint / ridiculous story se interpretan sobre el **Hero** de ese mismo objeto.
   static String get navigationIntentPath => '$bridgeDir/navigation_intent.txt';
 
+  /// GateKeeper: `1` / `0` — single app-wide toggle for place recall drill (written by Library Build drawer).
+  static String get placeRecallEnabledPath => '$bridgeDir/place_recall_enabled.txt';
+
+  /// `1` / `true` = umbral atleta (100% en métricas); `0` / `false` = estándar (80%).
+  static String get memoryAthleteModePath => '$bridgeDir/memory_athlete_mode.txt';
+
+  /// GateKeeper HUD / F1 help: `en` | `es` | `pt` — written by Library Build from app language; default `en`.
+  static String get gkUiLangPath => '$bridgeDir/gk_ui_lang.txt';
+
   /// Resumen de review por parcour (LB escribe; GK puede leer para color / drill-down).
   static String get parcourReviewSummaryPath =>
       '$bridgeDir/parcour_review_summary.json';

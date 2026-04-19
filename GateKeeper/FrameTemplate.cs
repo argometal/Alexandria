@@ -16,16 +16,43 @@ public partial class FrameTemplate : Node3D
 	private int _seq = 0;
 	private Label3D _label;
 	private StandardMaterial3D _materialTemplate;
+	/// <summary>Gate cognitivo: hero atenuado hasta desbloquear en sesión (place recall).</summary>
+	private bool _placeRecallLockedMode;
 
 	public void SetKey(string key)
 	{
 		_key = key;
 		GD.Print($"[FRAME][SET_KEY] key={_key}");
-		ApplyHeroMaterial();
+		RefreshPlaceRecallVisual();
 	}
 
 	/// <summary>Vuelve a leer disco (tras cambiar solo manifest/collage u otro asset sin snapshot).</summary>
-	public void RefreshHeroFromDisk() => ApplyHeroMaterial();
+	public void RefreshHeroFromDisk() => RefreshPlaceRecallVisual();
+
+	/// <summary>Recalcula si el hero debe verse atenuado (place recall locked) y reaplica material.</summary>
+	public void RefreshPlaceRecallVisual()
+	{
+		var root = AlexandriaDataRoot.RealmDataRoot;
+		if (string.IsNullOrEmpty(_key) ||
+			string.IsNullOrEmpty(root) ||
+			!BridgeSpatial.ReadPlaceRecallGloballyEnabled())
+		{
+			_placeRecallLockedMode = false;
+			ApplyHeroMaterial();
+			return;
+		}
+
+		var crop = ViewerRecallCropGk.TryReadRecallCropSrc(root, _key);
+		if (string.IsNullOrEmpty(crop))
+		{
+			_placeRecallLockedMode = false;
+			ApplyHeroMaterial();
+			return;
+		}
+
+		_placeRecallLockedMode = !PlaceRecallSessionState.IsUnlocked(_key);
+		ApplyHeroMaterial();
+	}
 
 	/// <summary>Índice de slot (0..19). Actualiza etiqueta espacial "Locus N" (N = seq + 1).</summary>
 	public void SetSeq(int seq)
@@ -66,7 +93,7 @@ public partial class FrameTemplate : Node3D
 		area.InputEvent += OnInputEvent;
 
 		GD.Print("[FRAME][READY] ClickArea active");
-		ApplyHeroMaterial();
+		RefreshPlaceRecallVisual();
 	}
 
 	private void ApplyHeroMaterial()
@@ -117,6 +144,13 @@ public partial class FrameTemplate : Node3D
 		}
 		else if (!string.IsNullOrEmpty(_key))
 			GD.Print($"[FRAME][NO_ASSETS] key={_key} (sin carpeta o sin imágenes bajo data/assets)");
+
+		if (_placeRecallLockedMode && mat.AlbedoTexture != null)
+		{
+			// Gate cognitivo: fuerte atenuación (~4× más opaca que el tinte previo) hasta desbloquear.
+			mat.AlbedoColor = new Color(0.075f, 0.075f, 0.09f);
+			mat.ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded;
+		}
 
 		mesh.MaterialOverride = mat;
 	}

@@ -130,23 +130,22 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
     }
   }
 
-  void _showPasteHelpDialog(BuildContext context) {
+  void _showLocusEditorHelpDialog(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Pegar y arrastrar'),
-        content: const SingleChildScrollView(
+        title: Text(l10n.locusEditorHelpDialogTitle),
+        content: SingleChildScrollView(
           child: Text(
-            'Paste image or text: Ctrl+V / Cmd+V (with focus outside text fields). '
-            'Set image target: Content (viewer only), Collage (GK wall), or Hero (GK frame). '
-            'Hero shortcut: click image + Ctrl/Cmd+H. '
-            'Desktop: drop .png / .jpg / .webp files.',
+            l10n.locusEditorHelpDialogBody,
+            style: Theme.of(ctx).textTheme.bodyMedium,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cerrar'),
+            child: Text(l10n.helpGuideClose),
           ),
         ],
       ),
@@ -158,60 +157,98 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
 
   Future<void> _confirmDeleteLocus(BuildContext outerContext) async {
     if (!_canDeleteLocus) return;
+    final l10n = AppLocalizations.of(outerContext)!;
+    final phraseExact = l10n.locusEditorDeleteConfirmPhraseExact;
     final ctrl = TextEditingController();
+    var listenerAttached = false;
     final ok = await showDialog<bool>(
       context: outerContext,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete locus permanently'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Removes this entry and all descendants from the realm database '
-                '(${AlexandriaPaths.realmDataRoot()}), deletes matching rows in '
-                'review/parcour tables, removes assets/snapshot/viewer/manifest '
-                'files for those keys, then rebuilds snapshots.',
-                style: Theme.of(ctx).textTheme.bodySmall,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Type the key exactly to confirm:',
-                style: Theme.of(ctx).textTheme.labelLarge,
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: ctrl,
-                autofocus: true,
-                decoration: InputDecoration(
-                  labelText: widget.entryKey,
-                  border: const OutlineInputBorder(),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            if (!listenerAttached) {
+              listenerAttached = true;
+              ctrl.addListener(() => setDialogState(() {}));
+            }
+            final canDelete = ctrl.text.trim() == phraseExact;
+            return AlertDialog(
+              title: Text(l10n.locusEditorDeleteConfirmTitle),
+              content: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      l10n.locusEditorDeleteConfirmDescription(
+                        AlexandriaPaths.realmDataRoot(),
+                      ),
+                      style: Theme.of(ctx).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 12),
+                    SelectableText(
+                      l10n.locusEditorDeleteConfirmDeletingLabel(widget.entryKey),
+                      style: Theme.of(ctx).textTheme.titleSmall?.copyWith(
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      l10n.locusEditorDeleteConfirmTypeInstruction,
+                      style: Theme.of(ctx).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: SelectableText(
+                        phraseExact,
+                        style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'monospace',
+                            ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: ctrl,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: l10n.locusEditorDeleteConfirmFieldHint,
+                        border: const OutlineInputBorder(),
+                      ),
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ],
                 ),
-                style: const TextStyle(fontFamily: 'monospace'),
               ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(ctx).colorScheme.error,
-              foregroundColor: Theme.of(ctx).colorScheme.onError,
-            ),
-            onPressed: () {
-              if (ctrl.text.trim() == widget.entryKey) {
-                Navigator.pop(ctx, true);
-              }
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: Text(l10n.cancel),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(ctx).colorScheme.error,
+                    foregroundColor: Theme.of(ctx).colorScheme.onError,
+                  ),
+                  onPressed: canDelete ? () => Navigator.pop(ctx, true) : null,
+                  child: Text(l10n.locusEditorDeleteConfirmButton),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
     ctrl.dispose();
     if (ok != true || !mounted) return;
@@ -233,6 +270,7 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (ctx) {
+        final l10nSheet = AppLocalizations.of(ctx)!;
         final bottomPad = MediaQuery.viewInsetsOf(ctx).bottom;
         return Padding(
           padding: EdgeInsets.only(bottom: bottomPad),
@@ -312,63 +350,51 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                         );
                       },
                     ),
-                    const SizedBox(height: 8),
-                    const Divider(),
+                    const SizedBox(height: 4),
+                    const Divider(height: 1),
                     ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
                       leading: Icon(
                         Icons.help_outline,
                         color: Theme.of(ctx).colorScheme.primary,
                       ),
-                      title: const Text('Ayuda: pegar y arrastrar'),
-                      subtitle: const Text(
-                        'Ctrl+V, roles de imagen, Hero con ⌘H',
-                        style: TextStyle(fontSize: 12),
+                      title: Text(l10nSheet.locusEditorHelpMenuLabel),
+                      subtitle: Text(
+                        l10nSheet.locusEditorHelpMenuSubtitle,
+                        style: const TextStyle(fontSize: 12),
                       ),
                       onTap: () {
                         Navigator.pop(ctx);
-                        _showPasteHelpDialog(context);
+                        _showLocusEditorHelpDialog(context);
                       },
                     ),
-                    ListTile(
-                      leading: Icon(
-                        Icons.move_to_inbox_outlined,
-                        color: Theme.of(ctx).colorScheme.primary,
-                      ),
-                      title: const Text('Migrate content (pending)'),
-                      subtitle: const Text(
-                        'Definición funcional pendiente',
-                        style: TextStyle(fontSize: 12),
-                      ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Migrate content: pending functional definition',
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    if (_canDeleteLocus)
+                    if (_canDeleteLocus) ...[
+                      const SizedBox(height: 4),
                       ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
                         leading: Icon(
                           Icons.delete_forever_outlined,
                           color: Theme.of(ctx).colorScheme.error,
                         ),
                         title: Text(
-                          'Delete locus (DB + files)',
+                          l10nSheet.locusEditorDeleteMenuLabel,
                           style: TextStyle(color: Theme.of(ctx).colorScheme.error),
                         ),
-                        subtitle: const Text(
-                          'Subtree removed from SQLite and disk under this realm',
-                          style: TextStyle(fontSize: 12),
+                        subtitle: Text(
+                          l10nSheet.locusEditorDeleteMenuSubtitle,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         onTap: () {
                           Navigator.pop(ctx);
                           _confirmDeleteLocus(context);
                         },
                       ),
+                    ],
                   ],
                 ),
               ),
@@ -433,6 +459,9 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
       if (b.imgRole == 'collage') {
         return AlexandriaLbTheme.blockRailCollage;
       }
+      if (b.imgRole == 'recall_crop') {
+        return const Color(0xFFE65100);
+      }
       return AlexandriaLbTheme.blockRailImage;
     }
     switch (b.textKind) {
@@ -464,6 +493,9 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
       }
       if (b.imgRole == 'collage') {
         return 'Collage #${collageSeqByIndex[i] ?? 0} · bloque ${i + 1}';
+      }
+      if (b.imgRole == 'recall_crop') {
+        return 'RECALL · bloque ${i + 1}';
       }
       return 'Imagen contenido · bloque ${i + 1}';
     }
@@ -696,6 +728,17 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
   Future<void> _promoteBlockToHero(int i) async {
     final b = _blocks[i];
     if (!b.isImage) return;
+    if (b.imgRole == 'recall_crop') {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Recall crop: use the role dropdown to switch to Hero — not ⌘H.',
+          ),
+        ),
+      );
+      return;
+    }
     final srcName = b.srcCtrl!.text.trim();
     if (srcName.isEmpty) {
       if (!mounted) return;
@@ -872,7 +915,10 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
           var role =
               (m['role'] ?? m['imgRole'] ?? 'content').toString().toLowerCase().trim();
           if (role == 'img') role = 'content';
-          if (role != 'hero' && role != 'collage' && role != 'content') {
+          if (role != 'hero' &&
+              role != 'collage' &&
+              role != 'content' &&
+              role != 'recall_crop') {
             role = 'content';
           }
           int? collageOrder;
@@ -933,6 +979,15 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
             b.imgRole = 'content';
           }
           heroSeen = true;
+        }
+      }
+      var recallSeen = false;
+      for (final b in out) {
+        if (b.isImage && b.imgRole == 'recall_crop') {
+          if (recallSeen) {
+            b.imgRole = 'content';
+          }
+          recallSeen = true;
         }
       }
       return out;
@@ -1105,6 +1160,8 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
         } else if (b.imgRole == 'collage') {
           row['role'] = 'collage';
           row['collageOrder'] = b.collageOrder ?? nextAutoOrder++;
+        } else if (b.imgRole == 'recall_crop') {
+          row['role'] = 'recall_crop';
         } else {
           row['role'] = 'content';
         }
@@ -1125,9 +1182,10 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
 
     final stDb = _spatialTurn.isEmpty ? null : _spatialTurn;
     final roleToSave = _isParentParcour ? 'object' : _cognitiveRole;
+    const praSave = 0;
     widget.db.execute(
-      'UPDATE entries SET body_text = ?, cognitiveRole = ?, spatial_turn = ? WHERE key = ?',
-      [stored, roleToSave, stDb, widget.entryKey],
+      'UPDATE entries SET body_text = ?, cognitiveRole = ?, spatial_turn = ?, place_recall_active = ? WHERE key = ?',
+      [stored, roleToSave, stDb, praSave, widget.entryKey],
     );
     _purgeOrphanAssetFiles(keepAssetNames);
 
@@ -1351,28 +1409,6 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.content_paste_go,
-                  size: 16,
-                  color: cs.outline,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    l10n.locusEditorPasteHint,
-                    style: Theme.of(context).textTheme.bodySmall,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
           Expanded(
             child: Builder(
               builder: (context) {
@@ -1409,7 +1445,9 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                           ? 'HERO'
                                           : b.imgRole == 'collage'
                                               ? 'COLLAGE #${collageSeqByIndex[i] ?? 0}'
-                                              : 'CONTENT')
+                                              : b.imgRole == 'recall_crop'
+                                                  ? 'RECALL'
+                                                  : 'CONTENT')
                                       : (_kTextKinds[b.textKind] ?? 'Text')
                                           .toUpperCase();
                           return Card(
@@ -1429,7 +1467,9 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                           ? AlexandriaLbTheme.blockRailHero
                                           : b.imgRole == 'collage'
                                               ? AlexandriaLbTheme.blockRailCollage
-                                              : const Color(0xFF6B6258),
+                                              : b.imgRole == 'recall_crop'
+                                                  ? const Color(0xFFE65100)
+                                                  : const Color(0xFF6B6258),
                                       width: 2,
                                     ),
                                   )
@@ -1481,13 +1521,17 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                                   : b.imgRole == 'collage'
                                                       ? AlexandriaLbTheme
                                                           .chipCollageBg
+                                                      : b.imgRole == 'recall_crop'
+                                                          ? const Color(
+                                                              0xFFFFE0B2)
                                                       : AlexandriaLbTheme
                                                           .chipImageBg)
                                               : b.isCard
                                                   ? AlexandriaLbTheme.chipImageBg
                                                   : null,
                                         ),
-                                        if (imgFocused) ...[
+                                        if (imgFocused &&
+                                            b.imgRole != 'recall_crop') ...[
                                           const SizedBox(width: 6),
                                           Text(
                                             '⌘H',
@@ -1585,6 +1629,15 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                                     ),
                                                   ),
                                                 ),
+                                                DropdownMenuItem(
+                                                  value: 'recall_crop',
+                                                  child: Text(
+                                                    'Recall crop (quiz)',
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                ),
                                               ],
                                               onChanged: (v) {
                                                 if (v == null) return;
@@ -1603,6 +1656,18 @@ class _LocusEditorPageState extends State<LocusEditorPage> {
                                                   } else if (v == 'collage') {
                                                     b.collageOrder ??=
                                                         _nextCollageOrder();
+                                                  } else if (v ==
+                                                      'recall_crop') {
+                                                    for (final other
+                                                        in _blocks) {
+                                                      if (other.isImage &&
+                                                          other.imgRole ==
+                                                              'recall_crop') {
+                                                        other.imgRole =
+                                                            'content';
+                                                      }
+                                                    }
+                                                    b.collageOrder = null;
                                                   } else {
                                                     b.collageOrder = null;
                                                   }
@@ -1874,7 +1939,10 @@ class _BlockDraft {
         phoneticCtrl = null,
         audioCtrl = null,
         relatedCtrl = null,
-        imgRole = (role == 'hero' || role == 'collage') ? role : 'content',
+        // Conservar recall_crop (quiz); antes se colapsaba a content/"Viewer" al reabrir el editor.
+        imgRole = (role == 'hero' || role == 'collage' || role == 'recall_crop')
+            ? role
+            : 'content',
         textKind = 'text';
 
   _BlockDraft._card(
@@ -1935,7 +2003,7 @@ class _BlockDraft {
   final TextEditingController? audioCtrl;
   final TextEditingController? relatedCtrl;
 
-  /// Solo bloques `img`: `hero` (marco GK), `collage` (pared GK), `content` (solo viewer).
+  /// Bloques `img`: `hero`, `collage`, `recall_crop` (recorte quiz LB), `content`.
   String imgRole;
   int? collageOrder;
   String textKind;

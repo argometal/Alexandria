@@ -7,6 +7,7 @@ import 'package:sqlite3/sqlite3.dart' hide Row;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'alexandria_paths.dart';
+import 'l10n/app_localizations.dart';
 import 'library_build.dart';
 
 /// Puerto por defecto del servidor Node en `data-transfer/` (ver `lib/config.js`).
@@ -47,7 +48,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
   void initState() {
     super.initState();
     _reloadLists();
-    _tickHealth();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _tickHealth());
   }
 
   @override
@@ -106,6 +107,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
           .get(Uri.parse('http://127.0.0.1:$kDataTransferPort/health'))
           .timeout(const Duration(seconds: 2));
       if (!mounted) return;
+      final loc = AppLocalizations.of(context)!;
       if (r.statusCode == 200) {
         setState(() {
           _serverReachable = true;
@@ -116,7 +118,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
       } else {
         setState(() {
           _serverReachable = false;
-          _healthSummary = 'HTTP ${r.statusCode}';
+          _healthSummary = loc.dataTransferHttpStatus(r.statusCode);
         });
       }
     } catch (_) {
@@ -129,12 +131,13 @@ class _DataTransferPageState extends State<DataTransferPage> {
   }
 
   Future<void> _startServer() async {
+    final loc = AppLocalizations.of(context)!;
     final script = File('${AlexandriaPaths.dataTransferRoot}/server.js');
     if (!script.existsSync()) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('No existe ${script.path}'),
+          content: Text(loc.dataTransferScriptMissing(script.path)),
         ),
       );
       return;
@@ -144,7 +147,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
     if (_serverReachable) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Ya hay un servidor en :4020 (externo u otro proceso)')),
+          SnackBar(content: Text(loc.dataTransferServerAlreadyRunning)),
         );
       }
       return;
@@ -163,17 +166,15 @@ class _DataTransferPageState extends State<DataTransferPage> {
       await _tickHealth();
       if (mounted && !_serverReachable) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Proceso node iniciado pero /health no responde. ¿Node en PATH?',
-            ),
+          SnackBar(
+            content: Text(loc.dataTransferNodeStartedNoHealth),
           ),
         );
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo iniciar node: $e')),
+        SnackBar(content: Text(loc.dataTransferNodeStartFailed(e.toString()))),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -192,11 +193,12 @@ class _DataTransferPageState extends State<DataTransferPage> {
   }
 
   Future<void> _openWebUi() async {
+    final loc = AppLocalizations.of(context)!;
     final u = _dataTransferBaseUri();
     if (!await launchUrl(u, mode: LaunchMode.externalApplication)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo abrir $u')),
+        SnackBar(content: Text(loc.dataTransferOpenUrlFailed(u.toString()))),
       );
     }
   }
@@ -270,11 +272,12 @@ class _DataTransferPageState extends State<DataTransferPage> {
   }
 
   Future<void> _importSelectedFile() async {
+    final loc = AppLocalizations.of(context)!;
     final path = _selectedFilePath;
     final key = _selectedKey?.trim();
     if (path == null || key == null || key.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Elige archivo y locus destino.')),
+        SnackBar(content: Text(loc.dataTransferPickFileAndLocus)),
       );
       return;
     }
@@ -304,18 +307,17 @@ class _DataTransferPageState extends State<DataTransferPage> {
       );
       runLibraryBuild();
       if (!mounted) return;
-      final mode = _replaceBody ? 'Reemplazo' : 'Añadido al final';
+      final fileName = f.uri.pathSegments.last;
+      final msg = _replaceBody
+          ? loc.dataTransferImportDoneReplace(key, fileName)
+          : loc.dataTransferImportDoneAppend(key, fileName);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '$mode · $key (${f.uri.pathSegments.last})',
-          ),
-        ),
+        SnackBar(content: Text(msg)),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
+        SnackBar(content: Text(loc.dataTransferErrorWithMessage(e.toString()))),
       );
     } finally {
       if (mounted) {
@@ -332,16 +334,17 @@ class _DataTransferPageState extends State<DataTransferPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context)!;
     final srcLabel = _importSource == _ImportSource.outDir
-        ? 'out/'
-        : 'handoff/incoming/';
+        ? l.dataTransferFolderLabelOut
+        : l.dataTransferFolderLabelIncoming;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Data transfer → LibraryBuild'),
+        title: Text(l.dataTransferAppBarTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refrescar archivos y estado',
+            tooltip: l.dataTransferRefreshTooltip,
             onPressed: _busy
                 ? null
                 : () {
@@ -355,7 +358,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
         padding: const EdgeInsets.all(16),
         children: [
           Text(
-            'Servidor en repo: ${AlexandriaPaths.dataTransferRoot}',
+            l.dataTransferServerRepoLabel(AlexandriaPaths.dataTransferRoot),
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
@@ -367,17 +370,17 @@ class _DataTransferPageState extends State<DataTransferPage> {
               FilledButton.icon(
                 onPressed: _busy ? null : _startServer,
                 icon: const Icon(Icons.play_arrow),
-                label: const Text('Iniciar servidor (node)'),
+                label: Text(l.dataTransferStartServer),
               ),
               OutlinedButton.icon(
                 onPressed: _busy ? null : _stopServer,
                 icon: const Icon(Icons.stop),
-                label: const Text('Detener proceso LB'),
+                label: Text(l.dataTransferStopLbProcess),
               ),
               FilledButton.tonalIcon(
                 onPressed: _openWebUi,
                 icon: const Icon(Icons.open_in_browser),
-                label: const Text('Abrir UI web (:4020)'),
+                label: Text(l.dataTransferOpenWebUi),
               ),
             ],
           ),
@@ -393,8 +396,8 @@ class _DataTransferPageState extends State<DataTransferPage> {
               Expanded(
                 child: Text(
                   _serverReachable
-                      ? 'Servidor accesible en http://127.0.0.1:$kDataTransferPort'
-                      : 'Sin respuesta en /health (inicia node o usa solo import local)',
+                      ? l.dataTransferServerReachable(kDataTransferPort)
+                      : l.dataTransferHealthNoResponse,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ),
@@ -409,19 +412,18 @@ class _DataTransferPageState extends State<DataTransferPage> {
           ],
           const Divider(height: 32),
           Text(
-            'Importar archivo a un locus',
+            l.dataTransferImportHeading,
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 8),
           Text(
-            'Origen: $srcLabel · Si el contenido empieza por [ se interpreta como JSON de bloques; '
-            'si no, se crea un único párrafo. Modo «Añadir» concatena bloques al body existente.',
+            l.dataTransferImportHint(srcLabel),
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
           if (_objectRows.isEmpty)
             Text(
-              'No hay entradas object en la DB.',
+              l.dataTransferNoObjects,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.error,
                   ),
@@ -431,7 +433,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Locus destino (object)',
+                  l.dataTransferTargetLocus,
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const SizedBox(height: 4),
@@ -447,8 +449,11 @@ class _DataTransferPageState extends State<DataTransferPage> {
                       DropdownMenuItem<String>(
                         value: r['key']?.toString(),
                         child: Text(
-                          '${r['key']} — ${(r['title'] ?? '').toString().trim()} '
-                          '(parent: ${(r['parentKey'] ?? '—').toString()})',
+                          l.dataTransferLocusDropdownLine(
+                            r['key']?.toString() ?? '',
+                            (r['title'] ?? '').toString().trim(),
+                            (r['parentKey'] ?? '—').toString(),
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -461,21 +466,21 @@ class _DataTransferPageState extends State<DataTransferPage> {
             ),
           const SizedBox(height: 16),
           Text(
-            'Carpeta de archivos',
+            l.dataTransferFileFolder,
             style: Theme.of(context).textTheme.labelLarge,
           ),
           const SizedBox(height: 8),
           SegmentedButton<_ImportSource>(
-            segments: const [
+            segments: [
               ButtonSegment<_ImportSource>(
                 value: _ImportSource.outDir,
-                label: Text('out/'),
-                icon: Icon(Icons.outbox_outlined, size: 18),
+                label: Text(l.dataTransferSegmentOut),
+                icon: const Icon(Icons.outbox_outlined, size: 18),
               ),
               ButtonSegment<_ImportSource>(
                 value: _ImportSource.incomingDir,
-                label: Text('incoming/'),
-                icon: Icon(Icons.move_to_inbox_outlined, size: 18),
+                label: Text(l.dataTransferSegmentIncoming),
+                icon: const Icon(Icons.move_to_inbox_outlined, size: 18),
               ),
             ],
             selected: {_importSource},
@@ -490,15 +495,15 @@ class _DataTransferPageState extends State<DataTransferPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'out/: ${_outFiles.length} · incoming/: ${_incomingFiles.length}',
+            l.dataTransferFileCounts(_outFiles.length, _incomingFiles.length),
             style: Theme.of(context).textTheme.labelSmall,
           ),
           const SizedBox(height: 12),
           if (_activeFileList.isEmpty)
             Text(
               _importSource == _ImportSource.outDir
-                  ? 'Carpeta out/ vacía. Usa la UI web, o cambia a incoming/, o copia ficheros en data-transfer/out/.'
-                  : 'Carpeta handoff/incoming/ vacía. Copia aquí archivos o usa out/.',
+                  ? l.dataTransferOutFolderEmpty
+                  : l.dataTransferIncomingFolderEmpty,
               style: Theme.of(context).textTheme.bodySmall,
             )
           else
@@ -506,7 +511,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Archivo ($srcLabel)',
+                  l.dataTransferFilePickerLabel(srcLabel),
                   style: Theme.of(context).textTheme.labelLarge,
                 ),
                 const SizedBox(height: 4),
@@ -534,7 +539,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
             ),
           const SizedBox(height: 16),
           Text(
-            'Modo de importación',
+            l.dataTransferImportMode,
             style: Theme.of(context).textTheme.labelLarge,
           ),
           const SizedBox(height: 8),
@@ -542,12 +547,12 @@ class _DataTransferPageState extends State<DataTransferPage> {
             segments: [
               ButtonSegment<bool>(
                 value: true,
-                label: const Text('Reemplazar body'),
+                label: Text(l.dataTransferReplaceBody),
                 icon: const Icon(Icons.find_replace_outlined, size: 18),
               ),
               ButtonSegment<bool>(
                 value: false,
-                label: const Text('Añadir al final'),
+                label: Text(l.dataTransferAppendBlocks),
                 icon: const Icon(Icons.playlist_add_outlined, size: 18),
               ),
             ],
@@ -560,7 +565,7 @@ class _DataTransferPageState extends State<DataTransferPage> {
           FilledButton.icon(
             onPressed: !_canImport ? null : _importSelectedFile,
             icon: const Icon(Icons.download_done),
-            label: const Text('Importar al locus y runLibraryBuild'),
+            label: Text(l.dataTransferImportRunBuild),
           ),
         ],
       ),

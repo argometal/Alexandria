@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using Godot;
 
 /// <summary>
@@ -276,58 +275,8 @@ public static class AlexandriaAssets
 	}
 
 	/// <summary>
-	/// Galería por carpeta (excl. hero/cover); usado si el manifest no aporta rutas válidas.
-	/// </summary>
-	private static List<string> ListWallGalleryImagePathsFromFolder(string key)
-	{
-		var result = new List<string>();
-		if (string.IsNullOrWhiteSpace(key))
-			return result;
-		var dir = Path.Combine(Root, key.Trim());
-		if (!Directory.Exists(dir))
-			return result;
-
-		var all = new List<string>();
-		foreach (var ext in ImageExtensions)
-		{
-			try
-			{
-				all.AddRange(Directory.GetFiles(dir, "*" + ext, SearchOption.TopDirectoryOnly));
-			}
-			catch
-			{
-				// ignore
-			}
-		}
-
-		var hero = FindHeroPath(key);
-		var heroHash = TryComputeMd5Hex(hero);
-		var cover = FindCoverPath(key);
-		var coverHash = TryComputeMd5Hex(cover);
-
-		result = all
-			.Distinct(StringComparer.OrdinalIgnoreCase)
-			.Where(f => !IsHeroFileName(Path.GetFileName(f)))
-			.Where(f => !IsCoverFileName(Path.GetFileName(f)))
-			.Where(f =>
-			{
-				var hash = TryComputeMd5Hex(f);
-				if (!string.IsNullOrEmpty(heroHash) && string.Equals(hash, heroHash, StringComparison.OrdinalIgnoreCase))
-					return false;
-				if (!string.IsNullOrEmpty(coverHash) && string.Equals(hash, coverHash, StringComparison.OrdinalIgnoreCase))
-					return false;
-				return true;
-			})
-			.OrderBy(f => File.GetLastWriteTimeUtc(f))
-			.ThenBy(f => f, StringComparer.OrdinalIgnoreCase)
-			.ToList();
-
-		return result;
-	}
-
-	/// <summary>
-	/// Rutas de pared válidas para GK. Prioriza manifest explícito LB; si no hay rutas resueltas
-	/// (manifest ausente, vacío o archivos movidos), usa la misma galería por carpeta que el fallback debug.
+	/// Rutas de pared para GK: solo el manifest wall generado por Library Build (rol Collage).
+	/// Sin fallback a carpeta: evita mezclar imágenes viewer/content con el collage del corredor.
 	/// </summary>
 	public static List<string> GetWallImagePaths(string key)
 	{
@@ -335,36 +284,32 @@ public static class AlexandriaAssets
 		if (string.IsNullOrWhiteSpace(key))
 			return result;
 
-		var hadManifestFile = false;
-		if (TryReadWallManifest(key, out var manifest))
+		var manifestPath = GetWallManifestPath(key);
+		if (!TryReadWallManifest(key, out var manifest))
 		{
-			hadManifestFile = true;
-			var baseDir = Path.Combine(Root, key.Trim());
-			foreach (var img in manifest.Images)
-			{
-				// Contrato: rutas relativas a data/assets/{key}/
-				var full = Path.Combine(baseDir, img.Filename);
-				if (File.Exists(full))
-					result.Add(full);
-			}
-
-			result = result
-				.Distinct(StringComparer.OrdinalIgnoreCase)
-				.ToList();
-			if (result.Count > 0)
-				return result;
+			// Sin archivo: pared vacía (normal hasta generar manifests con LB). Solo error si existe pero no parsea.
+			if (File.Exists(manifestPath))
+				GD.PrintErr($"[WALL] key={key} manifest wall ilegible: {manifestPath}");
+			return result;
 		}
 
-		var fromFolder = ListWallGalleryImagePathsFromFolder(key);
-		if (fromFolder.Count == 0)
-			return result;
+		var baseDir = Path.Combine(Root, key.Trim());
+		foreach (var img in manifest.Images)
+		{
+			// Contrato: rutas relativas a data/assets/{key}/
+			var full = Path.Combine(baseDir, img.Filename);
+			if (File.Exists(full))
+				result.Add(full);
+		}
 
-		if (hadManifestFile)
-			GD.PrintErr($"[WALL][RECOVERY] key={key} manifest sin archivos resueltos → carpeta ({fromFolder.Count} imgs)");
-		else
-			GD.Print($"[WALL][FOLDER] key={key} sin manifest o vacío → carpeta ({fromFolder.Count} imgs)");
+		result = result
+			.Distinct(StringComparer.OrdinalIgnoreCase)
+			.ToList();
 
-		return fromFolder;
+		if (result.Count == 0 && manifest.Images.Count > 0)
+			GD.PrintErr($"[WALL] key={key} manifest lista imágenes pero ningún archivo resuelto bajo {baseDir}.");
+
+		return result;
 	}
 
 	/// <summary>
@@ -501,23 +446,6 @@ public static class AlexandriaAssets
 		img.Convert(Image.Format.Rgba8);
 		img.Resize(768, 768, Image.Interpolation.Bilinear);
 		return WallTextureFromImage(img);
-	}
-
-	private static string TryComputeMd5Hex(string path)
-	{
-		if (string.IsNullOrEmpty(path) || !File.Exists(path))
-			return "";
-		try
-		{
-			using var md5 = MD5.Create();
-			using var stream = File.OpenRead(path);
-			var hash = md5.ComputeHash(stream);
-			return Convert.ToHexString(hash);
-		}
-		catch
-		{
-			return "";
-		}
 	}
 
 	/// <summary>

@@ -1,19 +1,18 @@
 using Godot;
-using System.Globalization;
 
-/// <summary>Menú ☰ (HUD): ayuda y salto entre marcos del parcour si el visor o el movimiento se atascan.</summary>
+/// <summary>Menú ☰ (HUD): ayuda, ir al hub del parcour, y salto entre marcos del pasillo.</summary>
 public partial class RealmController
 {
 	private bool _gkMenuOpen;
 	private Control _gkMenuPanel;
 	private Button _gkMenuBurger;
+	private Button _gkBtnParcourHub;
 	private Button _gkBtnParcourPrev;
 	private Button _gkBtnParcourNext;
 	private Label _gkMenuFrameLabel;
 	private Label _gkMenuParcourHint;
 
-	private static bool IsEsUi() =>
-		CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "es";
+	private const string ParcourHubKey = "PARCOUR_MAIN";
 
 	private void SetupGkHudMenu(Control hudRoot)
 	{
@@ -32,9 +31,7 @@ public partial class RealmController
 		{
 			Text = "☰",
 			Flat = true,
-			TooltipText = IsEsUi()
-				? "Menú: ayuda y navegación del parcour"
-				: "Menu: help and parcour navigation",
+			TooltipText = GkUiLocale.MenuBurgerTooltip(),
 		};
 		_gkMenuBurger.CustomMinimumSize = new Vector2(44f, 44f);
 		_gkMenuBurger.AddThemeFontSizeOverride("font_size", 22);
@@ -50,7 +47,7 @@ public partial class RealmController
 		_gkMenuPanel.OffsetLeft = 8f;
 		_gkMenuPanel.OffsetTop = 56f;
 		_gkMenuPanel.OffsetRight = 300f;
-		_gkMenuPanel.OffsetBottom = 320f;
+		_gkMenuPanel.OffsetBottom = 400f;
 		hudRoot.AddChild(_gkMenuPanel);
 
 		var outer = new MarginContainer();
@@ -66,16 +63,24 @@ public partial class RealmController
 
 		var helpBtn = new Button
 		{
-			Text = IsEsUi() ? "Ayuda (F1)" : "Help (F1)",
+			Text = GkUiLocale.MenuHelp(),
 		};
 		helpBtn.Pressed += OnGkMenuHelpPressed;
 		v.AddChild(helpBtn);
 
 		v.AddChild(new HSeparator());
 
+		_gkBtnParcourHub = new Button
+		{
+			Text = GkUiLocale.MenuGoParcourHub(),
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		_gkBtnParcourHub.Pressed += OnGkMenuGoParcourHub;
+		v.AddChild(_gkBtnParcourHub);
+
 		var parcourTitle = new Label
 		{
-			Text = IsEsUi() ? "Parcour (desatasco)" : "Parcour (unstuck)",
+			Text = GkUiLocale.MenuParcourFramesTitle(),
 		};
 		parcourTitle.AddThemeFontSizeOverride("font_size", 14);
 		v.AddChild(parcourTitle);
@@ -88,13 +93,13 @@ public partial class RealmController
 		row.AddThemeConstantOverride("separation", 8);
 		_gkBtnParcourPrev = new Button
 		{
-			Text = IsEsUi() ? "← Marco anterior" : "← Previous frame",
+			Text = GkUiLocale.MenuPreviousFrame(),
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 		};
 		_gkBtnParcourPrev.Pressed += OnGkMenuParcourPrev;
 		_gkBtnParcourNext = new Button
 		{
-			Text = IsEsUi() ? "Marco siguiente →" : "Next frame →",
+			Text = GkUiLocale.MenuNextFrame(),
 			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
 		};
 		_gkBtnParcourNext.Pressed += OnGkMenuParcourNext;
@@ -105,13 +110,17 @@ public partial class RealmController
 		_gkMenuParcourHint = new Label
 		{
 			AutowrapMode = TextServer.AutowrapMode.WordSmart,
-			Text = IsEsUi()
-				? "Solo en recorrido parcour. En sala de objeto, usa «Atrás» en el visor."
-				: "Only on a parcour corridor. In an object room, use Back in the viewer.",
+			Text = GkUiLocale.MenuParcourCorridorHint(),
 		};
 		_gkMenuParcourHint.AddThemeFontSizeOverride("font_size", 11);
 		_gkMenuParcourHint.AddThemeColorOverride("font_color", new Color(0.75f, 0.75f, 0.78f));
 		v.AddChild(_gkMenuParcourHint);
+	}
+
+	private void OnGkMenuGoParcourHub()
+	{
+		SetGkMenuVisible(false);
+		OnBackLevelRequested(ParcourHubKey);
 	}
 
 	private void OnGkMenuHelpPressed()
@@ -142,7 +151,6 @@ public partial class RealmController
 
 	private void RefreshGkMenuParcourUi()
 	{
-		var es = IsEsUi();
 		var ctx = BridgeSpatial.ReadContextKey()?.Trim() ?? "";
 		var objectRoom = BridgeSpatial.IsObjectLocusKey(ctx);
 		var canParcour = _spawner != null && _camera != null && !objectRoom && !string.IsNullOrEmpty(ctx);
@@ -159,14 +167,12 @@ public partial class RealmController
 
 		if (!canParcour)
 		{
-			_gkMenuFrameLabel.Text = es ? "—" : "—";
+			_gkMenuFrameLabel.Text = "—";
 			return;
 		}
 
 		var cur = _spawner.ResolveNearestFrameSeqFromCameraPosition(_camera.GlobalPosition);
-		_gkMenuFrameLabel.Text = es
-			? $"Marco {cur + 1} / {Spawner.FrameSlotCount} (índice {cur})"
-			: $"Frame {cur + 1} / {Spawner.FrameSlotCount} (index {cur})";
+		_gkMenuFrameLabel.Text = GkUiLocale.MenuFrameLine(cur, Spawner.FrameSlotCount);
 	}
 
 	private void OnGkMenuParcourPrev()

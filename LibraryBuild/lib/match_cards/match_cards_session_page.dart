@@ -29,12 +29,15 @@ class MatchCardsSessionPage extends StatefulWidget {
     super.key,
     required this.db,
     required this.deckId,
+    /// Mazos disponibles para cambiar sin salir (misma pantalla de lista).
+    this.decks = const [],
     /// Max pairs in one round (e.g. 8 → 16 cards).
     this.maxPairs = 8,
   });
 
   final Database db;
   final int deckId;
+  final List<LbMatchDeckRow> decks;
   final int maxPairs;
 
   @override
@@ -54,6 +57,13 @@ class _MatchCardsSessionPageState extends State<MatchCardsSessionPage> {
   void initState() {
     super.initState();
     _buildDeck();
+  }
+
+  String _deckName(AppLocalizations l10n) {
+    for (final d in widget.decks) {
+      if (d.id == widget.deckId) return d.name;
+    }
+    return '${l10n.matchCardsDeckLabel} #${widget.deckId}';
   }
 
   void _buildDeck() {
@@ -90,6 +100,172 @@ class _MatchCardsSessionPageState extends State<MatchCardsSessionPage> {
     }
     _tiles.shuffle();
     setState(() {});
+  }
+
+  void _openDeck(int newDeckId) {
+    if (newDeckId == widget.deckId) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => MatchCardsSessionPage(
+          db: widget.db,
+          deckId: newDeckId,
+          decks: widget.decks,
+          maxPairs: widget.maxPairs,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDeckPicker() async {
+    final l10n = AppLocalizations.of(context)!;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Text(
+                  l10n.matchCardsSessionPickDeckTitle,
+                  style: Theme.of(ctx).textTheme.titleMedium,
+                ),
+              ),
+              for (final d in widget.decks)
+                ListTile(
+                  leading: Icon(
+                    d.id == widget.deckId
+                        ? Icons.check_circle_outline
+                        : Icons.folder_outlined,
+                    color: d.id == widget.deckId
+                        ? AlexandriaLbTheme.gold
+                        : null,
+                  ),
+                  title: Text(d.name),
+                  selected: d.id == widget.deckId,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _openDeck(d.id);
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showStatsSheet() async {
+    final l10n = AppLocalizations.of(context)!;
+    final stats = lbListMatchPairStats(widget.db, deckId: widget.deckId);
+    final hasAny =
+        stats.any((s) => s.failCount > 0 || s.passCount > 0);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.55,
+          minChildSize: 0.35,
+          maxChildSize: 0.92,
+          builder: (ctx, scroll) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.matchCardsSessionStatsTitle,
+                        style: Theme.of(ctx).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        l10n.matchCardsSessionStatsSubtitle,
+                        style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(ctx)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (!hasAny)
+                  Expanded(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          l10n.matchCardsSessionStatsEmpty,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(ctx).textTheme.bodyMedium,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ListView.builder(
+                      controller: scroll,
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                      itemCount: stats.length,
+                      itemBuilder: (c, i) {
+                        final s = stats[i];
+                        return ListTile(
+                          title: Text(
+                            s.pair.captionText,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: (s.pair.transliteration ?? '')
+                                  .trim()
+                                  .isEmpty
+                              ? null
+                              : Text(
+                                  s.pair.transliteration!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                l10n.matchCardsSessionStatsFailPass(
+                                  s.failCount,
+                                  s.passCount,
+                                ),
+                                style: Theme.of(ctx).textTheme.labelLarge,
+                              ),
+                              Text(
+                                l10n.matchCardsSessionStatsFib(s.fibIndex),
+                                style: Theme.of(ctx).textTheme.labelSmall?.copyWith(
+                                      color: Theme.of(ctx)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _onTap(int i) async {
@@ -167,7 +343,16 @@ class _MatchCardsSessionPageState extends State<MatchCardsSessionPage> {
     final l10n = AppLocalizations.of(context)!;
     if (_tiles.length < 4) {
       return Scaffold(
-        appBar: AppBar(title: Text(l10n.matchCardsSessionTitle)),
+        appBar: AppBar(
+          title: Text(l10n.matchCardsSessionTitle),
+          actions: [
+            if (widget.decks.length > 1)
+              TextButton(
+                onPressed: _showDeckPicker,
+                child: Text(l10n.matchCardsSessionChangeDeck),
+              ),
+          ],
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -182,11 +367,56 @@ class _MatchCardsSessionPageState extends State<MatchCardsSessionPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(l10n.matchCardsSessionTitle),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(l10n.matchCardsSessionTitle),
+            if (widget.decks.isNotEmpty)
+              Text(
+                _deckName(l10n),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+          ],
+        ),
         actions: [
-          TextButton(
+          IconButton(
+            tooltip: l10n.matchCardsSessionNewRound,
+            icon: const Icon(Icons.refresh_rounded),
             onPressed: _buildDeck,
-            child: Text(l10n.matchCardsPlayAgain),
+          ),
+          PopupMenuButton<String>(
+            tooltip: l10n.matchCardsSessionMenuTooltip,
+            onSelected: (v) {
+              switch (v) {
+                case 'round':
+                  _buildDeck();
+                  break;
+                case 'deck':
+                  _showDeckPicker();
+                  break;
+                case 'stats':
+                  _showStatsSheet();
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => [
+              PopupMenuItem(
+                value: 'round',
+                child: Text(l10n.matchCardsSessionNewRound),
+              ),
+              if (widget.decks.length > 1)
+                PopupMenuItem(
+                  value: 'deck',
+                  child: Text(l10n.matchCardsSessionChangeDeck),
+                ),
+              PopupMenuItem(
+                value: 'stats',
+                child: Text(l10n.matchCardsSessionStats),
+              ),
+            ],
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -211,7 +441,9 @@ class _MatchCardsSessionPageState extends State<MatchCardsSessionPage> {
                     Text(
                       '${_tiles.length ~/ 2} ${l10n.matchCardsPairsRemaining}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
                           ),
                     ),
                     if (_won) ...[
@@ -299,6 +531,15 @@ class _SessionCard extends StatelessWidget {
   }
 }
 
+/// Escala de tipografía respecto al tema base en caras de texto (práctica).
+const double _kMatchCardFaceFontScale = 1.6;
+
+double? _scaledFontSize(TextStyle? style, double scale) {
+  final s = style?.fontSize;
+  if (s == null) return null;
+  return s * scale;
+}
+
 class _SmallTextFace extends StatelessWidget {
   const _SmallTextFace({
     required this.lemma,
@@ -311,36 +552,58 @@ class _SmallTextFace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              lemma,
-              textAlign: TextAlign.center,
-              maxLines: 3,
-              style: t.titleSmall?.copyWith(height: 1.25),
-            ),
-            if (transliteration != null && transliteration!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                transliteration!,
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                style: t.labelSmall?.copyWith(
-                  fontStyle: FontStyle.italic,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  height: 1.2,
-                ),
+    final cs = Theme.of(context).colorScheme;
+    final lemmaStyle = t.titleSmall?.copyWith(
+      fontSize: _scaledFontSize(t.titleSmall, _kMatchCardFaceFontScale),
+      height: 1.28,
+    );
+    final transStyle = t.labelSmall?.copyWith(
+      fontSize: _scaledFontSize(t.labelSmall, _kMatchCardFaceFontScale),
+      fontStyle: FontStyle.italic,
+      color: cs.onSurfaceVariant,
+      height: 1.25,
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const padH = 12.0;
+        final w = constraints.maxWidth;
+        final innerW = !w.isFinite
+            ? 160.0
+            : (w - padH).clamp(32.0, w);
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.center,
+            child: SizedBox(
+              width: innerW,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    lemma,
+                    textAlign: TextAlign.center,
+                    softWrap: true,
+                    maxLines: 12,
+                    style: lemmaStyle,
+                  ),
+                  if (transliteration != null && transliteration!.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      transliteration!,
+                      textAlign: TextAlign.center,
+                      softWrap: true,
+                      maxLines: 8,
+                      style: transStyle,
+                    ),
+                  ],
+                ],
               ),
-            ],
-          ],
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

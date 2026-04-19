@@ -1,6 +1,7 @@
 {
   "@@locale": "en",
   "appTitle": "Realm Library",
+  "librarySurfaceRealmTree": "Realm tree",
   "activeRealmLabel": "Active realm: {realm}",
   "@activeRealmLabel": {
     "placeholders": {
@@ -23,13 +24,316 @@
   "pdfParcourSubtitle": "One parcour per export",
   "importLocusTitle": "Import content into locus",
   "importLocusSubtitle": "From data-transfer/out/ → body_text",
-  "paoEditorTitle": "PAO (00–99)",
-  "paoEditorSubtitle": "Two-digit system · import / export JSON",
+  "dataTransferAppBarTitle": "Data transfer → LibraryBuild",
+  "dataTransferRefreshTooltip": "Refresh files and status",
+  "dataTransferServerRepoLabel": "Server in repo: {path}",
+  "@dataTransferServerRepoLabel": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "dataTransferStartServer": "Start server (node)",
+  "dataTransferStopLbProcess": "Stop LB process",
+  "dataTransferOpenWebUi": "Open web UI (:4020)",
+  "dataTransferServerReachable": "Server reachable at http://127.0.0.1:{port}",
+  "@dataTransferServerReachable": {
+    "placeholders": {
+      "port": {"type": "int"}
+    }
+  },
+  "dataTransferHealthNoResponse": "No response on /health (start node or use local import only)",
+  "dataTransferImportHeading": "Import file into a locus",
+  "dataTransferImportHint": "Source: {folder} · If the content starts with [ it is interpreted as block JSON; otherwise a single paragraph is created. “Append” mode concatenates blocks to the existing body.",
+  "@dataTransferImportHint": {
+    "placeholders": {
+      "folder": {"type": "String"}
+    }
+  },
+  "dataTransferFolderLabelOut": "out/",
+  "dataTransferFolderLabelIncoming": "handoff/incoming/",
+  "dataTransferNoObjects": "No object entries in the database.",
+  "dataTransferTargetLocus": "Target locus (object)",
+  "dataTransferLocusDropdownLine": "{key} — {title} (parent: {parentKey})",
+  "@dataTransferLocusDropdownLine": {
+    "placeholders": {
+      "key": {"type": "String"},
+      "title": {"type": "String"},
+      "parentKey": {"type": "String"}
+    }
+  },
+  "dataTransferFileFolder": "File folder",
+  "dataTransferSegmentOut": "out/",
+  "dataTransferSegmentIncoming": "incoming/",
+  "dataTransferFileCounts": "out/: {outCount} · incoming/: {incomingCount}",
+  "@dataTransferFileCounts": {
+    "placeholders": {
+      "outCount": {"type": "int"},
+      "incomingCount": {"type": "int"}
+    }
+  },
+  "dataTransferOutFolderEmpty": "Folder out/ is empty. Use the web UI, switch to incoming/, or copy files into data-transfer/out/.",
+  "dataTransferIncomingFolderEmpty": "Folder handoff/incoming/ is empty. Copy files here or use out/.",
+  "dataTransferFilePickerLabel": "File ({folder})",
+  "@dataTransferFilePickerLabel": {
+    "placeholders": {
+      "folder": {"type": "String"}
+    }
+  },
+  "dataTransferImportMode": "Import mode",
+  "dataTransferReplaceBody": "Replace body",
+  "dataTransferAppendBlocks": "Append at end",
+  "dataTransferImportRunBuild": "Import to locus and runLibraryBuild",
+  "dataTransferScriptMissing": "Missing file: {path}",
+  "@dataTransferScriptMissing": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "dataTransferServerAlreadyRunning": "A server is already listening on :4020 (external or another process)",
+  "dataTransferNodeStartedNoHealth": "Node process started but /health does not respond. Is Node on PATH?",
+  "dataTransferNodeStartFailed": "Could not start node: {error}",
+  "@dataTransferNodeStartFailed": {
+    "placeholders": {
+      "error": {"type": "String"}
+    }
+  },
+  "dataTransferOpenUrlFailed": "Could not open {url}",
+  "@dataTransferOpenUrlFailed": {
+    "placeholders": {
+      "url": {"type": "String"}
+    }
+  },
+  "dataTransferPickFileAndLocus": "Choose a file and target locus.",
+  "dataTransferImportDoneReplace": "Replaced · {key} ({file})",
+  "@dataTransferImportDoneReplace": {
+    "placeholders": {
+      "key": {"type": "String"},
+      "file": {"type": "String"}
+    }
+  },
+  "dataTransferImportDoneAppend": "Appended · {key} ({file})",
+  "@dataTransferImportDoneAppend": {
+    "placeholders": {
+      "key": {"type": "String"},
+      "file": {"type": "String"}
+    }
+  },
+  "dataTransferErrorWithMessage": "Error: {message}",
+  "@dataTransferErrorWithMessage": {
+    "placeholders": {
+      "message": {"type": "String"}
+    }
+  },
+  "dataTransferHttpStatus": "HTTP {code}",
+  "@dataTransferHttpStatus": {
+    "placeholders": {
+      "code": {"type": "int"}
+    }
+  },
+  "paoEditorTitle": "PAO",
+  "paoEditorSubtitle": "Phonetic keys · pegs 0–9 · 00–99 · 000–999 · JSON",
+  "paoTabPhonetic": "Keys",
+  "paoTabDigit": "0–9",
+  "paoTabPair": "00–99",
+  "paoTabTriple": "000–999",
+  "paoPhoneticBoardHint": "Assign consonants or sounds to each digit (your Major-system variant). Vowels are fillers—use the optional column for vowel notes only.",
+  "paoPhoneticConsonantsLabel": "Consonants / sounds",
+  "paoPhoneticVowelNoteLabel": "Vowel notes (optional)",
+  "paoPhoneticSaveRow": "Save",
+  "paoPhoneticSaved": "Row saved",
+  "paoSearchHint": "Search by code, person, action, object, or image path",
+  "paoSubtitleTier": "{filled} / {total} with text or image · realm {realm}",
+  "@paoSubtitleTier": {
+    "placeholders": {
+      "filled": {"type": "int"},
+      "total": {"type": "int"},
+      "realm": {"type": "String"}
+    }
+  },
+  "paoMenuImportJsonAuto": "Import JSON (auto: full v2 or legacy 00–99)",
+  "paoMenuExportJsonV2": "Export JSON (full v2)…",
+  "paoMenuExportPairCsv": "Export CSV (00–99 only)…",
+  "paoMenuTemplateV2": "Write empty template v2 in repo",
+  "paoSnackbarImportOk": "PAO data imported",
+  "paoSnackbarTemplateV2": "Template v2 written: {path}",
+  "@paoSnackbarTemplateV2": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "paoEditCodeImageHintPair": "Code image (00–99): drag here or Ctrl/Cmd+V with focus outside text fields.",
+  "paoEditCodeImageHintDigit": "Code image (single digit): drag here or Ctrl/Cmd+V with focus outside text fields.",
+  "paoEditCodeImageHintTriple": "Code image (000–999): drag here or Ctrl/Cmd+V with focus outside text fields.",
+  "paoEditPreviewExerciseTooltip": "Preview in practice",
+  "paoEditPreviewExerciseTitle": "Practice preview",
+  "paoEditPreviewExerciseIntro": "How this peg can look in individual practice (all drill stimuli and the answers panel).",
   "paoPracticeTitle": "PAO · individual practice",
   "paoPracticeSubtitle": "Mental recall · show answers · pass / fail",
+  "paoDrillInstruction": "Recall silently; do not type. Then show the answers and mark pass or fail.",
+  "paoDrillModeCodeTitle": "Code → person, action, object (mental)",
+  "paoDrillModePersonTitle": "Person → code, action, object (mental)",
+  "paoDrillModeObjectTitle": "Object → code, person, action (mental)",
+  "paoDrillPoolInfo": "{count} codes · realm {realmId}",
+  "@paoDrillPoolInfo": {
+    "placeholders": {
+      "count": {"type": "int"},
+      "realmId": {"type": "String"}
+    }
+  },
+  "paoDrillShowAnswers": "Show answers",
+  "paoDrillAnswersHeading": "Answers",
+  "paoFieldCode": "Code",
+  "paoFieldPerson": "Person",
+  "paoFieldAction": "Action",
+  "paoFieldObject": "Object",
+  "paoDrillSuccess": "Pass",
+  "paoDrillFail": "Fail",
+  "paoDrillNextUnmarked": "Next (unmarked)",
+  "paoDrillEmptyTitle": "No codes ready to practice.",
+  "paoDrillEmptyHint": "Fill in person, action, and object for at least one code in PAO (digit, pair 00–99, or triple 000–999).",
+  "paoDrillStimulusCode": "Code",
+  "paoDrillStimulusPerson": "Person",
+  "paoDrillStimulusObject": "Object",
+  "paoDrillStimulusRecallNumber": "Recall the number",
+  "paoDrillStimulusRecallMnemonic": "Recall the image (mnemonic)",
+  "paoDrillPoolAllTiersHint": "Pool: random codes from 0–9, 00–99, and 000–999 (complete rows only). Each code round shows either the number or the code image — not both.",
+  "paoListEmptyRow": "(empty)",
+  "paoListDetailLine": "P: {person}  |  A: {action}  |  O: {object}",
+  "@paoListDetailLine": {
+    "placeholders": {
+      "person": {"type": "String"},
+      "action": {"type": "String"},
+      "object": {"type": "String"}
+    }
+  },
+  "paoEditChooseImage": "Choose image",
+  "paoEditRemoveImage": "Remove",
+  "paoEditNoImageOptional": "No image (optional)",
+  "paoEditImageLoadError": "Could not load image",
+  "paoEditPersonImage1": "Character image 1",
+  "paoEditPersonImage2": "Character image 2",
+  "paoEditObjectImage1": "Object image 1",
+  "paoEditObjectImage2": "Object image 2",
+  "paoEditPasteImageTooltip": "Paste image (Ctrl+V in this slot)",
+  "paoTemplateExistsTitle": "Template already exists",
+  "paoTemplateExistsBody": "Overwrite?\n{path}",
+  "@paoTemplateExistsBody": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "paoOverwrite": "Overwrite",
+  "paoTemplateWritten0099": "Template written: {path}",
+  "@paoTemplateWritten0099": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "paoExportJsonDialogTitle": "Export PAO JSON v2",
+  "paoExportCsvDialogTitle": "Export PAO CSV",
+  "paoSavedToPath": "Saved: {path}",
+  "@paoSavedToPath": {
+    "placeholders": {
+      "path": {"type": "String"}
+    }
+  },
+  "paoErrorGeneric": "Error: {message}",
+  "@paoErrorGeneric": {
+    "placeholders": {
+      "message": {"type": "String"}
+    }
+  },
+  "paoJsonV2CopiedClipboard": "PAO v2 JSON copied to clipboard",
+  "paoMenuTemplate0099": "Template 00–99 (repo)",
+  "paoMenuCopyJsonV2Clipboard": "Copy JSON v2 to clipboard",
+  "paoSnackbarPasteImageUseTabs": "Paste image: open tab 0–9, 00–99, or 000–999 and tap a row.",
+  "paoSnackbarTapRowFirst": "Tap a row first to choose the code.",
+  "paoSnackbarCodeNotInTab": "Code not found in this tab.",
+  "paoSnackbarClipboardNoImage": "Clipboard: no image",
+  "paoSnackbarCouldNotSaveImage": "Could not save image",
+  "paoSnackbarCouldNotCopyImage": "Could not copy image",
+  "paoSnackbarCodeImageUpdated": "Code {code} image updated",
+  "@paoSnackbarCodeImageUpdated": {
+    "placeholders": {
+      "code": {"type": "String"}
+    }
+  },
+  "paoSnackbarDropImageUseTabs": "Drop image on tab 0–9, 00–99, or 000–999 (after tapping a row).",
+  "paoEditDialogTitle": "PAO {code}",
+  "@paoEditDialogTitle": {
+    "placeholders": {
+      "code": {"type": "String"}
+    }
+  },
+  "paoEditDeletePegButton": "Delete peg",
+  "paoEditDeletePegConfirmTitle": "Delete this peg?",
+  "paoEditDeletePegConfirmBody": "This removes all text and images for this code and deletes the image files from the realm assets folder.",
+  "paoEditDeletePegSuccess": "Peg cleared",
+  "pokerMemoryTitle": "Poker · number map",
+  "pokerMemoryDrawerSubtitle": "Number ↔ card · 13 numbers per suit · quick drill",
+  "frameRecallQuizDrawerSubtitle": "4-image crop quiz · same parcour",
+  "frameRecallQuizTitle": "Frame recall (prototype)",
+  "frameRecallQuizIntro": "Each locus needs one image block with role «Recall crop» (detail of the hero). Hero is not shown here — only your place hint and four crops. Pick the crop that belongs to the locus described.",
+  "frameRecallSelectParcour": "Parcour",
+  "frameRecallFramesWithCrop": "{count} frames with recall crop",
+  "@frameRecallFramesWithCrop": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
+  "frameRecallNeedFour": "Need at least 4 loci in this parcour with a recall crop image. Edit each locus and add an image with role «Recall crop».",
+  "frameRecallNoParcours": "No parcours under the hub. Create parcours first.",
+  "frameRecallQuestion": "Place / hint",
+  "frameRecallLocusLabel": "Locus",
+  "frameRecallPickCrop": "Which crop matches?",
+  "frameRecallCorrect": "Correct.",
+  "frameRecallWrong": "Wrong — green border shows the right crop.",
+  "frameRecallNext": "Next question",
+  "frameRecallMissingFile": "Missing file: {name}",
+  "@frameRecallMissingFile": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "pokerMemoryTabMap": "Map",
+  "pokerMemoryTabRanges": "Ranges",
+  "pokerMemoryTabDrill": "Quick drill",
+  "pokerMemoryMapIntro": "Each number maps to one card (A, 2–10, J, Q, K within the suit block). Edit ranges on the Ranges tab.",
+  "pokerMemoryMapEmpty": "No mappings. Check ranges (each suit must span exactly 13 numbers, no overlaps).",
+  "pokerMemoryRangesIntro": "Assign a contiguous block of 13 numbers per suit. Default: spades 01–13, hearts 41–53, diamonds 61–73, clubs 81–93.",
+  "pokerMemoryRangeFrom": "From",
+  "pokerMemoryRangeTo": "To",
+  "pokerMemoryRangesSave": "Save ranges",
+  "pokerMemoryRangesSaved": "Ranges saved",
+  "pokerMemoryRangesInvalidNumber": "Enter valid integers for from / to.",
+  "pokerMemoryRangesHint": "Ranks are fixed in order: A, 2, 3, …, 10, J, Q, K within each block. Gaps between blocks are allowed.",
+  "pokerMemorySuitSpades": "Spades",
+  "pokerMemorySuitHearts": "Hearts",
+  "pokerMemorySuitDiamonds": "Diamonds",
+  "pokerMemorySuitClubs": "Clubs",
+  "pokerMemoryDrillInstruction": "Recall the other side mentally, then reveal and mark pass or fail.",
+  "pokerMemoryDrillModeNumberToCard": "Number → card",
+  "pokerMemoryDrillModeCardToNumber": "Card → number",
+  "pokerMemoryDrillPoolInfo": "{count} cards · realm {realmId}",
+  "@pokerMemoryDrillPoolInfo": {
+    "placeholders": {
+      "count": {"type": "int"},
+      "realmId": {"type": "String"}
+    }
+  },
+  "pokerMemoryStimulusNumber": "Number",
+  "pokerMemoryStimulusCard": "Card",
+  "pokerMemoryShowAnswer": "Show answer",
+  "pokerMemoryAnswerHeading": "Answer",
+  "pokerMemoryAnswerNumber": "Number",
+  "pokerMemoryAnswerCard": "Card",
+  "pokerMemoryPass": "Pass",
+  "pokerMemoryFail": "Fail",
+  "pokerMemoryNext": "Next",
+  "pokerMemoryDrillEmpty": "Nothing to drill. Fix ranges first.",
   "matchCardsTitle": "Match cards",
   "matchCardsSubtitle": "Image ↔ caption pairs · random session (LB only)",
-  "matchCardsOrmHint": "Each pair: lemma (native script), optional transliteration, optional meaning (gloss), and image. route_key is for future “along a route”; FSRS table exists but scheduling is not implemented.",
+  "matchCardsOrmHint": "Each pair: lemma (native script), optional transliteration, optional meaning (gloss), and image. route_key is for future “along a route”. Practice sessions pick cards by Fibonacci step (shorter interval first), then by higher fail counts.",
   "matchCardsEmpty": "No pairs yet. Add an image and a caption.",
   "matchCardsAddPair": "Add pair",
   "matchCardsPractice": "Practice",
@@ -48,6 +352,27 @@
   "matchCardsNeedTwoPairs": "Add at least two pairs in Match cards to play.",
   "matchCardsNoMatch": "No match — try again.",
   "matchCardsPlayAgain": "Again",
+  "matchCardsSessionMenuTooltip": "Session",
+  "matchCardsSessionNewRound": "New round",
+  "matchCardsSessionChangeDeck": "Change deck…",
+  "matchCardsSessionStats": "Weakest cards…",
+  "matchCardsSessionStatsTitle": "Deck stats",
+  "matchCardsSessionStatsSubtitle": "Rounds prioritize low Fibonacci step (needs practice), then higher fail counts. Each wrong image–text match increments fails for both cards.",
+  "matchCardsSessionStatsEmpty": "No review data yet — finish a few rounds to see counts.",
+  "matchCardsSessionStatsFailPass": "{fails} fails · {passes} OK",
+  "@matchCardsSessionStatsFailPass": {
+    "placeholders": {
+      "fails": {"type": "int"},
+      "passes": {"type": "int"}
+    }
+  },
+  "matchCardsSessionStatsFib": "Step {n}",
+  "@matchCardsSessionStatsFib": {
+    "placeholders": {
+      "n": {"type": "int"}
+    }
+  },
+  "matchCardsSessionPickDeckTitle": "Choose deck",
   "matchCardsAttempts": "Attempts: {count}",
   "@matchCardsAttempts": {
     "placeholders": {
@@ -125,20 +450,101 @@
   "goGameBotThinking": "Bot thinking…",
   "goGameIllegal": "Illegal move",
   "goGameOver": "Game over",
-  "goGameScoreLine": "Black {blackPt} — White {whitePt} (komi +{komi})",
-  "@goGameScoreLine": {
+  "goGameScoreSummary": "Black {blackPt} pts — White {whiteBoardPt} on board + {komi} komi = {whiteTotal} pts. {verdict}",
+  "@goGameScoreSummary": {
     "placeholders": {
       "blackPt": {"type": "String"},
-      "whitePt": {"type": "String"},
-      "komi": {"type": "String"}
+      "whiteBoardPt": {"type": "String"},
+      "komi": {"type": "String"},
+      "whiteTotal": {"type": "String"},
+      "verdict": {"type": "String"}
     }
   },
+  "goGameVerdictDraw": "Draw.",
+  "goGameVerdictBlackWins": "Black wins by {margin} pts.",
+  "@goGameVerdictBlackWins": {
+    "placeholders": {
+      "margin": {"type": "String"}
+    }
+  },
+  "goGameVerdictWhiteWins": "White wins by {margin} pts.",
+  "@goGameVerdictWhiteWins": {
+    "placeholders": {
+      "margin": {"type": "String"}
+    }
+  },
+  "goGameStoneTotals": "Stones on grid: Black {blackStones} · White {whiteStones}",
+  "@goGameStoneTotals": {
+    "placeholders": {
+      "blackStones": {"type": "int"},
+      "whiteStones": {"type": "int"}
+    }
+  },
+  "goStudyTabFree": "Free play",
+  "goStudyTabProblems": "Problems",
+  "goStudyLibraryTooltip": "Problem library & progress",
+  "goStudyLibraryTitle": "Go problems",
+  "goStudyLibraryLine": "{solved} solved · {mastered} studied (3+ hits)",
+  "@goStudyLibraryLine": {
+    "placeholders": {
+      "solved": {"type": "int"},
+      "mastered": {"type": "int"}
+    }
+  },
+  "goStudyMasteredLabel": "Studied",
+  "goStudySolvedLabel": "Solved once",
+  "goStudyAttemptsLabel": "{n} attempts",
+  "@goStudyAttemptsLabel": {
+    "placeholders": {
+      "n": {"type": "int"}
+    }
+  },
+  "goStudyProblemWrong": "Not the intended move — try again.",
+  "goStudyProblemCorrect": "Correct!",
+  "goStudyHint": "Hint",
+  "goStudyShowLegal": "Legal moves",
+  "goStudyProblemIndex": "Problem {current} / {total}",
+  "@goStudyProblemIndex": {
+    "placeholders": {
+      "current": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "goStudyNextProblem": "Next",
+  "goStudyPrevProblem": "Previous",
+  "goStudyResetProblem": "Reset position",
+  "goStudyPassDisabled": "Pass is disabled in this problem mode.",
+  "goStudyBotDisabled": "Bot is off during problems.",
+  "goProblemCapTitle": "Capture (atari)",
+  "goProblemCapHint": "Remove the last liberty of the white stone.",
+  "goProblemConnectTitle": "Connect (side)",
+  "goProblemConnectHint": "Play between the two black stones.",
+  "goProblemBridgeTitle": "Connect (up/down)",
+  "goProblemBridgeHint": "Join the two black stones on the same file.",
   "metricsRecallTitle": "Recall metrics",
   "metricsRecallSubtitle": "Export CSV",
   "realmsTitle": "Realms",
   "realmsSubtitle": "Core / Active / Seek",
-  "navigationIntentTitle": "Navigation intent",
-  "navigationIntentTooltip": "Explore / review / seek / drift mode. When an object is in focus, it is saved as a frame: place, hint and ridiculous story are tied to that locus Hero.",
+  "navigationIntentTitle": "Study navigation",
+  "navigationIntentTooltip": "Tap to cycle modes. With a focused object, line 2 in the bridge file is the Hero frame key for place / hint / story.",
+  "memoryAthleteSwitchTitle": "Parcour pass: 100% (athlete) vs 80% (standard)",
+  "memoryAthleteSwitchSubtitleOn": "Switch on — full pass required (100% of session score).",
+  "memoryAthleteSwitchSubtitleOff": "Switch off — pass at 80% of session score (standard).",
+  "studyNavigationTitle": "Study navigation",
+  "studyNavigationTooltip": "Tap to cycle modes. Subtitle: mode and Hero frame key.",
+  "studyNavigationDetailModeOnly": "Mode: {mode}",
+  "@studyNavigationDetailModeOnly": {
+    "placeholders": {
+      "mode": {"type": "String"}
+    }
+  },
+  "studyNavigationDetailWithFrame": "Mode: {mode}\nFrame (Hero locus): {frame}",
+  "@studyNavigationDetailWithFrame": {
+    "placeholders": {
+      "mode": {"type": "String"},
+      "frame": {"type": "String"}
+    }
+  },
   "menuTooltip": "Menu",
   "backTooltip": "Go up",
   "searchTooltip": "Search objects (FTS5) · Core / Active / Seek",
@@ -255,7 +661,7 @@
       "frame": {"type": "String"}
     }
   },
-  "intentSnackbar": "Intent → {mode}{frameSuffix} (HUD GateKeeper)",
+  "intentSnackbar": "Mode → {mode}{frameSuffix} (3D viewer HUD)",
   "@intentSnackbar": {
     "placeholders": {
       "mode": {"type": "String"},
@@ -364,6 +770,13 @@
     }
   },
   "parcourFibDueDash": "due —",
+  "parcourFibDueReady": "due",
+  "parcourFibDueInDaysCount": "{count, plural, =1{in 1 day} other{in {count} days}}",
+  "@parcourFibDueInDaysCount": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
   "parcourFibDueOverdue": "due overdue",
   "parcourFibDueIn": "due {when}",
   "@parcourFibDueIn": {
@@ -411,7 +824,6 @@
   "locusEditorSpatialRight": "Right",
   "locusEditorMenuTooltip": "Locus settings, role, help",
   "locusEditorSave": "Save",
-  "locusEditorPasteHint": "Paste: Ctrl+V. Image roles: Viewer / Collage / Hero. Quick hero: focus image + Ctrl/Cmd+H. More: menu ☰",
   "locusEditorSaved": "Saved",
   "locusEditorSubtitleLine": "{role} · {turn}",
   "@locusEditorSubtitleLine": {
@@ -420,6 +832,31 @@
       "turn": {"type": "String"}
     }
   },
+  "locusEditorHelpMenuLabel": "Locus editor help",
+  "locusEditorHelpMenuSubtitle": "What this screen does and how it syncs with GateKeeper",
+  "locusEditorHelpDialogTitle": "Using the locus editor",
+  "locusEditorDeleteMenuLabel": "Delete this locus",
+  "placeRecallDrawerTitle": "Place recall",
+  "placeRecallDrawerSubtitle": "Enables the crop gate in the 3D viewer (or use study mode place_recall). Needs recall_crop assets; three distractors come from siblings in the parcour when possible.",
+  "locusEditorDeleteMenuSubtitle": "Removes this entry and descendants from the database and realm files—not the whole database file.",
+  "locusEditorDeleteConfirmTitle": "Delete locus permanently",
+  "locusEditorDeleteConfirmDescription": "Removes this entry and all descendants from the realm database ({realmPath}), deletes matching rows in review/parcour tables, removes assets/snapshot/viewer/manifest files for those keys, then rebuilds snapshots.",
+  "@locusEditorDeleteConfirmDescription": {
+    "placeholders": {
+      "realmPath": {"type": "String"}
+    }
+  },
+  "locusEditorDeleteConfirmDeletingLabel": "Deleting: {key}",
+  "@locusEditorDeleteConfirmDeletingLabel": {
+    "placeholders": {
+      "key": {"type": "String"}
+    }
+  },
+  "locusEditorDeleteConfirmTypeInstruction": "This will delete the locus named above. To confirm, type the phrase below in the box—not your database key. It must match exactly, including spaces and capitals:",
+  "locusEditorDeleteConfirmPhraseExact": "Delete Node",
+  "locusEditorDeleteConfirmFieldHint": "Delete Node",
+  "locusEditorDeleteConfirmButton": "Delete",
+  "locusEditorHelpDialogBody": "This screen edits one entry in the realm: blocks of text, links, images, and vocabulary cards.\n\nCognitive role — Realm (container), Parcour (a corridor of frames), or Object (what you read in the GateKeeper viewer). Children under a parcour become ordered frames along the 3D path.\n\nBlocks — Paragraphs can be plain text or study kinds: Place, Hint, Ridiculous story. Images pick a role: Content (viewer only), Collage (panels on the GateKeeper wall between frames), or Hero (the picture on the 3D frame). Quick Hero: focus an image block and press Ctrl/Cmd+H.\n\nCards — Word or lemma, illustration and audio files under assets for this key, optional phonetic notes file, and related entry keys that already exist in this realm.\n\nSpatial turn — For entries that are direct children of a parcour, set how the corridor continues toward the next frame (straight, left, right).\n\nPlace recall — On objects, turn on place recall when you want the GateKeeper place drill. Add an image with role Recall crop; the drill needs this frame plus three other objects in the realm with valid recall crops.\n\nPaste and files — Paste text or images with Ctrl+V / Cmd+V when focus is outside text fields. On desktop, drop .png / .jpg / .webp on the drop target.\n\nSave — Writes the database, copies assets, and refreshes viewer and snapshot outputs so GateKeeper can reload.",
   "sectionHelp": "HELP",
   "helpGuideTitle": "How Alexandria works",
   "helpGuideClose": "Close",
@@ -457,7 +894,18 @@
   "realmAdminTooltipRefresh": "Refresh list",
   "realmAdminTooltipOpenExplorer": "Open this folder in file explorer",
   "realmAdminTooltipCreateSeed": "Create realm seed from active realm (data/realm_seed/)",
-  "realmAdminTooltipNuclear": "Delete all data (irreversible)",
+  "realmAdminTooltipNuclear": "Clear realm libraries (irreversible) — PAO & Match cards are preserved",
+  "realmAdminCleanupMenuTooltip": "Clear PAO or Match cards data only",
+  "realmAdminCleanPaoTitle": "Clear PAO data",
+  "realmAdminCleanPaoBody": "Removes PAO rows in the active realm database and non-template JSON files under data/pao/. Realm tree and Match cards are not affected.",
+  "realmAdminCleanPaoConfirm": "Clear PAO",
+  "realmAdminCleanPaoSnackbar": "PAO data cleared.",
+  "realmAdminCleanMatchTitle": "Clear Match cards data",
+  "realmAdminCleanMatchBody": "Deletes all match-card decks, pairs, review state, and files under assets/lb_match_cards/ for the active realm. Irreversible.",
+  "realmAdminCleanMatchConfirm": "Clear Match cards",
+  "realmAdminCleanMatchSnackbar": "Match cards data cleared.",
+  "realmAdminMatchCardsTileTitle": "Match cards",
+  "realmAdminMatchCardsTileSubtitle": "Decks and image–text pairs for the active realm. Opens the Match cards view on the Library home.",
   "realmAdminTooltipOpenRealmFolder": "Open realm folder in explorer",
   "realmAdminTooltipMoveShelf": "Change shelf assignment",
   "realmAdminTooltipEnterSubfolders": "Enter subfolders",
@@ -562,11 +1010,11 @@
     }
   },
   "realmAdminNuclearTitle": "Delete all data",
-  "realmAdminNuclearDialogIntro": "All realms, assets, bridge, snapshots, manifests, PAO under data/pao, and realm_shelf.json will be deleted.\n\nOnly a new base will remain at:\ndata/realms/default/alexandria.db\n\nThe realm seed snapshot will also be written to:\ndata/realm_seed/alexandria.db\n\nActive realm: default.\n\nClose GateKeeper if it is open (file locking).\n\nTo confirm, type exactly:",
+  "realmAdminNuclearDialogIntro": "All realm folders under data/realms/ will be removed (assets, bridge, snapshots, manifests, realm_shelf.json). The repo folder data/pao/ is not deleted.\n\nPAO and Match cards from the active realm are copied into the new default database and assets.\n\nOnly a fresh base will remain at:\ndata/realms/default/alexandria.db\n\nThe realm seed snapshot will also be written to:\ndata/realm_seed/alexandria.db\n\nActive realm: default.\n\nClose the 3D viewer if it is open (file locking).\n\nTo confirm, type exactly:",
   "realmAdminConfirmLabel": "Confirmation",
   "realmAdminPhraseMismatch": "The phrase does not match exactly.",
   "realmAdminNuclearButton": "Delete all",
-  "realmAdminNuclearSuccessSnackbar": "Data cleared: default/alexandria.db + data/realm_seed/alexandria.db. Run Library build or reopen the app to regenerate snapshot/viewer.",
+  "realmAdminNuclearSuccessSnackbar": "Realm libraries cleared; PAO & Match cards restored into default. default/alexandria.db + data/realm_seed/alexandria.db. Run Library build or reopen the app to regenerate snapshot/viewer.",
   "realmSeedDialogTitle": "Create realm seed",
   "realmSeedDialogBody": "The active realm ({realm}) will be sanitized, Library build will run, and the database will be copied to:\ndata/realm_seed/alexandria.db\n\nClose GateKeeper if it is open.",
   "@realmSeedDialogBody": {

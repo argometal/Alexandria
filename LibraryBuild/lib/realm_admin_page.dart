@@ -13,6 +13,9 @@ class RealmAdminPage extends StatefulWidget {
     required this.onRealmChanged,
     required this.onNuclearDataReset,
     required this.onRegenerateRealmSeed,
+    required this.onPaoDataCleanup,
+    required this.onMatchCardsDataCleanup,
+    required this.onOpenMatchCards,
     this.onReleaseDatabase,
   });
 
@@ -26,6 +29,15 @@ class RealmAdminPage extends StatefulWidget {
 
   /// Padre cierra la DB, ejecuta [regenerateRealmSeedFromActiveRealmSync] y reabre.
   final Future<void> Function() onRegenerateRealmSeed;
+
+  /// Padre cierra la DB, ejecuta [performPaoLibraryDataCleanupSync] y reabre.
+  final Future<void> Function() onPaoDataCleanup;
+
+  /// Padre cierra la DB, ejecuta [performMatchCardsLibraryDataCleanupSync] y reabre.
+  final Future<void> Function() onMatchCardsDataCleanup;
+
+  /// Cierra esta pantalla y lleva al usuario al editor Match cards en la vista principal.
+  final VoidCallback onOpenMatchCards;
 
   @override
   State<RealmAdminPage> createState() => _RealmAdminPageState();
@@ -838,6 +850,30 @@ class _RealmAdminPageState extends State<RealmAdminPage>
             icon: const Icon(Icons.layers_outlined),
             onPressed: () => _onRegenerateRealmSeed(context),
           ),
+          PopupMenuButton<String>(
+            tooltip: l.realmAdminCleanupMenuTooltip,
+            icon: const Icon(Icons.cleaning_services_outlined),
+            onSelected: (value) async {
+              if (value == 'pao') {
+                await _onConfirmCleanPao(context);
+              } else if (value == 'match') {
+                await _onConfirmCleanMatchCards(context);
+              }
+            },
+            itemBuilder: (ctx) {
+              final dl = AppLocalizations.of(ctx)!;
+              return [
+                PopupMenuItem<String>(
+                  value: 'pao',
+                  child: Text(dl.realmAdminCleanPaoTitle),
+                ),
+                PopupMenuItem<String>(
+                  value: 'match',
+                  child: Text(dl.realmAdminCleanMatchTitle),
+                ),
+              ];
+            },
+          ),
           IconButton(
             tooltip: l.realmAdminTooltipNuclear,
             icon: Icon(Icons.delete_forever, color: Theme.of(context).colorScheme.error),
@@ -852,16 +888,33 @@ class _RealmAdminPageState extends State<RealmAdminPage>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ListView(
-            padding: const EdgeInsets.only(bottom: 88),
-            children: folderBody,
+          Material(
+            color: cs.surfaceContainerHighest,
+            child: ListTile(
+              leading: Icon(Icons.style_outlined, color: cs.primary),
+              title: Text(l.realmAdminMatchCardsTileTitle),
+              subtitle: Text(l.realmAdminMatchCardsTileSubtitle),
+              trailing: Icon(Icons.arrow_forward_ios, size: 16, color: cs.outline),
+              onTap: widget.onOpenMatchCards,
+            ),
           ),
-          ListView(
-            padding: const EdgeInsets.only(bottom: 88),
-            children: shelfChildren,
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                ListView(
+                  padding: const EdgeInsets.only(bottom: 88),
+                  children: folderBody,
+                ),
+                ListView(
+                  padding: const EdgeInsets.only(bottom: 88),
+                  children: shelfChildren,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1030,6 +1083,66 @@ class _RealmAdminPageState extends State<RealmAdminPage>
     final l = AlexandriaPaths.listRealmIds();
     if (l.isEmpty) return 'default';
     return l.first;
+  }
+
+  Future<void> _onConfirmCleanPao(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dl = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(dl.realmAdminCleanPaoTitle),
+          content: Text(dl.realmAdminCleanPaoBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dl.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dl.realmAdminCleanPaoConfirm),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true || !context.mounted) return;
+    await widget.onPaoDataCleanup();
+    if (!context.mounted) return;
+    final loc = AppLocalizations.of(context)!;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(loc.realmAdminCleanPaoSnackbar)),
+    );
+  }
+
+  Future<void> _onConfirmCleanMatchCards(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dl = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(dl.realmAdminCleanMatchTitle),
+          content: Text(dl.realmAdminCleanMatchBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dl.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dl.realmAdminCleanMatchConfirm),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true || !context.mounted) return;
+    await widget.onMatchCardsDataCleanup();
+    if (!context.mounted) return;
+    final loc = AppLocalizations.of(context)!;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(loc.realmAdminCleanMatchSnackbar)),
+    );
   }
 
   Future<void> _onNuclearDeleteAllData(BuildContext context) async {

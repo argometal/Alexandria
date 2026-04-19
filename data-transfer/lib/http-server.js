@@ -15,15 +15,31 @@ const {
 const state = require('./state');
 const { log } = require('./log');
 const { sseBroadcast } = require('./sse');
-const { getLocalIp, openDataTransferInBrowser } = require('./utils');
+const { getLocalIp, openDataTransferInBrowser, openLocalFolder } = require('./utils');
 const { writeHowToFile } = require('./howto');
 const { escapeHtml } = require('./html-utils');
 const { renderReaderPanelHtml } = require('./panels/reader');
 const { renderSenderPanelHtml } = require('./panels/sender');
 const { streamBodyToFile } = require('./limited-stream');
+const {
+  resolveLang,
+  normalizeLang,
+  homeIntro,
+  homeStrings,
+  folderOpenForbiddenBody,
+  latestStrings,
+  COOKIE
+} = require('./ui-lang');
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+/** Only loopback may trigger opening local folders (avoids LAN clients opening FM on server). */
+function isLoopbackRequest(req) {
+  let a = (req.socket && req.socket.remoteAddress) || '';
+  a = a.replace(/^::ffff:/i, '');
+  return a === '127.0.0.1' || a === '::1';
 }
 
 function sanitizeFilename(raw) {
@@ -31,21 +47,24 @@ function sanitizeFilename(raw) {
   return base.replace(/[<>:"/\\|?*\x00-\x1f]+/g, '_') || 'upload.bin';
 }
 
-function listFilesInDir(dir) {
+function listFileEntriesInDir(dir) {
   ensureDir(dir);
   return fs
     .readdirSync(dir)
     .map((name) => {
       try {
         const st = fs.statSync(path.join(dir, name));
-        return st.isFile() ? { name, time: st.mtime.getTime() } : null;
+        return st.isFile() ? { name, mtime: st.mtime.getTime() } : null;
       } catch (e) {
         return null;
       }
     })
     .filter(Boolean)
-    .sort((a, b) => b.time - a.time)
-    .map((f) => f.name);
+    .sort((a, b) => b.mtime - a.mtime);
+}
+
+function listFilesInDir(dir) {
+  return listFileEntriesInDir(dir).map((f) => f.name);
 }
 
 function readTextLimited(filePath, maxBytes) {
@@ -164,6 +183,41 @@ function postUploadHandler(req, res, targetDir, bucketLabel, nameMode) {
     });
 }
 
+function readSmallPostBody(req, maxLen) {
+  const cap = maxLen || 256;
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (ch) => {
+      raw += ch;
+      if (raw.length > cap) {
+        reject(new Error('body too large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => resolve(raw));
+    req.on('error', reject);
+  });
+}
+
+function handlePostOpenFolder(req, res, targetDir, logTag, lang) {
+  if (!isLoopbackRequest(req)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(folderOpenForbiddenBody(lang, PORT));
+    return;
+  }
+  ensureDir(targetDir);
+  openLocalFolder(targetDir)
+    .then(() => {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('OK');
+    })
+    .catch((e) => {
+      log(logTag, 'ERR', e.message);
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('ERROR: ' + e.message);
+    });
+}
+
 function cleanDirFiles(dir, res) {
   try {
     ensureDir(dir);
@@ -191,7 +245,23 @@ function cleanDirFiles(dir, res) {
 }
 
 function requestHandler(req, res) {
-  if (req.method === 'POST' && req.url === '/sfs') {
+  if (req.method === 'POST' && req.url.split('?')[0] === '/set-lang') {
+    readSmallPostBody(req)
+      .then((raw) => {
+        const params = new URLSearchParams(raw);
+        const lang = normalizeLang(params.get('lang'));
+        res.writeHead(303, {
+          Location: '/',
+          'Set-Cookie': `${COOKIE}=${lang}; Path=/; Max-Age=31536000; SameSite=Lax`,
+          'Content-Type': 'text/plain; charset=utf-8'
+        });
+        res.end();
+      })
+      .catch(() => {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('BAD REQUEST');
+      });
+  } else if (req.method === 'POST' && req.url === '/sfs') {
     postSfsHandler(req, res);
   } else if (req.method === 'GET' && req.url === '/events') {
     res.writeHead(200, {
@@ -207,11 +277,20 @@ function requestHandler(req, res) {
     });
   } else if (req.method === 'GET' && req.url.split('?')[0] === '/files') {
     try {
+      const host = req.headers.host || '127.0.0.1';
+      const u = new URL(req.url, `http://${host}`);
       const bucket = parseBucketFromUrl(req.url);
       const dir = bucketDir(bucket);
-      const files = listFilesInDir(dir);
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify(files));
+      const wantMeta = u.searchParams.get('meta') === '1';
+      if (wantMeta) {
+        const entries = listFileEntriesInDir(dir);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(entries.map((e) => ({ name: e.name, mtime: e.mtime }))));
+      } else {
+        const files = listFilesInDir(dir);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(files));
+      }
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ error: e.message }));
@@ -274,18 +353,24 @@ function requestHandler(req, res) {
     res.writeHead(302, { Location: loc });
     res.end();
   } else if (req.method === 'GET' && (req.url === '/' || req.url.startsWith('/?'))) {
+    const lang = resolveLang(req.url, req.headers.cookie);
+    const hs = homeStrings(lang);
+    const intro = homeIntro(lang, CONFIG.maxUploadMb, CONFIG.maxSfsMb);
     const ip = writeHowToFile();
     const baseUrl = `http://${ip}:${PORT}`;
-    const readerHtml = renderReaderPanelHtml();
-    const senderHtml = renderSenderPanelHtml();
+    const readerHtml = renderReaderPanelHtml(lang);
+    const senderHtml = renderSenderPanelHtml(lang);
+    const htmlLang = lang === 'en' ? 'en' : 'es';
+    const homeJson = JSON.stringify(hs).replace(/</g, '\\u003c');
+    const dateLocJson = JSON.stringify(lang === 'en' ? 'en' : 'es');
 
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(`<!DOCTYPE html>
-<html lang="es">
+<html lang="${htmlLang}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Data transfer</title>
+<title>${hs.pageTitle}</title>
 <style>
   :root {
     --bg:#0e0f12; --surface:#1a1c23; --border:#2a2d36; --text:#e8eaef; --muted:#8b919d; --accent:#ff6a00; --radius:10px;
@@ -293,6 +378,8 @@ function requestHandler(req, res) {
   body.dt-shell { margin:0; font-family:Segoe UI,system-ui,sans-serif; font-size:14px; color:var(--text); background:var(--bg);
     min-height:100vh; box-sizing:border-box; padding:14px 16px; }
   .dt-tabbar { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; }
+  .dt-lang { margin-left:auto; display:inline-flex; gap:6px; align-items:center; flex-shrink:0; }
+  .dt-lang .dt-tab { padding:6px 12px; font-size:12px; }
   .dt-tab { padding:8px 14px; font-size:14px; font-family:ui-monospace,monospace; cursor:pointer; border:1px solid var(--border); border-radius:var(--radius);
     background:var(--surface); color:var(--text); }
   .dt-tab:hover { background:#23262f; }
@@ -301,39 +388,149 @@ function requestHandler(req, res) {
     padding:10px 12px; background:#23262f; border:1px solid var(--border); border-radius:10px; font-size:14px; box-shadow:0 8px 24px rgba(0,0,0,.4); }
   #tab-home .dt-home-card { padding:14px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); max-width:520px; }
   #tab-reader, #tab-sender { background:#f0f0f0; color:#111; border-radius:var(--radius); padding:12px; box-sizing:border-box; }
+  .dt-recent { margin-top:12px; max-width:520px; }
+  .dt-recent h2 { margin:0 0 8px 0; font-size:13px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .dt-recent ul { list-style:none; padding:0; margin:0; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); overflow:hidden; }
+  .dt-recent li { display:flex; justify-content:space-between; gap:10px; padding:8px 12px; border-bottom:1px solid var(--border); font-size:13px; }
+  .dt-recent li:last-child { border-bottom:none; }
+  .dt-recent a { color:var(--accent); text-decoration:none; word-break:break-all; }
+  .dt-recent a:hover { text-decoration:underline; }
+  .dt-recent .dt-mute { color:var(--muted); flex-shrink:0; font-size:12px; }
 </style>
 </head>
 <body class="dt-shell">
 <div id="dtToast"></div>
+<script>var __DT_HOME=${homeJson};var __DT_DATE_LOCALE__=${dateLocJson};</script>
 <div class="dt-tabbar">
-  <button type="button" class="dt-tab active" id="dtBtnHome" onclick="dtShowTab('home')">Inicio</button>
-  <button type="button" class="dt-tab" id="dtBtnReader" onclick="dtShowTab('reader')">Reader</button>
-  <button type="button" class="dt-tab" id="dtBtnSender" onclick="dtShowTab('sender')">Sender</button>
+  <button type="button" class="dt-tab active" id="dtBtnHome" onclick="dtShowTab('home')">${hs.tabHome}</button>
+  <button type="button" class="dt-tab" id="dtBtnReader" onclick="dtShowTab('reader')">${hs.tabReader}</button>
+  <button type="button" class="dt-tab" id="dtBtnSender" onclick="dtShowTab('sender')">${hs.tabSender}</button>
+  <span class="dt-lang" title="Language / Idioma">
+    <button type="button" class="dt-tab${lang === 'es' ? ' active' : ''}" onclick="dtSetLang('es')">ES</button>
+    <button type="button" class="dt-tab${lang === 'en' ? ' active' : ''}" onclick="dtSetLang('en')">EN</button>
+  </span>
 </div>
 <div id="tab-home">
-  <h1 style="margin:0 0 8px 0;font-size:22px;">Data transfer</h1>
+  <h1 style="margin:0 0 8px 0;font-size:22px;">${hs.pageTitle}</h1>
   <p style="margin:0 0 14px 0;font-size:13px;color:var(--muted);line-height:1.45;max-width:46em;">
-    Transporte ligero: <strong>out/</strong> (rápido) y <strong>handoff/incoming/</strong> (paquetes debug). Límites: subida ≤${CONFIG.maxUploadMb} MiB, texto /sfs ≤${CONFIG.maxSfsMb} MiB. Sin interpretar contenido.
+    ${intro}
   </p>
   <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="dtShowTab('reader')">Reader</button>
-    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="dtShowTab('sender')">Sender</button>
-    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="location.href='/latest'">Último en out/</button>
+    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="dtShowTab('reader')">${hs.tabReader}</button>
+    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="dtShowTab('sender')">${hs.tabSender}</button>
+    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="location.href='/latest'">${hs.btnLatestOut}</button>
+    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="dtOpenOutFolder()">${hs.btnOpenOut}</button>
+    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="dtOpenIncomingFolder()">${hs.btnOpenIncoming}</button>
+    <button type="button" class="dt-tab" style="border-radius:8px;" onclick="dtCopyDiskPaths()">${hs.btnCopyPaths}</button>
+  </div>
+  <div class="dt-recent">
+    <h2>${hs.recentHeading}</h2>
+    <ul id="dtRecentOut"><li style="color:var(--muted);">${hs.loading}</li></ul>
   </div>
   <div class="dt-home-card">
-    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">URL en red</div>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">${hs.urlCardLabel}</div>
     <div id="urlBox" style="font-family:monospace;font-size:15px;word-break:break-all;">${baseUrl}</div>
-    <button type="button" onclick="dtCopyUrl()" style="margin-top:10px;padding:8px 14px;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid var(--border);background:#2a2d36;color:var(--text);">Copiar URL</button>
+    <button type="button" onclick="dtCopyUrl()" style="margin-top:10px;padding:8px 14px;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid var(--border);background:#2a2d36;color:var(--text);">${hs.copyUrl}</button>
   </div>
-  <p style="font-size:12px;color:var(--muted);margin-top:14px;">SSE: <span id="dtSse">…</span> · eventos: <span id="dtSfsCount">0</span></p>
+  <p style="font-size:12px;color:var(--muted);margin-top:14px;">${hs.sseLine} <span id="dtSse">…</span> · ${hs.events} <span id="dtSfsCount">0</span></p>
   <script>
+  function dtSetLang(code) {
+    fetch('/set-lang', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'lang=' + encodeURIComponent(code) })
+      .then(function() { location.reload(); })
+      .catch(function(e) { alert(String(e)); });
+  }
   function dtCopyUrl() {
     var u = document.getElementById('urlBox').innerText;
-    navigator.clipboard.writeText(u).then(function(){ alert('Copiado: ' + u); }).catch(function(){ alert(u); });
+    var h = typeof __DT_HOME !== 'undefined' ? __DT_HOME : {};
+    navigator.clipboard.writeText(u).then(function(){ alert((h.copyUrlOk || 'OK') + ' ' + u); }).catch(function(){ alert(u); });
+  }
+  function dtToastOk(msg) {
+    var t = document.getElementById('dtToast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    clearTimeout(dtToastTm);
+    dtToastTm = setTimeout(function() { t.style.display = 'none'; }, 3500);
+  }
+  function dtOpenOutFolder() {
+    var h = typeof __DT_HOME !== 'undefined' ? __DT_HOME : {};
+    fetch('/open-out', { method: 'POST' })
+      .then(function(r) { return r.text().then(function(t) { return { ok: r.ok, body: t }; }); })
+      .then(function(x) {
+        if (x.ok) dtToastOk(h.openOutToast || '');
+        else alert(x.body || h.errOpenFolder || '');
+      })
+      .catch(function(e) { alert((h.errServer || '') + ' ' + e.message); });
+  }
+  function dtOpenIncomingFolder() {
+    var h = typeof __DT_HOME !== 'undefined' ? __DT_HOME : {};
+    fetch('/open-incoming', { method: 'POST' })
+      .then(function(r) { return r.text().then(function(t) { return { ok: r.ok, body: t }; }); })
+      .then(function(x) {
+        if (x.ok) dtToastOk(h.openIncomingToast || '');
+        else alert(x.body || h.errOpenFolder || '');
+      })
+      .catch(function(e) { alert((h.errServer || '') + ' ' + e.message); });
+  }
+  function dtCopyDiskPaths() {
+    var h = typeof __DT_HOME !== 'undefined' ? __DT_HOME : {};
+    fetch('/health')
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        var a = (j.paths && j.paths.out) || '';
+        var b = (j.paths && j.paths.incoming) || '';
+        var realTxt = ['out:', a, '', 'incoming:', b].join(String.fromCharCode(10));
+        return navigator.clipboard.writeText(realTxt).then(function() {
+          dtToastOk(h.pathsCopiedToast || '');
+        });
+      })
+      .catch(function(e) {
+        alert(e.message || String(e));
+      });
+  }
+  function dtFmtShort(ms) {
+    try {
+      var d = new Date(ms);
+      var loc = typeof __DT_DATE_LOCALE__ !== 'undefined' ? __DT_DATE_LOCALE__ : 'es';
+      return d.toLocaleString(loc, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    } catch (e) { return ''; }
+  }
+  function dtRefreshRecentOut() {
+    var ul = document.getElementById('dtRecentOut');
+    if (!ul) return;
+    fetch('/files?bucket=out&meta=1')
+      .then(function(r) { return r.json(); })
+      .then(function(rows) {
+        ul.innerHTML = '';
+        var h = typeof __DT_HOME !== 'undefined' ? __DT_HOME : {};
+        if (!rows || rows.length === 0) {
+          var li0 = document.createElement('li');
+          li0.style.color = 'var(--muted)';
+          li0.textContent = h.empty || '';
+          ul.appendChild(li0);
+          return;
+        }
+        rows.slice(0, 8).forEach(function(row) {
+          var li = document.createElement('li');
+          var a = document.createElement('a');
+          a.href = '/?view=reader&open=' + encodeURIComponent(row.name);
+          a.textContent = row.name;
+          var sp = document.createElement('span');
+          sp.className = 'dt-mute';
+          sp.textContent = dtFmtShort(row.mtime);
+          li.appendChild(a);
+          li.appendChild(sp);
+          ul.appendChild(li);
+        });
+      })
+      .catch(function() {
+        var h = typeof __DT_HOME !== 'undefined' ? __DT_HOME : {};
+        ul.innerHTML = '<li style="color:var(--muted);">' + (h.errList || '') + '</li>';
+      });
   }
   try {
+    var h = typeof __DT_HOME !== 'undefined' ? __DT_HOME : {};
     var es = new EventSource('/events');
-    es.onopen = function(){ document.getElementById('dtSse').textContent = 'conectado'; };
+    es.onopen = function(){ document.getElementById('dtSse').textContent = h.sseConnected || ''; };
     es.onmessage = function(ev){
       try {
         var d = JSON.parse(ev.data);
@@ -341,16 +538,20 @@ function requestHandler(req, res) {
           var n = document.getElementById('dtSfsCount');
           n.textContent = parseInt(n.textContent, 10) + 1;
           var t = document.getElementById('dtToast');
-          t.textContent = 'Nuevo en ' + (d.bucket || 'out') + '/: ' + (d.file || '');
+          t.textContent = (h.newInBucket || '') + ' ' + (d.bucket || 'out') + '/: ' + (d.file || '');
           t.style.display = 'block';
           clearTimeout(dtToastTm);
           dtToastTm = setTimeout(function(){ t.style.display = 'none'; }, 4000);
+          if ((d.bucket || 'out') !== 'incoming') {
+            try { dtRefreshRecentOut(); } catch (e2) {}
+          }
         }
       } catch(e) {}
     };
-    es.onerror = function(){ document.getElementById('dtSse').textContent = 'reconectando…'; };
-  } catch(e) { document.getElementById('dtSse').textContent = 'no disponible'; }
+    es.onerror = function(){ document.getElementById('dtSse').textContent = h.sseReconnecting || ''; };
+  } catch(e) { document.getElementById('dtSse').textContent = (typeof __DT_HOME !== 'undefined' && __DT_HOME.sseUnavailable) ? __DT_HOME.sseUnavailable : ''; }
   var dtToastTm = null;
+  try { dtRefreshRecentOut(); } catch (e3) {}
   </script>
 </div>
 <div id="tab-reader" style="display:none;">${readerHtml}</div>
@@ -368,6 +569,7 @@ function dtShowTab(which) {
   if (which === 'home') {
     h.style.display = 'block';
     bh.classList.add('active');
+    try { if (typeof dtRefreshRecentOut === 'function') dtRefreshRecentOut(); } catch (e) {}
   } else if (which === 'reader' && r) {
     r.style.display = 'block';
     br.classList.add('active');
@@ -396,13 +598,15 @@ function dtShowTab(which) {
 </html>`);
   } else if (req.method === 'GET' && req.url.split('?')[0] === '/latest') {
     try {
+      const lang = resolveLang(req.url, req.headers.cookie);
+      const ls = latestStrings(lang);
       const u = new URL(req.url, 'http://localhost');
       const bucket = (u.searchParams.get('bucket') || 'out').toLowerCase() === 'incoming' ? 'incoming' : 'out';
       const dir = bucketDir(bucket);
       const names = listFilesInDir(dir);
       if (names.length === 0) {
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('No hay archivos en ' + bucket + '/');
+        res.end(ls.noFiles + ' ' + bucket + '/');
         return;
       }
       const latestFile = names[0];
@@ -410,21 +614,27 @@ function dtShowTab(which) {
       const { text, truncated } = readTextLimited(filePath, MAX_READ_BYTES);
       const safe = escapeHtml(text);
       const safeName = escapeHtml(latestFile);
+      const copiedJs = JSON.stringify(ls.copied).replace(/</g, '\\u003c');
+      const latestH2 =
+        lang === 'en'
+          ? `Latest (${bucket}): ${safeName}`
+          : `Último (${bucket}): ${safeName}`;
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(`<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Último — Data transfer</title>
+<html lang="${lang === 'en' ? 'en' : 'es'}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${ls.title}</title>
 <style>body{font-family:monospace;padding:12px;background:#f5f5f5;font-size:13px;} pre{white-space:pre-wrap;word-break:break-word;background:#fff;padding:12px;border-radius:6px;}
 button{padding:10px 16px;margin:8px 0;cursor:pointer;border-radius:6px;border:1px solid #ccc;background:#222;color:#fff;}</style></head>
 <body>
-<h2>Último (${bucket}): ${safeName}</h2>
-${truncated ? '<p style="color:#b71c1c;">Vista truncada en servidor; descarga el archivo completo.</p>' : ''}
-<button type="button" id="cp">Copiar</button>
+<h2>${latestH2}</h2>
+${truncated ? '<p style="color:#b71c1c;">' + escapeHtml(ls.truncated) + '</p>' : ''}
+<button type="button" id="cp">${escapeHtml(ls.copy)}</button>
 <pre id="c">${safe}</pre>
-<button type="button" onclick="location.href='/'">Inicio</button>
+<button type="button" onclick="location.href='/'">${escapeHtml(ls.home)}</button>
 <script>
+var DT_COPIED=${copiedJs};
 var t=document.getElementById('c').innerText;
-function cp(){navigator.clipboard.writeText(t).then(function(){alert('Copiado');}).catch(function(){var x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();document.execCommand('copy');document.body.removeChild(x);alert('Copiado');});}
+function cp(){navigator.clipboard.writeText(t).then(function(){alert(DT_COPIED);}).catch(function(){var x=document.createElement('textarea');x.value=t;document.body.appendChild(x);x.select();document.execCommand('copy');document.body.removeChild(x);alert(DT_COPIED);});}
 document.getElementById('cp').onclick=cp; cp();
 </script></body></html>`);
     } catch (e) {
@@ -481,6 +691,10 @@ document.getElementById('cp').onclick=cp; cp();
     postUploadHandler(req, res, targetDir, label, useIncoming ? 'incoming' : 'out');
   } else if (req.method === 'POST' && req.url === '/incoming') {
     postUploadHandler(req, res, INCOMING_DIR, 'incoming', 'incoming');
+  } else if (req.method === 'POST' && req.url.split('?')[0] === '/open-out') {
+    handlePostOpenFolder(req, res, OUT_DIR, 'OPEN_OUT', resolveLang(req.url, req.headers.cookie));
+  } else if (req.method === 'POST' && req.url.split('?')[0] === '/open-incoming') {
+    handlePostOpenFolder(req, res, INCOMING_DIR, 'OPEN_INCOMING', resolveLang(req.url, req.headers.cookie));
   } else if (req.method === 'POST' && req.url === '/clean-out') {
     cleanDirFiles(OUT_DIR, res);
   } else if (req.method === 'POST' && req.url === '/clean-incoming') {

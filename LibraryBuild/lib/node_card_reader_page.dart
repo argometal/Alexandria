@@ -188,6 +188,7 @@ class NodeCardReaderPage extends StatelessWidget {
     final baseDir = Directory('${AlexandriaPaths.assetsRoot}$sep$key');
 
     for (final b in blocks) {
+      if (shouldOmitFromLocusReadingExport(b)) continue;
       final t = (b['type'] ?? 'p').toString();
       switch (t) {
         case 'img':

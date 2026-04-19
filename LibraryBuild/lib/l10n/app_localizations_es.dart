@@ -12,6 +12,9 @@ class AppLocalizationsEs extends AppLocalizations {
   String get appTitle => 'Biblioteca de realms';
 
   @override
+  String get librarySurfaceRealmTree => 'Árbol del realm';
+
+  @override
   String activeRealmLabel(String realm) {
     return 'Realm activo: $realm';
   }
@@ -65,10 +68,235 @@ class AppLocalizationsEs extends AppLocalizations {
   String get importLocusSubtitle => 'Desde data-transfer/out/ → body_text';
 
   @override
-  String get paoEditorTitle => 'PAO (00–99)';
+  String get dataTransferAppBarTitle => 'Data transfer → LibraryBuild';
 
   @override
-  String get paoEditorSubtitle => 'Sistema de 2 dígitos · import / export JSON';
+  String get dataTransferRefreshTooltip => 'Refrescar archivos y estado';
+
+  @override
+  String dataTransferServerRepoLabel(String path) {
+    return 'Servidor en repo: $path';
+  }
+
+  @override
+  String get dataTransferStartServer => 'Iniciar servidor (node)';
+
+  @override
+  String get dataTransferStopLbProcess => 'Detener proceso LB';
+
+  @override
+  String get dataTransferOpenWebUi => 'Abrir UI web (:4020)';
+
+  @override
+  String dataTransferServerReachable(int port) {
+    return 'Servidor accesible en http://127.0.0.1:$port';
+  }
+
+  @override
+  String get dataTransferHealthNoResponse =>
+      'Sin respuesta en /health (inicia node o usa solo import local)';
+
+  @override
+  String get dataTransferImportHeading => 'Importar archivo a un locus';
+
+  @override
+  String dataTransferImportHint(String folder) {
+    return 'Origen: $folder · Si el contenido empieza por [ se interpreta como JSON de bloques; si no, se crea un único párrafo. Modo «Añadir» concatena bloques al body existente.';
+  }
+
+  @override
+  String get dataTransferFolderLabelOut => 'out/';
+
+  @override
+  String get dataTransferFolderLabelIncoming => 'handoff/incoming/';
+
+  @override
+  String get dataTransferNoObjects => 'No hay entradas object en la DB.';
+
+  @override
+  String get dataTransferTargetLocus => 'Locus destino (object)';
+
+  @override
+  String dataTransferLocusDropdownLine(
+    String key,
+    String title,
+    String parentKey,
+  ) {
+    return '$key — $title (parent: $parentKey)';
+  }
+
+  @override
+  String get dataTransferFileFolder => 'Carpeta de archivos';
+
+  @override
+  String get dataTransferSegmentOut => 'out/';
+
+  @override
+  String get dataTransferSegmentIncoming => 'incoming/';
+
+  @override
+  String dataTransferFileCounts(int outCount, int incomingCount) {
+    return 'out/: $outCount · incoming/: $incomingCount';
+  }
+
+  @override
+  String get dataTransferOutFolderEmpty =>
+      'Carpeta out/ vacía. Usa la UI web, o cambia a incoming/, o copia ficheros en data-transfer/out/.';
+
+  @override
+  String get dataTransferIncomingFolderEmpty =>
+      'Carpeta handoff/incoming/ vacía. Copia aquí archivos o usa out/.';
+
+  @override
+  String dataTransferFilePickerLabel(String folder) {
+    return 'Archivo ($folder)';
+  }
+
+  @override
+  String get dataTransferImportMode => 'Modo de importación';
+
+  @override
+  String get dataTransferReplaceBody => 'Reemplazar body';
+
+  @override
+  String get dataTransferAppendBlocks => 'Añadir al final';
+
+  @override
+  String get dataTransferImportRunBuild =>
+      'Importar al locus y runLibraryBuild';
+
+  @override
+  String dataTransferScriptMissing(String path) {
+    return 'No existe $path';
+  }
+
+  @override
+  String get dataTransferServerAlreadyRunning =>
+      'Ya hay un servidor en :4020 (externo u otro proceso)';
+
+  @override
+  String get dataTransferNodeStartedNoHealth =>
+      'Proceso node iniciado pero /health no responde. ¿Node en PATH?';
+
+  @override
+  String dataTransferNodeStartFailed(String error) {
+    return 'No se pudo iniciar node: $error';
+  }
+
+  @override
+  String dataTransferOpenUrlFailed(String url) {
+    return 'No se pudo abrir $url';
+  }
+
+  @override
+  String get dataTransferPickFileAndLocus => 'Elige archivo y locus destino.';
+
+  @override
+  String dataTransferImportDoneReplace(String key, String file) {
+    return 'Reemplazo · $key ($file)';
+  }
+
+  @override
+  String dataTransferImportDoneAppend(String key, String file) {
+    return 'Añadido al final · $key ($file)';
+  }
+
+  @override
+  String dataTransferErrorWithMessage(String message) {
+    return 'Error: $message';
+  }
+
+  @override
+  String dataTransferHttpStatus(int code) {
+    return 'HTTP $code';
+  }
+
+  @override
+  String get paoEditorTitle => 'PAO';
+
+  @override
+  String get paoEditorSubtitle =>
+      'Claves fonéticas · clavijas 0–9 · 00–99 · 000–999 · JSON';
+
+  @override
+  String get paoTabPhonetic => 'Claves';
+
+  @override
+  String get paoTabDigit => '0–9';
+
+  @override
+  String get paoTabPair => '00–99';
+
+  @override
+  String get paoTabTriple => '000–999';
+
+  @override
+  String get paoPhoneticBoardHint =>
+      'Asigna consonantes o sonidos a cada dígito (tu variante del sistema Mayor). Las vocales son rellenos; la columna opcional es solo para notas.';
+
+  @override
+  String get paoPhoneticConsonantsLabel => 'Consonantes / sonidos';
+
+  @override
+  String get paoPhoneticVowelNoteLabel => 'Notas vocales (opcional)';
+
+  @override
+  String get paoPhoneticSaveRow => 'Guardar';
+
+  @override
+  String get paoPhoneticSaved => 'Fila guardada';
+
+  @override
+  String get paoSearchHint =>
+      'Buscar por código, persona, acción, objeto o ruta de imagen';
+
+  @override
+  String paoSubtitleTier(int filled, int total, String realm) {
+    return '$filled / $total con texto o imagen · realm $realm';
+  }
+
+  @override
+  String get paoMenuImportJsonAuto =>
+      'Importar JSON (auto: v2 completo o legado 00–99)';
+
+  @override
+  String get paoMenuExportJsonV2 => 'Exportar JSON (v2 completo)…';
+
+  @override
+  String get paoMenuExportPairCsv => 'Exportar CSV (solo 00–99)…';
+
+  @override
+  String get paoMenuTemplateV2 => 'Escribir plantilla v2 vacía en el repo';
+
+  @override
+  String get paoSnackbarImportOk => 'Datos PAO importados';
+
+  @override
+  String paoSnackbarTemplateV2(String path) {
+    return 'Plantilla v2 escrita: $path';
+  }
+
+  @override
+  String get paoEditCodeImageHintPair =>
+      'Imagen del código (00–99): arrastra o Ctrl/Cmd+V con el foco fuera de los campos de texto.';
+
+  @override
+  String get paoEditCodeImageHintDigit =>
+      'Imagen del código (un dígito): arrastra o Ctrl/Cmd+V con el foco fuera de los campos de texto.';
+
+  @override
+  String get paoEditCodeImageHintTriple =>
+      'Imagen del código (000–999): arrastra o Ctrl/Cmd+V con el foco fuera de los campos de texto.';
+
+  @override
+  String get paoEditPreviewExerciseTooltip => 'Vista previa del ejercicio';
+
+  @override
+  String get paoEditPreviewExerciseTitle => 'Vista previa (práctica)';
+
+  @override
+  String get paoEditPreviewExerciseIntro =>
+      'Cómo puede verse esta clavija en la práctica individual (estímulos del drill y panel de respuestas).';
 
   @override
   String get paoPracticeTitle => 'PAO · práctica individual';
@@ -78,6 +306,360 @@ class AppLocalizationsEs extends AppLocalizations {
       'Recall mental · mostrar respuestas · acierto/fallo';
 
   @override
+  String get paoDrillInstruction =>
+      'Recuerda en silencio; no escribas. Luego muestra las respuestas y marca acierto o fallo.';
+
+  @override
+  String get paoDrillModeCodeTitle =>
+      'Código → persona, acción, objeto (mental)';
+
+  @override
+  String get paoDrillModePersonTitle =>
+      'Persona → código, acción, objeto (mental)';
+
+  @override
+  String get paoDrillModeObjectTitle =>
+      'Objeto → código, persona, acción (mental)';
+
+  @override
+  String paoDrillPoolInfo(int count, String realmId) {
+    return '$count códigos · realm $realmId';
+  }
+
+  @override
+  String get paoDrillShowAnswers => 'Mostrar respuestas';
+
+  @override
+  String get paoDrillAnswersHeading => 'Respuestas';
+
+  @override
+  String get paoFieldCode => 'Código';
+
+  @override
+  String get paoFieldPerson => 'Persona';
+
+  @override
+  String get paoFieldAction => 'Acción';
+
+  @override
+  String get paoFieldObject => 'Objeto';
+
+  @override
+  String get paoDrillSuccess => 'Acierto';
+
+  @override
+  String get paoDrillFail => 'Fallo';
+
+  @override
+  String get paoDrillNextUnmarked => 'Siguiente (sin marcar)';
+
+  @override
+  String get paoDrillEmptyTitle => 'No hay códigos listos para practicar.';
+
+  @override
+  String get paoDrillEmptyHint =>
+      'Rellena persona, acción y objeto en al menos un código en PAO (dígito, par 00–99 o triple 000–999).';
+
+  @override
+  String get paoDrillStimulusCode => 'Código';
+
+  @override
+  String get paoDrillStimulusPerson => 'Persona';
+
+  @override
+  String get paoDrillStimulusObject => 'Objeto';
+
+  @override
+  String get paoDrillStimulusRecallNumber => 'Recuerda el número';
+
+  @override
+  String get paoDrillStimulusRecallMnemonic => 'Recuerda la imagen (mnemónico)';
+
+  @override
+  String get paoDrillPoolAllTiersHint =>
+      'Mazo: códigos aleatorios de 0–9, 00–99 y 000–999 (filas completas). En cada ronda solo ves el número o la imagen del código — no ambos.';
+
+  @override
+  String get paoListEmptyRow => '(vacío)';
+
+  @override
+  String paoListDetailLine(String person, String action, String object) {
+    return 'P: $person  |  A: $action  |  O: $object';
+  }
+
+  @override
+  String get paoEditChooseImage => 'Elegir imagen';
+
+  @override
+  String get paoEditRemoveImage => 'Quitar';
+
+  @override
+  String get paoEditNoImageOptional => 'Sin imagen (opcional)';
+
+  @override
+  String get paoEditImageLoadError => 'No se puede cargar la imagen';
+
+  @override
+  String get paoEditPersonImage1 => 'Imagen personaje 1';
+
+  @override
+  String get paoEditPersonImage2 => 'Imagen personaje 2';
+
+  @override
+  String get paoEditObjectImage1 => 'Imagen objeto 1';
+
+  @override
+  String get paoEditObjectImage2 => 'Imagen objeto 2';
+
+  @override
+  String get paoEditPasteImageTooltip => 'Pegar imagen (Ctrl+V en esta ranura)';
+
+  @override
+  String get paoTemplateExistsTitle => 'La plantilla ya existe';
+
+  @override
+  String paoTemplateExistsBody(String path) {
+    return '¿Sobrescribir?\n$path';
+  }
+
+  @override
+  String get paoOverwrite => 'Sobrescribir';
+
+  @override
+  String paoTemplateWritten0099(String path) {
+    return 'Plantilla escrita: $path';
+  }
+
+  @override
+  String get paoExportJsonDialogTitle => 'Exportar PAO JSON v2';
+
+  @override
+  String get paoExportCsvDialogTitle => 'Exportar PAO CSV';
+
+  @override
+  String paoSavedToPath(String path) {
+    return 'Guardado: $path';
+  }
+
+  @override
+  String paoErrorGeneric(String message) {
+    return 'Error: $message';
+  }
+
+  @override
+  String get paoJsonV2CopiedClipboard => 'JSON PAO v2 copiado al portapapeles';
+
+  @override
+  String get paoMenuTemplate0099 => 'Plantilla 00–99 (repo)';
+
+  @override
+  String get paoMenuCopyJsonV2Clipboard => 'Copiar JSON v2 al portapapeles';
+
+  @override
+  String get paoSnackbarPasteImageUseTabs =>
+      'Pegar imagen: usa las pestañas 0–9, 00–99 o 000–999 y toca una fila.';
+
+  @override
+  String get paoSnackbarTapRowFirst =>
+      'Toca primero una fila para elegir el código.';
+
+  @override
+  String get paoSnackbarCodeNotInTab => 'Código no encontrado en esta pestaña.';
+
+  @override
+  String get paoSnackbarClipboardNoImage => 'Portapapeles: no hay imagen';
+
+  @override
+  String get paoSnackbarCouldNotSaveImage => 'No se pudo guardar la imagen';
+
+  @override
+  String get paoSnackbarCouldNotCopyImage => 'No se pudo copiar la imagen';
+
+  @override
+  String paoSnackbarCodeImageUpdated(String code) {
+    return 'Imagen del código $code actualizada';
+  }
+
+  @override
+  String get paoSnackbarDropImageUseTabs =>
+      'Suelta la imagen en pestañas 0–9, 00–99 o 000–999 (tras tocar una fila).';
+
+  @override
+  String paoEditDialogTitle(String code) {
+    return 'PAO $code';
+  }
+
+  @override
+  String get paoEditDeletePegButton => 'Borrar clavija';
+
+  @override
+  String get paoEditDeletePegConfirmTitle => '¿Borrar esta clavija?';
+
+  @override
+  String get paoEditDeletePegConfirmBody =>
+      'Se eliminan persona, acción, objeto y todas las imágenes de este código, y se borran los archivos en la carpeta de assets del realm.';
+
+  @override
+  String get paoEditDeletePegSuccess => 'Clavija vaciada';
+
+  @override
+  String get pokerMemoryTitle => 'Póker · mapa numérico';
+
+  @override
+  String get pokerMemoryDrawerSubtitle =>
+      'Número ↔ carta · 13 números por palo · práctica rápida';
+
+  @override
+  String get frameRecallQuizDrawerSubtitle =>
+      'Quiz de 4 recortes · mismo parcour';
+
+  @override
+  String get frameRecallQuizTitle => 'Recall de marco (prototipo)';
+
+  @override
+  String get frameRecallQuizIntro =>
+      'Cada locus necesita un bloque imagen con rol «Recall crop» (detalle del hero). Aquí no se muestra el hero — solo la pista [place] y cuatro recortes. Elige el recorte que corresponde al locus descrito.';
+
+  @override
+  String get frameRecallSelectParcour => 'Parcour';
+
+  @override
+  String frameRecallFramesWithCrop(int count) {
+    return '$count marcos con recorte recall';
+  }
+
+  @override
+  String get frameRecallNeedFour =>
+      'Hacen falta al menos 4 loci en este parcour con imagen «Recall crop». Edita cada locus y añade una imagen con ese rol.';
+
+  @override
+  String get frameRecallNoParcours =>
+      'No hay parcours bajo el hub. Crea parcours primero.';
+
+  @override
+  String get frameRecallQuestion => 'Place / pista';
+
+  @override
+  String get frameRecallLocusLabel => 'Locus';
+
+  @override
+  String get frameRecallPickCrop => '¿Qué recorte corresponde?';
+
+  @override
+  String get frameRecallCorrect => 'Correcto.';
+
+  @override
+  String get frameRecallWrong =>
+      'Incorrecto — el borde verde es el recorte correcto.';
+
+  @override
+  String get frameRecallNext => 'Siguiente pregunta';
+
+  @override
+  String frameRecallMissingFile(String name) {
+    return 'Falta archivo: $name';
+  }
+
+  @override
+  String get pokerMemoryTabMap => 'Mapa';
+
+  @override
+  String get pokerMemoryTabRanges => 'Rangos';
+
+  @override
+  String get pokerMemoryTabDrill => 'Práctica rápida';
+
+  @override
+  String get pokerMemoryMapIntro =>
+      'Cada número corresponde a una carta (A, 2–10, J, Q, K dentro del bloque del palo). Edita los rangos en la pestaña Rangos.';
+
+  @override
+  String get pokerMemoryMapEmpty =>
+      'Sin mapeos. Revisa los rangos (cada palo: exactamente 13 números, sin solapes).';
+
+  @override
+  String get pokerMemoryRangesIntro =>
+      'Asigna un bloque continuo de 13 números por palo. Por defecto: espadas 01–13, corazones 41–53, diamantes 61–73, tréboles 81–93.';
+
+  @override
+  String get pokerMemoryRangeFrom => 'Desde';
+
+  @override
+  String get pokerMemoryRangeTo => 'Hasta';
+
+  @override
+  String get pokerMemoryRangesSave => 'Guardar rangos';
+
+  @override
+  String get pokerMemoryRangesSaved => 'Rangos guardados';
+
+  @override
+  String get pokerMemoryRangesInvalidNumber =>
+      'Introduce enteros válidos en desde / hasta.';
+
+  @override
+  String get pokerMemoryRangesHint =>
+      'Los rangos siguen el orden A, 2, 3, …, 10, J, Q, K. Pueden quedar huecos entre palos.';
+
+  @override
+  String get pokerMemorySuitSpades => 'Espadas';
+
+  @override
+  String get pokerMemorySuitHearts => 'Corazones';
+
+  @override
+  String get pokerMemorySuitDiamonds => 'Diamantes';
+
+  @override
+  String get pokerMemorySuitClubs => 'Tréboles';
+
+  @override
+  String get pokerMemoryDrillInstruction =>
+      'Recuerda mentalmente la otra cara; luego muestra la respuesta y marca acierto o fallo.';
+
+  @override
+  String get pokerMemoryDrillModeNumberToCard => 'Número → carta';
+
+  @override
+  String get pokerMemoryDrillModeCardToNumber => 'Carta → número';
+
+  @override
+  String pokerMemoryDrillPoolInfo(int count, String realmId) {
+    return '$count cartas · realm $realmId';
+  }
+
+  @override
+  String get pokerMemoryStimulusNumber => 'Número';
+
+  @override
+  String get pokerMemoryStimulusCard => 'Carta';
+
+  @override
+  String get pokerMemoryShowAnswer => 'Mostrar respuesta';
+
+  @override
+  String get pokerMemoryAnswerHeading => 'Respuesta';
+
+  @override
+  String get pokerMemoryAnswerNumber => 'Número';
+
+  @override
+  String get pokerMemoryAnswerCard => 'Carta';
+
+  @override
+  String get pokerMemoryPass => 'Acierto';
+
+  @override
+  String get pokerMemoryFail => 'Fallo';
+
+  @override
+  String get pokerMemoryNext => 'Siguiente';
+
+  @override
+  String get pokerMemoryDrillEmpty =>
+      'No hay práctica posible. Corrige los rangos.';
+
+  @override
   String get matchCardsTitle => 'Cartas (emparejar)';
 
   @override
@@ -85,7 +667,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get matchCardsOrmHint =>
-      'Cada par: lema (escritura nativa), transliteración opcional, significado (gloss) opcional e imagen. route_key es para un futuro «por ruta»; la tabla FSRS existe pero sin planificador.';
+      'Cada par: lema (escritura nativa), transliteración opcional, significado (gloss) opcional e imagen. route_key es para un futuro «por ruta». Las sesiones eligen cartas por paso Fibonacci (intervalo más corto primero) y luego por más fallos acumulados.';
 
   @override
   String get matchCardsEmpty =>
@@ -142,6 +724,42 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get matchCardsPlayAgain => 'Otra vez';
+
+  @override
+  String get matchCardsSessionMenuTooltip => 'Sesión';
+
+  @override
+  String get matchCardsSessionNewRound => 'Nueva ronda';
+
+  @override
+  String get matchCardsSessionChangeDeck => 'Cambiar mazo…';
+
+  @override
+  String get matchCardsSessionStats => 'Cartas más flojas…';
+
+  @override
+  String get matchCardsSessionStatsTitle => 'Estadísticas del mazo';
+
+  @override
+  String get matchCardsSessionStatsSubtitle =>
+      'Las rondas priorizan el paso Fibonacci más bajo (necesita práctica) y luego más fallos acumulados. Cada emparejamiento incorrecto suma fallo en ambas cartas.';
+
+  @override
+  String get matchCardsSessionStatsEmpty =>
+      'Aún no hay datos — juega varias rondas para ver contadores.';
+
+  @override
+  String matchCardsSessionStatsFailPass(int fails, int passes) {
+    return '$fails fallos · $passes aciertos';
+  }
+
+  @override
+  String matchCardsSessionStatsFib(int n) {
+    return 'Paso $n';
+  }
+
+  @override
+  String get matchCardsSessionPickDeckTitle => 'Elegir mazo';
 
   @override
   String matchCardsAttempts(int count) {
@@ -319,9 +937,112 @@ class AppLocalizationsEs extends AppLocalizations {
   String get goGameOver => 'Fin de partida';
 
   @override
-  String goGameScoreLine(String blackPt, String whitePt, String komi) {
-    return 'Negras $blackPt — Blancas $whitePt (komi +$komi)';
+  String goGameScoreSummary(
+    String blackPt,
+    String whiteBoardPt,
+    String komi,
+    String whiteTotal,
+    String verdict,
+  ) {
+    return 'Negras $blackPt pt — Blancas $whiteBoardPt en tablero + $komi komi = $whiteTotal pt. $verdict';
   }
+
+  @override
+  String get goGameVerdictDraw => 'Empate.';
+
+  @override
+  String goGameVerdictBlackWins(String margin) {
+    return 'Ganan negras por $margin pt.';
+  }
+
+  @override
+  String goGameVerdictWhiteWins(String margin) {
+    return 'Ganan blancas por $margin pt.';
+  }
+
+  @override
+  String goGameStoneTotals(int blackStones, int whiteStones) {
+    return 'Piedras en el tablero: negras $blackStones · blancas $whiteStones';
+  }
+
+  @override
+  String get goStudyTabFree => 'Partida libre';
+
+  @override
+  String get goStudyTabProblems => 'Problemas';
+
+  @override
+  String get goStudyLibraryTooltip => 'Biblioteca de problemas y progreso';
+
+  @override
+  String get goStudyLibraryTitle => 'Problemas de Go';
+
+  @override
+  String goStudyLibraryLine(int solved, int mastered) {
+    return '$solved resueltos · $mastered estudiados (3+ aciertos)';
+  }
+
+  @override
+  String get goStudyMasteredLabel => 'Estudiado';
+
+  @override
+  String get goStudySolvedLabel => 'Resuelto una vez';
+
+  @override
+  String goStudyAttemptsLabel(int n) {
+    return '$n intentos';
+  }
+
+  @override
+  String get goStudyProblemWrong =>
+      'No es la jugada buscada — prueba otra vez.';
+
+  @override
+  String get goStudyProblemCorrect => '¡Correcto!';
+
+  @override
+  String get goStudyHint => 'Pista';
+
+  @override
+  String get goStudyShowLegal => 'Jugadas legales';
+
+  @override
+  String goStudyProblemIndex(int current, int total) {
+    return 'Problema $current / $total';
+  }
+
+  @override
+  String get goStudyNextProblem => 'Siguiente';
+
+  @override
+  String get goStudyPrevProblem => 'Anterior';
+
+  @override
+  String get goStudyResetProblem => 'Reiniciar posición';
+
+  @override
+  String get goStudyPassDisabled => 'Pasar está desactivado en este modo.';
+
+  @override
+  String get goStudyBotDisabled => 'El bot se desactiva en problemas.';
+
+  @override
+  String get goProblemCapTitle => 'Captura (atari)';
+
+  @override
+  String get goProblemCapHint => 'Quita la última libertad de la blanca.';
+
+  @override
+  String get goProblemConnectTitle => 'Conectar (lado)';
+
+  @override
+  String get goProblemConnectHint => 'Juega entre las dos negras.';
+
+  @override
+  String get goProblemBridgeTitle => 'Conectar (arriba/abajo)';
+
+  @override
+  String get goProblemBridgeHint => 'Une las dos negras en la misma columna.';
 
   @override
   String get metricsRecallTitle => 'Métricas recall';
@@ -336,11 +1057,40 @@ class AppLocalizationsEs extends AppLocalizations {
   String get realmsSubtitle => 'Núcleo · Activo · Explorar';
 
   @override
-  String get navigationIntentTitle => 'Intent de navegación';
+  String get navigationIntentTitle => 'Navegación de estudio';
 
   @override
   String get navigationIntentTooltip =>
-      'Modo explore / review / seek / drift. Si hay foco en un objeto, se guarda como «marco»: place, hint y ridiculous story van ligados al Hero de ese mismo locus.';
+      'Toca para cambiar de modo. Con un objeto enfocado, la línea 2 del bridge es la clave del marco Hero para place / hint / historia.';
+
+  @override
+  String get memoryAthleteSwitchTitle =>
+      'Aprobación parcour: 100% (atleta) vs 80% (estándar)';
+
+  @override
+  String get memoryAthleteSwitchSubtitleOn =>
+      'Activado — se exige aprobación completa (100% de la puntuación de sesión).';
+
+  @override
+  String get memoryAthleteSwitchSubtitleOff =>
+      'Desactivado — aprobar con al menos el 80% de la puntuación (estándar).';
+
+  @override
+  String get studyNavigationTitle => 'Navegación de estudio';
+
+  @override
+  String get studyNavigationTooltip =>
+      'Toca para cambiar de modo. El subtítulo indica modo y clave del marco Hero.';
+
+  @override
+  String studyNavigationDetailModeOnly(String mode) {
+    return 'Modo: $mode';
+  }
+
+  @override
+  String studyNavigationDetailWithFrame(String mode, String frame) {
+    return 'Modo: $mode\nMarco (Hero locus): $frame';
+  }
 
   @override
   String get menuTooltip => 'Menú';
@@ -532,7 +1282,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String intentSnackbar(String mode, String frameSuffix) {
-    return 'Intent → $mode$frameSuffix (HUD GateKeeper)';
+    return 'Modo → $mode$frameSuffix (HUD visor 3D)';
   }
 
   @override
@@ -641,6 +1391,20 @@ class AppLocalizationsEs extends AppLocalizations {
   String get parcourFibDueDash => 'due —';
 
   @override
+  String get parcourFibDueReady => 'due';
+
+  @override
+  String parcourFibDueInDaysCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'en $count días',
+      one: 'en 1 día',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get parcourFibDueOverdue => 'due vencido';
 
   @override
@@ -729,16 +1493,67 @@ class AppLocalizationsEs extends AppLocalizations {
   String get locusEditorSave => 'Guardar';
 
   @override
-  String get locusEditorPasteHint =>
-      'Pegar: Ctrl+V. Roles de imagen: Viewer / Collage / Hero. Hero rápido: imagen + Ctrl/Cmd+H. Más: menú ☰';
-
-  @override
   String get locusEditorSaved => 'Guardado';
 
   @override
   String locusEditorSubtitleLine(String role, String turn) {
     return '$role · $turn';
   }
+
+  @override
+  String get locusEditorHelpMenuLabel => 'Ayuda del editor de locus';
+
+  @override
+  String get locusEditorHelpMenuSubtitle =>
+      'Qué puedes hacer aquí y cómo se sincroniza con GateKeeper';
+
+  @override
+  String get locusEditorHelpDialogTitle => 'Uso del editor de locus';
+
+  @override
+  String get locusEditorDeleteMenuLabel => 'Eliminar este locus';
+
+  @override
+  String get placeRecallDrawerTitle => 'Place recall';
+
+  @override
+  String get placeRecallDrawerSubtitle =>
+      'Activa el gate de recortes en el visor 3D (o usa el modo de estudio place_recall). Requiere assets recall_crop; los distractores salen de hermanos del parcour cuando hay suficientes.';
+
+  @override
+  String get locusEditorDeleteMenuSubtitle =>
+      'Quita esta entrada y sus descendientes de la base de datos y archivos del realm; no borra el archivo entero de la DB.';
+
+  @override
+  String get locusEditorDeleteConfirmTitle =>
+      'Eliminar locus de forma permanente';
+
+  @override
+  String locusEditorDeleteConfirmDescription(String realmPath) {
+    return 'Elimina esta entrada y todos los descendientes de la base de datos del realm ($realmPath), borra filas relacionadas en tablas de revisión/parcour, quita archivos de assets/snapshot/viewer/manifest para esas claves y reconstruye snapshots.';
+  }
+
+  @override
+  String locusEditorDeleteConfirmDeletingLabel(String key) {
+    return 'Se eliminará: $key';
+  }
+
+  @override
+  String get locusEditorDeleteConfirmTypeInstruction =>
+      'Se borrará el locus indicado arriba. Para confirmar, escribe en el campo la frase siguiente exactamente; no es la clave interna. Respeta espacios y mayúsculas:';
+
+  @override
+  String get locusEditorDeleteConfirmPhraseExact => 'Delete Node';
+
+  @override
+  String get locusEditorDeleteConfirmFieldHint => 'Delete Node';
+
+  @override
+  String get locusEditorDeleteConfirmButton => 'Eliminar';
+
+  @override
+  String get locusEditorHelpDialogBody =>
+      'Aquí editas una entrada del realm: bloques de texto, enlaces, imágenes y tarjetas de vocabulario.\n\nRol cognitivo — Realm (contenedor), Parcour (pasillo de marcos) u Objeto (lo que lees en el visor de GateKeeper). Los hijos bajo un parcour son marcos ordenados en el recorrido 3D.\n\nBloques — Los párrafos pueden ser texto normal o tipos de estudio: Lugar, Pista, Historia ridícula. Las imágenes eligen rol: Contenido (solo visor), Collage (paneles en la pared de GateKeeper entre marcos) o Hero (la imagen del marco 3D). Hero rápido: enfoca un bloque imagen y pulsa Ctrl/Cmd+H.\n\nTarjetas — Palabra o lema, ilustración y audio bajo assets de esta clave, archivo opcional de fonética y claves relacionadas que ya existan en el realm.\n\nGiro espacial — Para entradas hijas directas de un parcour, indica cómo sigue el pasillo hacia el siguiente marco (recto, izquierda, derecha).\n\nPlace recall — En objetos, activa place recall si quieres el drill en GateKeeper. Añade una imagen con rol Recall crop; el drill necesita este marco y otros tres objetos del realm con recall_crop válidos.\n\nPegar y archivos — Pega texto o imágenes con Ctrl+V / Cmd+V cuando el foco no esté dentro de un campo de texto. En escritorio, suelta .png / .jpg / .webp en la zona de destino.\n\nGuardar — Escribe la base de datos, copia assets y actualiza visor y snapshots para que GateKeeper pueda recargar.';
 
   @override
   String get sectionHelp => 'AYUDA';
@@ -863,7 +1678,44 @@ class AppLocalizationsEs extends AppLocalizations {
       'Crear realm seed del realm activo (data/realm_seed/)';
 
   @override
-  String get realmAdminTooltipNuclear => 'Borrar toda la data (irreversible)';
+  String get realmAdminTooltipNuclear =>
+      'Limpiar bibliotecas de realm (irreversible) — PAO y Match cards se conservan';
+
+  @override
+  String get realmAdminCleanupMenuTooltip => 'Limpiar solo PAO o Match cards';
+
+  @override
+  String get realmAdminCleanPaoTitle => 'Limpiar datos PAO';
+
+  @override
+  String get realmAdminCleanPaoBody =>
+      'Quita filas PAO en la base del realm activo y JSON de usuario en data/pao/ (se mantienen plantillas *.template). No toca el árbol del realm ni Match cards.';
+
+  @override
+  String get realmAdminCleanPaoConfirm => 'Limpiar PAO';
+
+  @override
+  String get realmAdminCleanPaoSnackbar => 'Datos PAO limpiados.';
+
+  @override
+  String get realmAdminCleanMatchTitle => 'Limpiar datos Match cards';
+
+  @override
+  String get realmAdminCleanMatchBody =>
+      'Borra mazos, pares, estado de repaso e imágenes en assets/lb_match_cards/ del realm activo. Irreversible.';
+
+  @override
+  String get realmAdminCleanMatchConfirm => 'Limpiar Match cards';
+
+  @override
+  String get realmAdminCleanMatchSnackbar => 'Datos Match cards limpiados.';
+
+  @override
+  String get realmAdminMatchCardsTileTitle => 'Match cards';
+
+  @override
+  String get realmAdminMatchCardsTileSubtitle =>
+      'Mazos y pares imagen–texto del realm activo. Abre la vista Match cards en el inicio de la biblioteca.';
 
   @override
   String get realmAdminTooltipOpenRealmFolder =>
@@ -1073,7 +1925,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get realmAdminNuclearDialogIntro =>
-      'Se eliminarán todos los realms, assets, bridge, snapshots, manifests, PAO bajo data/pao y el estante realm_shelf.json.\n\nQuedará solo una base nueva en:\ndata/realms/default/alexandria.db\n\nSe escribirá también el snapshot realm seed en:\ndata/realm_seed/alexandria.db\n\nRealm activo: default.\n\nCierra GateKeeper si está abierto (bloqueo de archivos).\n\nPara confirmar, escribe exactamente:';
+      'Se eliminarán todas las carpetas bajo data/realms/ (assets, bridge, snapshots, manifests, realm_shelf.json). La carpeta data/pao/ del repo no se borra.\n\nLos datos PAO y Match cards del realm activo se copian a la nueva base default y assets.\n\nQuedará solo una base nueva en:\ndata/realms/default/alexandria.db\n\nTambién se escribirá el snapshot realm seed en:\ndata/realm_seed/alexandria.db\n\nRealm activo: default.\n\nCierra el visor 3D si está abierto (bloqueo de archivos).\n\nPara confirmar, escribe exactamente:';
 
   @override
   String get realmAdminConfirmLabel => 'Confirmación';
@@ -1086,7 +1938,7 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get realmAdminNuclearSuccessSnackbar =>
-      'Data borrada: default/alexandria.db + data/realm_seed/alexandria.db. Ejecuta Library build o reabre la app para regenerar snapshot/viewer.';
+      'Bibliotecas de realm limpiadas; PAO y Match cards restaurados en default. default/alexandria.db + data/realm_seed/alexandria.db. Ejecuta Library build o reabre la app para regenerar snapshot/viewer.';
 
   @override
   String get realmSeedDialogTitle => 'Crear realm seed';

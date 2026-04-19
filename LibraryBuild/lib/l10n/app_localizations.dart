@@ -106,6 +106,12 @@ abstract class AppLocalizations {
   /// **'Realm Library'**
   String get appTitle;
 
+  /// No description provided for @librarySurfaceRealmTree.
+  ///
+  /// In en, this message translates to:
+  /// **'Realm tree'**
+  String get librarySurfaceRealmTree;
+
   /// No description provided for @activeRealmLabel.
   ///
   /// In en, this message translates to:
@@ -208,17 +214,375 @@ abstract class AppLocalizations {
   /// **'From data-transfer/out/ → body_text'**
   String get importLocusSubtitle;
 
+  /// No description provided for @dataTransferAppBarTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Data transfer → LibraryBuild'**
+  String get dataTransferAppBarTitle;
+
+  /// No description provided for @dataTransferRefreshTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh files and status'**
+  String get dataTransferRefreshTooltip;
+
+  /// No description provided for @dataTransferServerRepoLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Server in repo: {path}'**
+  String dataTransferServerRepoLabel(String path);
+
+  /// No description provided for @dataTransferStartServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Start server (node)'**
+  String get dataTransferStartServer;
+
+  /// No description provided for @dataTransferStopLbProcess.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop LB process'**
+  String get dataTransferStopLbProcess;
+
+  /// No description provided for @dataTransferOpenWebUi.
+  ///
+  /// In en, this message translates to:
+  /// **'Open web UI (:4020)'**
+  String get dataTransferOpenWebUi;
+
+  /// No description provided for @dataTransferServerReachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Server reachable at http://127.0.0.1:{port}'**
+  String dataTransferServerReachable(int port);
+
+  /// No description provided for @dataTransferHealthNoResponse.
+  ///
+  /// In en, this message translates to:
+  /// **'No response on /health (start node or use local import only)'**
+  String get dataTransferHealthNoResponse;
+
+  /// No description provided for @dataTransferImportHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Import file into a locus'**
+  String get dataTransferImportHeading;
+
+  /// No description provided for @dataTransferImportHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {folder} · If the content starts with [ it is interpreted as block JSON; otherwise a single paragraph is created. “Append” mode concatenates blocks to the existing body.'**
+  String dataTransferImportHint(String folder);
+
+  /// No description provided for @dataTransferFolderLabelOut.
+  ///
+  /// In en, this message translates to:
+  /// **'out/'**
+  String get dataTransferFolderLabelOut;
+
+  /// No description provided for @dataTransferFolderLabelIncoming.
+  ///
+  /// In en, this message translates to:
+  /// **'handoff/incoming/'**
+  String get dataTransferFolderLabelIncoming;
+
+  /// No description provided for @dataTransferNoObjects.
+  ///
+  /// In en, this message translates to:
+  /// **'No object entries in the database.'**
+  String get dataTransferNoObjects;
+
+  /// No description provided for @dataTransferTargetLocus.
+  ///
+  /// In en, this message translates to:
+  /// **'Target locus (object)'**
+  String get dataTransferTargetLocus;
+
+  /// No description provided for @dataTransferLocusDropdownLine.
+  ///
+  /// In en, this message translates to:
+  /// **'{key} — {title} (parent: {parentKey})'**
+  String dataTransferLocusDropdownLine(
+    String key,
+    String title,
+    String parentKey,
+  );
+
+  /// No description provided for @dataTransferFileFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'File folder'**
+  String get dataTransferFileFolder;
+
+  /// No description provided for @dataTransferSegmentOut.
+  ///
+  /// In en, this message translates to:
+  /// **'out/'**
+  String get dataTransferSegmentOut;
+
+  /// No description provided for @dataTransferSegmentIncoming.
+  ///
+  /// In en, this message translates to:
+  /// **'incoming/'**
+  String get dataTransferSegmentIncoming;
+
+  /// No description provided for @dataTransferFileCounts.
+  ///
+  /// In en, this message translates to:
+  /// **'out/: {outCount} · incoming/: {incomingCount}'**
+  String dataTransferFileCounts(int outCount, int incomingCount);
+
+  /// No description provided for @dataTransferOutFolderEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder out/ is empty. Use the web UI, switch to incoming/, or copy files into data-transfer/out/.'**
+  String get dataTransferOutFolderEmpty;
+
+  /// No description provided for @dataTransferIncomingFolderEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder handoff/incoming/ is empty. Copy files here or use out/.'**
+  String get dataTransferIncomingFolderEmpty;
+
+  /// No description provided for @dataTransferFilePickerLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'File ({folder})'**
+  String dataTransferFilePickerLabel(String folder);
+
+  /// No description provided for @dataTransferImportMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Import mode'**
+  String get dataTransferImportMode;
+
+  /// No description provided for @dataTransferReplaceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Replace body'**
+  String get dataTransferReplaceBody;
+
+  /// No description provided for @dataTransferAppendBlocks.
+  ///
+  /// In en, this message translates to:
+  /// **'Append at end'**
+  String get dataTransferAppendBlocks;
+
+  /// No description provided for @dataTransferImportRunBuild.
+  ///
+  /// In en, this message translates to:
+  /// **'Import to locus and runLibraryBuild'**
+  String get dataTransferImportRunBuild;
+
+  /// No description provided for @dataTransferScriptMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Missing file: {path}'**
+  String dataTransferScriptMissing(String path);
+
+  /// No description provided for @dataTransferServerAlreadyRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'A server is already listening on :4020 (external or another process)'**
+  String get dataTransferServerAlreadyRunning;
+
+  /// No description provided for @dataTransferNodeStartedNoHealth.
+  ///
+  /// In en, this message translates to:
+  /// **'Node process started but /health does not respond. Is Node on PATH?'**
+  String get dataTransferNodeStartedNoHealth;
+
+  /// No description provided for @dataTransferNodeStartFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not start node: {error}'**
+  String dataTransferNodeStartFailed(String error);
+
+  /// No description provided for @dataTransferOpenUrlFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not open {url}'**
+  String dataTransferOpenUrlFailed(String url);
+
+  /// No description provided for @dataTransferPickFileAndLocus.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a file and target locus.'**
+  String get dataTransferPickFileAndLocus;
+
+  /// No description provided for @dataTransferImportDoneReplace.
+  ///
+  /// In en, this message translates to:
+  /// **'Replaced · {key} ({file})'**
+  String dataTransferImportDoneReplace(String key, String file);
+
+  /// No description provided for @dataTransferImportDoneAppend.
+  ///
+  /// In en, this message translates to:
+  /// **'Appended · {key} ({file})'**
+  String dataTransferImportDoneAppend(String key, String file);
+
+  /// No description provided for @dataTransferErrorWithMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'Error: {message}'**
+  String dataTransferErrorWithMessage(String message);
+
+  /// No description provided for @dataTransferHttpStatus.
+  ///
+  /// In en, this message translates to:
+  /// **'HTTP {code}'**
+  String dataTransferHttpStatus(int code);
+
   /// No description provided for @paoEditorTitle.
   ///
   /// In en, this message translates to:
-  /// **'PAO (00–99)'**
+  /// **'PAO'**
   String get paoEditorTitle;
 
   /// No description provided for @paoEditorSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Two-digit system · import / export JSON'**
+  /// **'Phonetic keys · pegs 0–9 · 00–99 · 000–999 · JSON'**
   String get paoEditorSubtitle;
+
+  /// No description provided for @paoTabPhonetic.
+  ///
+  /// In en, this message translates to:
+  /// **'Keys'**
+  String get paoTabPhonetic;
+
+  /// No description provided for @paoTabDigit.
+  ///
+  /// In en, this message translates to:
+  /// **'0–9'**
+  String get paoTabDigit;
+
+  /// No description provided for @paoTabPair.
+  ///
+  /// In en, this message translates to:
+  /// **'00–99'**
+  String get paoTabPair;
+
+  /// No description provided for @paoTabTriple.
+  ///
+  /// In en, this message translates to:
+  /// **'000–999'**
+  String get paoTabTriple;
+
+  /// No description provided for @paoPhoneticBoardHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Assign consonants or sounds to each digit (your Major-system variant). Vowels are fillers—use the optional column for vowel notes only.'**
+  String get paoPhoneticBoardHint;
+
+  /// No description provided for @paoPhoneticConsonantsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Consonants / sounds'**
+  String get paoPhoneticConsonantsLabel;
+
+  /// No description provided for @paoPhoneticVowelNoteLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Vowel notes (optional)'**
+  String get paoPhoneticVowelNoteLabel;
+
+  /// No description provided for @paoPhoneticSaveRow.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get paoPhoneticSaveRow;
+
+  /// No description provided for @paoPhoneticSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Row saved'**
+  String get paoPhoneticSaved;
+
+  /// No description provided for @paoSearchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Search by code, person, action, object, or image path'**
+  String get paoSearchHint;
+
+  /// No description provided for @paoSubtitleTier.
+  ///
+  /// In en, this message translates to:
+  /// **'{filled} / {total} with text or image · realm {realm}'**
+  String paoSubtitleTier(int filled, int total, String realm);
+
+  /// No description provided for @paoMenuImportJsonAuto.
+  ///
+  /// In en, this message translates to:
+  /// **'Import JSON (auto: full v2 or legacy 00–99)'**
+  String get paoMenuImportJsonAuto;
+
+  /// No description provided for @paoMenuExportJsonV2.
+  ///
+  /// In en, this message translates to:
+  /// **'Export JSON (full v2)…'**
+  String get paoMenuExportJsonV2;
+
+  /// No description provided for @paoMenuExportPairCsv.
+  ///
+  /// In en, this message translates to:
+  /// **'Export CSV (00–99 only)…'**
+  String get paoMenuExportPairCsv;
+
+  /// No description provided for @paoMenuTemplateV2.
+  ///
+  /// In en, this message translates to:
+  /// **'Write empty template v2 in repo'**
+  String get paoMenuTemplateV2;
+
+  /// No description provided for @paoSnackbarImportOk.
+  ///
+  /// In en, this message translates to:
+  /// **'PAO data imported'**
+  String get paoSnackbarImportOk;
+
+  /// No description provided for @paoSnackbarTemplateV2.
+  ///
+  /// In en, this message translates to:
+  /// **'Template v2 written: {path}'**
+  String paoSnackbarTemplateV2(String path);
+
+  /// No description provided for @paoEditCodeImageHintPair.
+  ///
+  /// In en, this message translates to:
+  /// **'Code image (00–99): drag here or Ctrl/Cmd+V with focus outside text fields.'**
+  String get paoEditCodeImageHintPair;
+
+  /// No description provided for @paoEditCodeImageHintDigit.
+  ///
+  /// In en, this message translates to:
+  /// **'Code image (single digit): drag here or Ctrl/Cmd+V with focus outside text fields.'**
+  String get paoEditCodeImageHintDigit;
+
+  /// No description provided for @paoEditCodeImageHintTriple.
+  ///
+  /// In en, this message translates to:
+  /// **'Code image (000–999): drag here or Ctrl/Cmd+V with focus outside text fields.'**
+  String get paoEditCodeImageHintTriple;
+
+  /// No description provided for @paoEditPreviewExerciseTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Preview in practice'**
+  String get paoEditPreviewExerciseTooltip;
+
+  /// No description provided for @paoEditPreviewExerciseTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Practice preview'**
+  String get paoEditPreviewExerciseTitle;
+
+  /// No description provided for @paoEditPreviewExerciseIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'How this peg can look in individual practice (all drill stimuli and the answers panel).'**
+  String get paoEditPreviewExerciseIntro;
 
   /// No description provided for @paoPracticeTitle.
   ///
@@ -231,6 +595,624 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Mental recall · show answers · pass / fail'**
   String get paoPracticeSubtitle;
+
+  /// No description provided for @paoDrillInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Recall silently; do not type. Then show the answers and mark pass or fail.'**
+  String get paoDrillInstruction;
+
+  /// No description provided for @paoDrillModeCodeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Code → person, action, object (mental)'**
+  String get paoDrillModeCodeTitle;
+
+  /// No description provided for @paoDrillModePersonTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Person → code, action, object (mental)'**
+  String get paoDrillModePersonTitle;
+
+  /// No description provided for @paoDrillModeObjectTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Object → code, person, action (mental)'**
+  String get paoDrillModeObjectTitle;
+
+  /// No description provided for @paoDrillPoolInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} codes · realm {realmId}'**
+  String paoDrillPoolInfo(int count, String realmId);
+
+  /// No description provided for @paoDrillShowAnswers.
+  ///
+  /// In en, this message translates to:
+  /// **'Show answers'**
+  String get paoDrillShowAnswers;
+
+  /// No description provided for @paoDrillAnswersHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Answers'**
+  String get paoDrillAnswersHeading;
+
+  /// No description provided for @paoFieldCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Code'**
+  String get paoFieldCode;
+
+  /// No description provided for @paoFieldPerson.
+  ///
+  /// In en, this message translates to:
+  /// **'Person'**
+  String get paoFieldPerson;
+
+  /// No description provided for @paoFieldAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Action'**
+  String get paoFieldAction;
+
+  /// No description provided for @paoFieldObject.
+  ///
+  /// In en, this message translates to:
+  /// **'Object'**
+  String get paoFieldObject;
+
+  /// No description provided for @paoDrillSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Pass'**
+  String get paoDrillSuccess;
+
+  /// No description provided for @paoDrillFail.
+  ///
+  /// In en, this message translates to:
+  /// **'Fail'**
+  String get paoDrillFail;
+
+  /// No description provided for @paoDrillNextUnmarked.
+  ///
+  /// In en, this message translates to:
+  /// **'Next (unmarked)'**
+  String get paoDrillNextUnmarked;
+
+  /// No description provided for @paoDrillEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No codes ready to practice.'**
+  String get paoDrillEmptyTitle;
+
+  /// No description provided for @paoDrillEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Fill in person, action, and object for at least one code in PAO (digit, pair 00–99, or triple 000–999).'**
+  String get paoDrillEmptyHint;
+
+  /// No description provided for @paoDrillStimulusCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Code'**
+  String get paoDrillStimulusCode;
+
+  /// No description provided for @paoDrillStimulusPerson.
+  ///
+  /// In en, this message translates to:
+  /// **'Person'**
+  String get paoDrillStimulusPerson;
+
+  /// No description provided for @paoDrillStimulusObject.
+  ///
+  /// In en, this message translates to:
+  /// **'Object'**
+  String get paoDrillStimulusObject;
+
+  /// No description provided for @paoDrillStimulusRecallNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Recall the number'**
+  String get paoDrillStimulusRecallNumber;
+
+  /// No description provided for @paoDrillStimulusRecallMnemonic.
+  ///
+  /// In en, this message translates to:
+  /// **'Recall the image (mnemonic)'**
+  String get paoDrillStimulusRecallMnemonic;
+
+  /// No description provided for @paoDrillPoolAllTiersHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Pool: random codes from 0–9, 00–99, and 000–999 (complete rows only). Each code round shows either the number or the code image — not both.'**
+  String get paoDrillPoolAllTiersHint;
+
+  /// No description provided for @paoListEmptyRow.
+  ///
+  /// In en, this message translates to:
+  /// **'(empty)'**
+  String get paoListEmptyRow;
+
+  /// No description provided for @paoListDetailLine.
+  ///
+  /// In en, this message translates to:
+  /// **'P: {person}  |  A: {action}  |  O: {object}'**
+  String paoListDetailLine(String person, String action, String object);
+
+  /// No description provided for @paoEditChooseImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose image'**
+  String get paoEditChooseImage;
+
+  /// No description provided for @paoEditRemoveImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get paoEditRemoveImage;
+
+  /// No description provided for @paoEditNoImageOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'No image (optional)'**
+  String get paoEditNoImageOptional;
+
+  /// No description provided for @paoEditImageLoadError.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load image'**
+  String get paoEditImageLoadError;
+
+  /// No description provided for @paoEditPersonImage1.
+  ///
+  /// In en, this message translates to:
+  /// **'Character image 1'**
+  String get paoEditPersonImage1;
+
+  /// No description provided for @paoEditPersonImage2.
+  ///
+  /// In en, this message translates to:
+  /// **'Character image 2'**
+  String get paoEditPersonImage2;
+
+  /// No description provided for @paoEditObjectImage1.
+  ///
+  /// In en, this message translates to:
+  /// **'Object image 1'**
+  String get paoEditObjectImage1;
+
+  /// No description provided for @paoEditObjectImage2.
+  ///
+  /// In en, this message translates to:
+  /// **'Object image 2'**
+  String get paoEditObjectImage2;
+
+  /// No description provided for @paoEditPasteImageTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste image (Ctrl+V in this slot)'**
+  String get paoEditPasteImageTooltip;
+
+  /// No description provided for @paoTemplateExistsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Template already exists'**
+  String get paoTemplateExistsTitle;
+
+  /// No description provided for @paoTemplateExistsBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Overwrite?\n{path}'**
+  String paoTemplateExistsBody(String path);
+
+  /// No description provided for @paoOverwrite.
+  ///
+  /// In en, this message translates to:
+  /// **'Overwrite'**
+  String get paoOverwrite;
+
+  /// No description provided for @paoTemplateWritten0099.
+  ///
+  /// In en, this message translates to:
+  /// **'Template written: {path}'**
+  String paoTemplateWritten0099(String path);
+
+  /// No description provided for @paoExportJsonDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Export PAO JSON v2'**
+  String get paoExportJsonDialogTitle;
+
+  /// No description provided for @paoExportCsvDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Export PAO CSV'**
+  String get paoExportCsvDialogTitle;
+
+  /// No description provided for @paoSavedToPath.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved: {path}'**
+  String paoSavedToPath(String path);
+
+  /// No description provided for @paoErrorGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Error: {message}'**
+  String paoErrorGeneric(String message);
+
+  /// No description provided for @paoJsonV2CopiedClipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'PAO v2 JSON copied to clipboard'**
+  String get paoJsonV2CopiedClipboard;
+
+  /// No description provided for @paoMenuTemplate0099.
+  ///
+  /// In en, this message translates to:
+  /// **'Template 00–99 (repo)'**
+  String get paoMenuTemplate0099;
+
+  /// No description provided for @paoMenuCopyJsonV2Clipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy JSON v2 to clipboard'**
+  String get paoMenuCopyJsonV2Clipboard;
+
+  /// No description provided for @paoSnackbarPasteImageUseTabs.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste image: open tab 0–9, 00–99, or 000–999 and tap a row.'**
+  String get paoSnackbarPasteImageUseTabs;
+
+  /// No description provided for @paoSnackbarTapRowFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap a row first to choose the code.'**
+  String get paoSnackbarTapRowFirst;
+
+  /// No description provided for @paoSnackbarCodeNotInTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Code not found in this tab.'**
+  String get paoSnackbarCodeNotInTab;
+
+  /// No description provided for @paoSnackbarClipboardNoImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Clipboard: no image'**
+  String get paoSnackbarClipboardNoImage;
+
+  /// No description provided for @paoSnackbarCouldNotSaveImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not save image'**
+  String get paoSnackbarCouldNotSaveImage;
+
+  /// No description provided for @paoSnackbarCouldNotCopyImage.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not copy image'**
+  String get paoSnackbarCouldNotCopyImage;
+
+  /// No description provided for @paoSnackbarCodeImageUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Code {code} image updated'**
+  String paoSnackbarCodeImageUpdated(String code);
+
+  /// No description provided for @paoSnackbarDropImageUseTabs.
+  ///
+  /// In en, this message translates to:
+  /// **'Drop image on tab 0–9, 00–99, or 000–999 (after tapping a row).'**
+  String get paoSnackbarDropImageUseTabs;
+
+  /// No description provided for @paoEditDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'PAO {code}'**
+  String paoEditDialogTitle(String code);
+
+  /// No description provided for @paoEditDeletePegButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete peg'**
+  String get paoEditDeletePegButton;
+
+  /// No description provided for @paoEditDeletePegConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this peg?'**
+  String get paoEditDeletePegConfirmTitle;
+
+  /// No description provided for @paoEditDeletePegConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes all text and images for this code and deletes the image files from the realm assets folder.'**
+  String get paoEditDeletePegConfirmBody;
+
+  /// No description provided for @paoEditDeletePegSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Peg cleared'**
+  String get paoEditDeletePegSuccess;
+
+  /// No description provided for @pokerMemoryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Poker · number map'**
+  String get pokerMemoryTitle;
+
+  /// No description provided for @pokerMemoryDrawerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Number ↔ card · 13 numbers per suit · quick drill'**
+  String get pokerMemoryDrawerSubtitle;
+
+  /// No description provided for @frameRecallQuizDrawerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'4-image crop quiz · same parcour'**
+  String get frameRecallQuizDrawerSubtitle;
+
+  /// No description provided for @frameRecallQuizTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Frame recall (prototype)'**
+  String get frameRecallQuizTitle;
+
+  /// No description provided for @frameRecallQuizIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Each locus needs one image block with role «Recall crop» (detail of the hero). Hero is not shown here — only your place hint and four crops. Pick the crop that belongs to the locus described.'**
+  String get frameRecallQuizIntro;
+
+  /// No description provided for @frameRecallSelectParcour.
+  ///
+  /// In en, this message translates to:
+  /// **'Parcour'**
+  String get frameRecallSelectParcour;
+
+  /// No description provided for @frameRecallFramesWithCrop.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} frames with recall crop'**
+  String frameRecallFramesWithCrop(int count);
+
+  /// No description provided for @frameRecallNeedFour.
+  ///
+  /// In en, this message translates to:
+  /// **'Need at least 4 loci in this parcour with a recall crop image. Edit each locus and add an image with role «Recall crop».'**
+  String get frameRecallNeedFour;
+
+  /// No description provided for @frameRecallNoParcours.
+  ///
+  /// In en, this message translates to:
+  /// **'No parcours under the hub. Create parcours first.'**
+  String get frameRecallNoParcours;
+
+  /// No description provided for @frameRecallQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Place / hint'**
+  String get frameRecallQuestion;
+
+  /// No description provided for @frameRecallLocusLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Locus'**
+  String get frameRecallLocusLabel;
+
+  /// No description provided for @frameRecallPickCrop.
+  ///
+  /// In en, this message translates to:
+  /// **'Which crop matches?'**
+  String get frameRecallPickCrop;
+
+  /// No description provided for @frameRecallCorrect.
+  ///
+  /// In en, this message translates to:
+  /// **'Correct.'**
+  String get frameRecallCorrect;
+
+  /// No description provided for @frameRecallWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong — green border shows the right crop.'**
+  String get frameRecallWrong;
+
+  /// No description provided for @frameRecallNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next question'**
+  String get frameRecallNext;
+
+  /// No description provided for @frameRecallMissingFile.
+  ///
+  /// In en, this message translates to:
+  /// **'Missing file: {name}'**
+  String frameRecallMissingFile(String name);
+
+  /// No description provided for @pokerMemoryTabMap.
+  ///
+  /// In en, this message translates to:
+  /// **'Map'**
+  String get pokerMemoryTabMap;
+
+  /// No description provided for @pokerMemoryTabRanges.
+  ///
+  /// In en, this message translates to:
+  /// **'Ranges'**
+  String get pokerMemoryTabRanges;
+
+  /// No description provided for @pokerMemoryTabDrill.
+  ///
+  /// In en, this message translates to:
+  /// **'Quick drill'**
+  String get pokerMemoryTabDrill;
+
+  /// No description provided for @pokerMemoryMapIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Each number maps to one card (A, 2–10, J, Q, K within the suit block). Edit ranges on the Ranges tab.'**
+  String get pokerMemoryMapIntro;
+
+  /// No description provided for @pokerMemoryMapEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No mappings. Check ranges (each suit must span exactly 13 numbers, no overlaps).'**
+  String get pokerMemoryMapEmpty;
+
+  /// No description provided for @pokerMemoryRangesIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Assign a contiguous block of 13 numbers per suit. Default: spades 01–13, hearts 41–53, diamonds 61–73, clubs 81–93.'**
+  String get pokerMemoryRangesIntro;
+
+  /// No description provided for @pokerMemoryRangeFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'From'**
+  String get pokerMemoryRangeFrom;
+
+  /// No description provided for @pokerMemoryRangeTo.
+  ///
+  /// In en, this message translates to:
+  /// **'To'**
+  String get pokerMemoryRangeTo;
+
+  /// No description provided for @pokerMemoryRangesSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save ranges'**
+  String get pokerMemoryRangesSave;
+
+  /// No description provided for @pokerMemoryRangesSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Ranges saved'**
+  String get pokerMemoryRangesSaved;
+
+  /// No description provided for @pokerMemoryRangesInvalidNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter valid integers for from / to.'**
+  String get pokerMemoryRangesInvalidNumber;
+
+  /// No description provided for @pokerMemoryRangesHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Ranks are fixed in order: A, 2, 3, …, 10, J, Q, K within each block. Gaps between blocks are allowed.'**
+  String get pokerMemoryRangesHint;
+
+  /// No description provided for @pokerMemorySuitSpades.
+  ///
+  /// In en, this message translates to:
+  /// **'Spades'**
+  String get pokerMemorySuitSpades;
+
+  /// No description provided for @pokerMemorySuitHearts.
+  ///
+  /// In en, this message translates to:
+  /// **'Hearts'**
+  String get pokerMemorySuitHearts;
+
+  /// No description provided for @pokerMemorySuitDiamonds.
+  ///
+  /// In en, this message translates to:
+  /// **'Diamonds'**
+  String get pokerMemorySuitDiamonds;
+
+  /// No description provided for @pokerMemorySuitClubs.
+  ///
+  /// In en, this message translates to:
+  /// **'Clubs'**
+  String get pokerMemorySuitClubs;
+
+  /// No description provided for @pokerMemoryDrillInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Recall the other side mentally, then reveal and mark pass or fail.'**
+  String get pokerMemoryDrillInstruction;
+
+  /// No description provided for @pokerMemoryDrillModeNumberToCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Number → card'**
+  String get pokerMemoryDrillModeNumberToCard;
+
+  /// No description provided for @pokerMemoryDrillModeCardToNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Card → number'**
+  String get pokerMemoryDrillModeCardToNumber;
+
+  /// No description provided for @pokerMemoryDrillPoolInfo.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} cards · realm {realmId}'**
+  String pokerMemoryDrillPoolInfo(int count, String realmId);
+
+  /// No description provided for @pokerMemoryStimulusNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Number'**
+  String get pokerMemoryStimulusNumber;
+
+  /// No description provided for @pokerMemoryStimulusCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Card'**
+  String get pokerMemoryStimulusCard;
+
+  /// No description provided for @pokerMemoryShowAnswer.
+  ///
+  /// In en, this message translates to:
+  /// **'Show answer'**
+  String get pokerMemoryShowAnswer;
+
+  /// No description provided for @pokerMemoryAnswerHeading.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer'**
+  String get pokerMemoryAnswerHeading;
+
+  /// No description provided for @pokerMemoryAnswerNumber.
+  ///
+  /// In en, this message translates to:
+  /// **'Number'**
+  String get pokerMemoryAnswerNumber;
+
+  /// No description provided for @pokerMemoryAnswerCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Card'**
+  String get pokerMemoryAnswerCard;
+
+  /// No description provided for @pokerMemoryPass.
+  ///
+  /// In en, this message translates to:
+  /// **'Pass'**
+  String get pokerMemoryPass;
+
+  /// No description provided for @pokerMemoryFail.
+  ///
+  /// In en, this message translates to:
+  /// **'Fail'**
+  String get pokerMemoryFail;
+
+  /// No description provided for @pokerMemoryNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get pokerMemoryNext;
+
+  /// No description provided for @pokerMemoryDrillEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to drill. Fix ranges first.'**
+  String get pokerMemoryDrillEmpty;
 
   /// No description provided for @matchCardsTitle.
   ///
@@ -247,7 +1229,7 @@ abstract class AppLocalizations {
   /// No description provided for @matchCardsOrmHint.
   ///
   /// In en, this message translates to:
-  /// **'Each pair: lemma (native script), optional transliteration, optional meaning (gloss), and image. route_key is for future “along a route”; FSRS table exists but scheduling is not implemented.'**
+  /// **'Each pair: lemma (native script), optional transliteration, optional meaning (gloss), and image. route_key is for future “along a route”. Practice sessions pick cards by Fibonacci step (shorter interval first), then by higher fail counts.'**
   String get matchCardsOrmHint;
 
   /// No description provided for @matchCardsEmpty.
@@ -357,6 +1339,66 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Again'**
   String get matchCardsPlayAgain;
+
+  /// No description provided for @matchCardsSessionMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Session'**
+  String get matchCardsSessionMenuTooltip;
+
+  /// No description provided for @matchCardsSessionNewRound.
+  ///
+  /// In en, this message translates to:
+  /// **'New round'**
+  String get matchCardsSessionNewRound;
+
+  /// No description provided for @matchCardsSessionChangeDeck.
+  ///
+  /// In en, this message translates to:
+  /// **'Change deck…'**
+  String get matchCardsSessionChangeDeck;
+
+  /// No description provided for @matchCardsSessionStats.
+  ///
+  /// In en, this message translates to:
+  /// **'Weakest cards…'**
+  String get matchCardsSessionStats;
+
+  /// No description provided for @matchCardsSessionStatsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Deck stats'**
+  String get matchCardsSessionStatsTitle;
+
+  /// No description provided for @matchCardsSessionStatsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rounds prioritize low Fibonacci step (needs practice), then higher fail counts. Each wrong image–text match increments fails for both cards.'**
+  String get matchCardsSessionStatsSubtitle;
+
+  /// No description provided for @matchCardsSessionStatsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No review data yet — finish a few rounds to see counts.'**
+  String get matchCardsSessionStatsEmpty;
+
+  /// No description provided for @matchCardsSessionStatsFailPass.
+  ///
+  /// In en, this message translates to:
+  /// **'{fails} fails · {passes} OK'**
+  String matchCardsSessionStatsFailPass(int fails, int passes);
+
+  /// No description provided for @matchCardsSessionStatsFib.
+  ///
+  /// In en, this message translates to:
+  /// **'Step {n}'**
+  String matchCardsSessionStatsFib(int n);
+
+  /// No description provided for @matchCardsSessionPickDeckTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose deck'**
+  String get matchCardsSessionPickDeckTitle;
 
   /// No description provided for @matchCardsAttempts.
   ///
@@ -670,11 +1712,185 @@ abstract class AppLocalizations {
   /// **'Game over'**
   String get goGameOver;
 
-  /// No description provided for @goGameScoreLine.
+  /// No description provided for @goGameScoreSummary.
   ///
   /// In en, this message translates to:
-  /// **'Black {blackPt} — White {whitePt} (komi +{komi})'**
-  String goGameScoreLine(String blackPt, String whitePt, String komi);
+  /// **'Black {blackPt} pts — White {whiteBoardPt} on board + {komi} komi = {whiteTotal} pts. {verdict}'**
+  String goGameScoreSummary(
+    String blackPt,
+    String whiteBoardPt,
+    String komi,
+    String whiteTotal,
+    String verdict,
+  );
+
+  /// No description provided for @goGameVerdictDraw.
+  ///
+  /// In en, this message translates to:
+  /// **'Draw.'**
+  String get goGameVerdictDraw;
+
+  /// No description provided for @goGameVerdictBlackWins.
+  ///
+  /// In en, this message translates to:
+  /// **'Black wins by {margin} pts.'**
+  String goGameVerdictBlackWins(String margin);
+
+  /// No description provided for @goGameVerdictWhiteWins.
+  ///
+  /// In en, this message translates to:
+  /// **'White wins by {margin} pts.'**
+  String goGameVerdictWhiteWins(String margin);
+
+  /// No description provided for @goGameStoneTotals.
+  ///
+  /// In en, this message translates to:
+  /// **'Stones on grid: Black {blackStones} · White {whiteStones}'**
+  String goGameStoneTotals(int blackStones, int whiteStones);
+
+  /// No description provided for @goStudyTabFree.
+  ///
+  /// In en, this message translates to:
+  /// **'Free play'**
+  String get goStudyTabFree;
+
+  /// No description provided for @goStudyTabProblems.
+  ///
+  /// In en, this message translates to:
+  /// **'Problems'**
+  String get goStudyTabProblems;
+
+  /// No description provided for @goStudyLibraryTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Problem library & progress'**
+  String get goStudyLibraryTooltip;
+
+  /// No description provided for @goStudyLibraryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Go problems'**
+  String get goStudyLibraryTitle;
+
+  /// No description provided for @goStudyLibraryLine.
+  ///
+  /// In en, this message translates to:
+  /// **'{solved} solved · {mastered} studied (3+ hits)'**
+  String goStudyLibraryLine(int solved, int mastered);
+
+  /// No description provided for @goStudyMasteredLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Studied'**
+  String get goStudyMasteredLabel;
+
+  /// No description provided for @goStudySolvedLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Solved once'**
+  String get goStudySolvedLabel;
+
+  /// No description provided for @goStudyAttemptsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} attempts'**
+  String goStudyAttemptsLabel(int n);
+
+  /// No description provided for @goStudyProblemWrong.
+  ///
+  /// In en, this message translates to:
+  /// **'Not the intended move — try again.'**
+  String get goStudyProblemWrong;
+
+  /// No description provided for @goStudyProblemCorrect.
+  ///
+  /// In en, this message translates to:
+  /// **'Correct!'**
+  String get goStudyProblemCorrect;
+
+  /// No description provided for @goStudyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Hint'**
+  String get goStudyHint;
+
+  /// No description provided for @goStudyShowLegal.
+  ///
+  /// In en, this message translates to:
+  /// **'Legal moves'**
+  String get goStudyShowLegal;
+
+  /// No description provided for @goStudyProblemIndex.
+  ///
+  /// In en, this message translates to:
+  /// **'Problem {current} / {total}'**
+  String goStudyProblemIndex(int current, int total);
+
+  /// No description provided for @goStudyNextProblem.
+  ///
+  /// In en, this message translates to:
+  /// **'Next'**
+  String get goStudyNextProblem;
+
+  /// No description provided for @goStudyPrevProblem.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous'**
+  String get goStudyPrevProblem;
+
+  /// No description provided for @goStudyResetProblem.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset position'**
+  String get goStudyResetProblem;
+
+  /// No description provided for @goStudyPassDisabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Pass is disabled in this problem mode.'**
+  String get goStudyPassDisabled;
+
+  /// No description provided for @goStudyBotDisabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Bot is off during problems.'**
+  String get goStudyBotDisabled;
+
+  /// No description provided for @goProblemCapTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Capture (atari)'**
+  String get goProblemCapTitle;
+
+  /// No description provided for @goProblemCapHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove the last liberty of the white stone.'**
+  String get goProblemCapHint;
+
+  /// No description provided for @goProblemConnectTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect (side)'**
+  String get goProblemConnectTitle;
+
+  /// No description provided for @goProblemConnectHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Play between the two black stones.'**
+  String get goProblemConnectHint;
+
+  /// No description provided for @goProblemBridgeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect (up/down)'**
+  String get goProblemBridgeTitle;
+
+  /// No description provided for @goProblemBridgeHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Join the two black stones on the same file.'**
+  String get goProblemBridgeHint;
 
   /// No description provided for @metricsRecallTitle.
   ///
@@ -703,14 +1919,56 @@ abstract class AppLocalizations {
   /// No description provided for @navigationIntentTitle.
   ///
   /// In en, this message translates to:
-  /// **'Navigation intent'**
+  /// **'Study navigation'**
   String get navigationIntentTitle;
 
   /// No description provided for @navigationIntentTooltip.
   ///
   /// In en, this message translates to:
-  /// **'Explore / review / seek / drift mode. When an object is in focus, it is saved as a frame: place, hint and ridiculous story are tied to that locus Hero.'**
+  /// **'Tap to cycle modes. With a focused object, line 2 in the bridge file is the Hero frame key for place / hint / story.'**
   String get navigationIntentTooltip;
+
+  /// No description provided for @memoryAthleteSwitchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Parcour pass: 100% (athlete) vs 80% (standard)'**
+  String get memoryAthleteSwitchTitle;
+
+  /// No description provided for @memoryAthleteSwitchSubtitleOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch on — full pass required (100% of session score).'**
+  String get memoryAthleteSwitchSubtitleOn;
+
+  /// No description provided for @memoryAthleteSwitchSubtitleOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch off — pass at 80% of session score (standard).'**
+  String get memoryAthleteSwitchSubtitleOff;
+
+  /// No description provided for @studyNavigationTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Study navigation'**
+  String get studyNavigationTitle;
+
+  /// No description provided for @studyNavigationTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to cycle modes. Subtitle: mode and Hero frame key.'**
+  String get studyNavigationTooltip;
+
+  /// No description provided for @studyNavigationDetailModeOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode: {mode}'**
+  String studyNavigationDetailModeOnly(String mode);
+
+  /// No description provided for @studyNavigationDetailWithFrame.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode: {mode}\nFrame (Hero locus): {frame}'**
+  String studyNavigationDetailWithFrame(String mode, String frame);
 
   /// No description provided for @menuTooltip.
   ///
@@ -1027,7 +2285,7 @@ abstract class AppLocalizations {
   /// No description provided for @intentSnackbar.
   ///
   /// In en, this message translates to:
-  /// **'Intent → {mode}{frameSuffix} (HUD GateKeeper)'**
+  /// **'Mode → {mode}{frameSuffix} (3D viewer HUD)'**
   String intentSnackbar(String mode, String frameSuffix);
 
   /// No description provided for @keySeqLine.
@@ -1180,6 +2438,18 @@ abstract class AppLocalizations {
   /// **'due —'**
   String get parcourFibDueDash;
 
+  /// No description provided for @parcourFibDueReady.
+  ///
+  /// In en, this message translates to:
+  /// **'due'**
+  String get parcourFibDueReady;
+
+  /// No description provided for @parcourFibDueInDaysCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{in 1 day} other{in {count} days}}'**
+  String parcourFibDueInDaysCount(int count);
+
   /// No description provided for @parcourFibDueOverdue.
   ///
   /// In en, this message translates to:
@@ -1330,12 +2600,6 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get locusEditorSave;
 
-  /// No description provided for @locusEditorPasteHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Paste: Ctrl+V. Image roles: Viewer / Collage / Hero. Quick hero: focus image + Ctrl/Cmd+H. More: menu ☰'**
-  String get locusEditorPasteHint;
-
   /// No description provided for @locusEditorSaved.
   ///
   /// In en, this message translates to:
@@ -1347,6 +2611,96 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{role} · {turn}'**
   String locusEditorSubtitleLine(String role, String turn);
+
+  /// No description provided for @locusEditorHelpMenuLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Locus editor help'**
+  String get locusEditorHelpMenuLabel;
+
+  /// No description provided for @locusEditorHelpMenuSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'What this screen does and how it syncs with GateKeeper'**
+  String get locusEditorHelpMenuSubtitle;
+
+  /// No description provided for @locusEditorHelpDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Using the locus editor'**
+  String get locusEditorHelpDialogTitle;
+
+  /// No description provided for @locusEditorDeleteMenuLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete this locus'**
+  String get locusEditorDeleteMenuLabel;
+
+  /// No description provided for @placeRecallDrawerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Place recall'**
+  String get placeRecallDrawerTitle;
+
+  /// No description provided for @placeRecallDrawerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Enables the crop gate in the 3D viewer (or use study mode place_recall). Needs recall_crop assets; three distractors come from siblings in the parcour when possible.'**
+  String get placeRecallDrawerSubtitle;
+
+  /// No description provided for @locusEditorDeleteMenuSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes this entry and descendants from the database and realm files—not the whole database file.'**
+  String get locusEditorDeleteMenuSubtitle;
+
+  /// No description provided for @locusEditorDeleteConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete locus permanently'**
+  String get locusEditorDeleteConfirmTitle;
+
+  /// No description provided for @locusEditorDeleteConfirmDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes this entry and all descendants from the realm database ({realmPath}), deletes matching rows in review/parcour tables, removes assets/snapshot/viewer/manifest files for those keys, then rebuilds snapshots.'**
+  String locusEditorDeleteConfirmDescription(String realmPath);
+
+  /// No description provided for @locusEditorDeleteConfirmDeletingLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Deleting: {key}'**
+  String locusEditorDeleteConfirmDeletingLabel(String key);
+
+  /// No description provided for @locusEditorDeleteConfirmTypeInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'This will delete the locus named above. To confirm, type the phrase below in the box—not your database key. It must match exactly, including spaces and capitals:'**
+  String get locusEditorDeleteConfirmTypeInstruction;
+
+  /// No description provided for @locusEditorDeleteConfirmPhraseExact.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Node'**
+  String get locusEditorDeleteConfirmPhraseExact;
+
+  /// No description provided for @locusEditorDeleteConfirmFieldHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Node'**
+  String get locusEditorDeleteConfirmFieldHint;
+
+  /// No description provided for @locusEditorDeleteConfirmButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get locusEditorDeleteConfirmButton;
+
+  /// No description provided for @locusEditorHelpDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This screen edits one entry in the realm: blocks of text, links, images, and vocabulary cards.\n\nCognitive role — Realm (container), Parcour (a corridor of frames), or Object (what you read in the GateKeeper viewer). Children under a parcour become ordered frames along the 3D path.\n\nBlocks — Paragraphs can be plain text or study kinds: Place, Hint, Ridiculous story. Images pick a role: Content (viewer only), Collage (panels on the GateKeeper wall between frames), or Hero (the picture on the 3D frame). Quick Hero: focus an image block and press Ctrl/Cmd+H.\n\nCards — Word or lemma, illustration and audio files under assets for this key, optional phonetic notes file, and related entry keys that already exist in this realm.\n\nSpatial turn — For entries that are direct children of a parcour, set how the corridor continues toward the next frame (straight, left, right).\n\nPlace recall — On objects, turn on place recall when you want the GateKeeper place drill. Add an image with role Recall crop; the drill needs this frame plus three other objects in the realm with valid recall crops.\n\nPaste and files — Paste text or images with Ctrl+V / Cmd+V when focus is outside text fields. On desktop, drop .png / .jpg / .webp on the drop target.\n\nSave — Writes the database, copies assets, and refreshes viewer and snapshot outputs so GateKeeper can reload.'**
+  String get locusEditorHelpDialogBody;
 
   /// No description provided for @sectionHelp.
   ///
@@ -1573,8 +2927,74 @@ abstract class AppLocalizations {
   /// No description provided for @realmAdminTooltipNuclear.
   ///
   /// In en, this message translates to:
-  /// **'Delete all data (irreversible)'**
+  /// **'Clear realm libraries (irreversible) — PAO & Match cards are preserved'**
   String get realmAdminTooltipNuclear;
+
+  /// No description provided for @realmAdminCleanupMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear PAO or Match cards data only'**
+  String get realmAdminCleanupMenuTooltip;
+
+  /// No description provided for @realmAdminCleanPaoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear PAO data'**
+  String get realmAdminCleanPaoTitle;
+
+  /// No description provided for @realmAdminCleanPaoBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Removes PAO rows in the active realm database and non-template JSON files under data/pao/. Realm tree and Match cards are not affected.'**
+  String get realmAdminCleanPaoBody;
+
+  /// No description provided for @realmAdminCleanPaoConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear PAO'**
+  String get realmAdminCleanPaoConfirm;
+
+  /// No description provided for @realmAdminCleanPaoSnackbar.
+  ///
+  /// In en, this message translates to:
+  /// **'PAO data cleared.'**
+  String get realmAdminCleanPaoSnackbar;
+
+  /// No description provided for @realmAdminCleanMatchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear Match cards data'**
+  String get realmAdminCleanMatchTitle;
+
+  /// No description provided for @realmAdminCleanMatchBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes all match-card decks, pairs, review state, and files under assets/lb_match_cards/ for the active realm. Irreversible.'**
+  String get realmAdminCleanMatchBody;
+
+  /// No description provided for @realmAdminCleanMatchConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear Match cards'**
+  String get realmAdminCleanMatchConfirm;
+
+  /// No description provided for @realmAdminCleanMatchSnackbar.
+  ///
+  /// In en, this message translates to:
+  /// **'Match cards data cleared.'**
+  String get realmAdminCleanMatchSnackbar;
+
+  /// No description provided for @realmAdminMatchCardsTileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Match cards'**
+  String get realmAdminMatchCardsTileTitle;
+
+  /// No description provided for @realmAdminMatchCardsTileSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Decks and image–text pairs for the active realm. Opens the Match cards view on the Library home.'**
+  String get realmAdminMatchCardsTileSubtitle;
 
   /// No description provided for @realmAdminTooltipOpenRealmFolder.
   ///
@@ -1921,7 +3341,7 @@ abstract class AppLocalizations {
   /// No description provided for @realmAdminNuclearDialogIntro.
   ///
   /// In en, this message translates to:
-  /// **'All realms, assets, bridge, snapshots, manifests, PAO under data/pao, and realm_shelf.json will be deleted.\n\nOnly a new base will remain at:\ndata/realms/default/alexandria.db\n\nThe realm seed snapshot will also be written to:\ndata/realm_seed/alexandria.db\n\nActive realm: default.\n\nClose GateKeeper if it is open (file locking).\n\nTo confirm, type exactly:'**
+  /// **'All realm folders under data/realms/ will be removed (assets, bridge, snapshots, manifests, realm_shelf.json). The repo folder data/pao/ is not deleted.\n\nPAO and Match cards from the active realm are copied into the new default database and assets.\n\nOnly a fresh base will remain at:\ndata/realms/default/alexandria.db\n\nThe realm seed snapshot will also be written to:\ndata/realm_seed/alexandria.db\n\nActive realm: default.\n\nClose the 3D viewer if it is open (file locking).\n\nTo confirm, type exactly:'**
   String get realmAdminNuclearDialogIntro;
 
   /// No description provided for @realmAdminConfirmLabel.
@@ -1945,7 +3365,7 @@ abstract class AppLocalizations {
   /// No description provided for @realmAdminNuclearSuccessSnackbar.
   ///
   /// In en, this message translates to:
-  /// **'Data cleared: default/alexandria.db + data/realm_seed/alexandria.db. Run Library build or reopen the app to regenerate snapshot/viewer.'**
+  /// **'Realm libraries cleared; PAO & Match cards restored into default. default/alexandria.db + data/realm_seed/alexandria.db. Run Library build or reopen the app to regenerate snapshot/viewer.'**
   String get realmAdminNuclearSuccessSnackbar;
 
   /// No description provided for @realmSeedDialogTitle.

@@ -1,37 +1,42 @@
-function renderReaderPanelHtml() {
+const { readerClientPack } = require('../ui-lang');
+
+function renderReaderPanelHtml(lang) {
+  const t = readerClientPack(lang);
+  const packJson = JSON.stringify(t).replace(/</g, '\\u003c');
   return `
+            <script>window.__DT_READER__=${packJson};</script>
             <div style="display:flex;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-            <button type="button" title="Menú" aria-label="Menú"
+            <button type="button" title="${t.menuTitle}" aria-label="${t.menuAria}"
             style="padding:10px 14px;font-size:22px;margin-right:10px;color:#111;background:#f5f5f5;border:1px solid #bbb;border-radius:6px;cursor:pointer;box-sizing:border-box;line-height:1;"
             onclick="readerToggleMenu()">☰</button>
             <h3 style="margin:0;font-size:28px;color:#111;"><button type="button" style="display:inline;background:none;border:none;padding:0;font:inherit;cursor:pointer;color:#111;" onclick="dtShowTab('home')">Data transfer</button> · Reader</h3>
             </div>
 
             <div style="margin-bottom:10px;font-size:14px;">
-              <label style="margin-right:8px;color:#333;">Carpeta:</label>
+              <label style="margin-right:8px;color:#333;">${t.folderLabel}</label>
               <select id="dtReaderBucket" onchange="readerSetBucket(this.value)" style="font-size:15px;padding:6px 10px;border-radius:6px;border:1px solid #ccc;">
-                <option value="out">out/ (rápido)</option>
-                <option value="incoming">handoff/incoming/ (packs)</option>
+                <option value="out">${t.optOutFast}</option>
+                <option value="incoming">${t.optIncoming}</option>
               </select>
             </div>
 
             <div id="readerMenu" style="display:none;margin-bottom:10px;">
             <button type="button" style="width:100%;padding:15px;font-size:18px;margin-bottom:10px;color:#111;background:#f5f5f5;border:1px solid #ccc;border-radius:6px;cursor:pointer;text-align:left;box-sizing:border-box;"
-            onclick="dtShowTab('home')">Inicio</button>
+            onclick="dtShowTab('home')">${t.home}</button>
 
             <button type="button" style="width:100%;padding:15px;font-size:18px;margin-bottom:10px;color:#111;background:#f5f5f5;border:1px solid #ccc;border-radius:6px;cursor:pointer;text-align:left;box-sizing:border-box;"
-            onclick="loadFiles()">Actualizar lista</button>
+            onclick="loadFiles()">${t.refreshList}</button>
             </div>
 
             <button type="button" style="width:100%;padding:14px;font-size:16px;margin-bottom:10px;color:#111;background:#f5f5f5;border:1px solid #ccc;border-radius:6px;cursor:pointer;text-align:left;box-sizing:border-box;"
-            onclick="loadFiles()">Refrescar archivos</button>
+            onclick="loadFiles()">${t.refreshFiles}</button>
 
             <ul id="readerFiles" style="list-style:none;padding:0;margin:0 0 10px 0;max-height:min(220px,35vh);overflow-y:auto;"></ul>
 
             <textarea id="readerViewer" style="width:100%;min-height:200px;height:min(55vh,480px);font-size:16px;color:#111;background:#fff;border:1px solid #ccc;border-radius:6px;box-sizing:border-box;padding:8px;"></textarea><br>
 
             <button type="button" style="width:100%;padding:15px;font-size:18px;margin-top:10px;text-align:left;color:#111;background:#f5f5f5;border:1px solid #ccc;border-radius:6px;cursor:pointer;box-sizing:border-box;"
-            onclick="window.scrollTo({top:0,behavior:'smooth'})">Arriba</button>
+            onclick="window.scrollTo({top:0,behavior:'smooth'})">${t.top}</button>
 
             <button type="button" style="width:100%;padding:15px;font-size:18px;margin-top:10px;text-align:left;color:#111;background:#f5f5f5;border:1px solid #ccc;border-radius:6px;cursor:pointer;box-sizing:border-box;"
             onclick="dtShowTab('sender')">Sender</button>
@@ -49,6 +54,10 @@ function renderReaderPanelHtml() {
             let activeFileName = null;
             var READER_POLL_MS = 8000;
             var readerBucket = 'out';
+
+            function readerI18n() {
+              return window.__DT_READER__ || {};
+            }
 
             function readerApiBase() {
               return '/files?bucket=' + encodeURIComponent(readerBucket);
@@ -69,6 +78,7 @@ function renderReaderPanelHtml() {
             const res = await fetch(readerApiBase());
             const files = await res.json();
             const ul = document.getElementById('readerFiles');
+            const i = readerI18n();
             ul.innerHTML = '';
             var show = files.slice(0, 12);
             show.forEach(name => {
@@ -99,7 +109,7 @@ function renderReaderPanelHtml() {
               dl.style.borderRadius = '6px';
               dl.style.cursor = 'pointer';
               dl.style.background = '#f5f5f5';
-              dl.textContent = 'Descargar ' + name;
+              dl.textContent = (i.downloadPrefix || 'Download ') + name;
               dl.onclick = () => location.href = '/download?name=' + encodeURIComponent(name) + '&bucket=' + encodeURIComponent(readerBucket);
 
               li.appendChild(btn);
@@ -111,7 +121,7 @@ function renderReaderPanelHtml() {
               more.style.fontSize = '12px';
               more.style.color = '#666';
               more.style.padding = '6px';
-              more.textContent = '… y ' + (files.length - 12) + ' más';
+              more.textContent = (i.morePrefix || '…') + (files.length - 12) + (i.moreSuffix || '');
               ul.appendChild(more);
             }
           }

@@ -9,11 +9,15 @@
 [ext_resource type="PackedScene" uid="uid://ddcoxrd1xwra4" path="res://segment/FloorScene.tscn" id="7_k2opp"]
 [ext_resource type="PackedScene" uid="uid://bd54f8ysatfvu" path="res://segment/CeilingScene.tscn" id="8_7bnhk"]
 [ext_resource type="Script" path="res://ViewerService.cs" id="9_viewer"]
+[ext_resource type="Script" path="res://PlaceRecallStrip.cs" id="10_prstrip"]
+[ext_resource type="PackedScene" uid="uid://bqx7monolithgk01" path="res://Monolith.tscn" id="11_monolith"]
 
 [node name="Realm" type="Node3D" unique_id=1916784824]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=178147848]
 environment = ExtResource("1_bax7v")
+
+[node name="Monolith" parent="." instance=ExtResource("11_monolith")]
 
 [node name="Frames" type="Node3D" parent="." unique_id=1861885583]
 
@@ -38,3 +42,7 @@ script = ExtResource("3_rc")
 [node name="ViewerService" type="CanvasLayer" parent="."]
 layer = 100
 script = ExtResource("9_viewer")
+
+[node name="PlaceRecallStrip" type="CanvasLayer" parent="."]
+layer = 102
+script = ExtResource("10_prstrip")

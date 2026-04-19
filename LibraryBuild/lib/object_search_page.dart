@@ -88,6 +88,7 @@ class _ObjectSearchPageState extends State<ObjectSearchPage> {
     final blocks = parseBody(body);
     final buf = StringBuffer();
     for (final b in blocks) {
+      if (shouldOmitFromLocusReadingExport(b)) continue;
       final t = (b['text'] ?? b['key'] ?? '').toString();
       if (t.isNotEmpty) {
         buf.write(t);

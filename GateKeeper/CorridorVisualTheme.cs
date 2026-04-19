@@ -2,7 +2,7 @@ using Godot;
 
 /// <summary>
 /// Paleta compartida suelo/techo del corredor (oliva cálido, acorde con piedra y marcos dorados).
-/// Debe coincidir con <c>segment/FloorScene.tscn</c>, <c>CeilingScene.tscn</c> y <c>env/raz_environment.tres</c>.
+/// Debe coincidir con <c>segment/FloorScene.tscn</c>, <c>CeilingScene.tscn</c> y el suelo/techo en <c>env/raz_environment.tres</c> (cielo procedural).
 /// </summary>
 public static class CorridorVisualTheme
 {

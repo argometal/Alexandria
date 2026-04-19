@@ -32,6 +32,21 @@ class LbMatchDeckRow {
   final String createdAt;
 }
 
+/// Stats for one pair (deck list / session “weakest” sheet).
+class LbMatchPairStatView {
+  const LbMatchPairStatView({
+    required this.pair,
+    required this.fibIndex,
+    required this.failCount,
+    required this.passCount,
+  });
+
+  final LbMatchPairRow pair;
+  final int fibIndex;
+  final int failCount;
+  final int passCount;
+}
+
 class LbMatchPairRow {
   const LbMatchPairRow({
     required this.id,
@@ -105,22 +120,28 @@ void lbRecordMatchPairOutcome(
       : math.max(current - 1, 0);
   final intervalDays = kMatchCardsFibonacciDays[newIdx];
   final nextDue = t.add(Duration(days: intervalDays));
+  final passDelta = pass ? 1 : 0;
+  final failDelta = pass ? 0 : 1;
   db.execute(
     '''
     INSERT INTO lb_match_pair_fsrs_state (
-      pair_id, fib_index, due_at, last_review_at, reps
-    ) VALUES (?, ?, ?, ?, 1)
+      pair_id, fib_index, due_at, last_review_at, reps, pass_count, fail_count
+    ) VALUES (?, ?, ?, ?, 1, ?, ?)
     ON CONFLICT(pair_id) DO UPDATE SET
       fib_index = excluded.fib_index,
       due_at = excluded.due_at,
       last_review_at = excluded.last_review_at,
-      reps = lb_match_pair_fsrs_state.reps + 1
+      reps = lb_match_pair_fsrs_state.reps + 1,
+      pass_count = lb_match_pair_fsrs_state.pass_count + excluded.pass_count,
+      fail_count = lb_match_pair_fsrs_state.fail_count + excluded.fail_count
     ''',
     [
       pairId,
       newIdx,
       nextDue.toIso8601String(),
       t.toIso8601String(),
+      passDelta,
+      failDelta,
     ],
   );
 }
@@ -332,6 +353,48 @@ void lbInsertMatchPairFromBytes(
   );
 }
 
+/// Pares del mazo con contadores FSRS (para UI: palabras con más fallos primero).
+List<LbMatchPairStatView> lbListMatchPairStats(
+  Database db, {
+  required int deckId,
+  int limit = 48,
+}) {
+  ensureLibrarySchema(db);
+  final rows = db.select(
+    '''
+    SELECT p.id, p.image_basename, p.caption_text, p.transliteration, p.gloss, p.route_key, p.deck_id, p.created_at,
+           COALESCE(s.fib_index, 0) AS fib_index,
+           COALESCE(s.fail_count, 0) AS fail_count,
+           COALESCE(s.pass_count, 0) AS pass_count
+    FROM lb_match_pairs p
+    LEFT JOIN lb_match_pair_fsrs_state s ON s.pair_id = p.id
+    WHERE p.deck_id = ? AND p.route_key IS NULL
+    ORDER BY fail_count DESC, fib_index ASC, p.id ASC
+    LIMIT ?
+    ''',
+    [deckId, limit],
+  );
+  return rows
+      .map(
+        (r) => LbMatchPairStatView(
+          pair: LbMatchPairRow(
+            id: r['id']! as int,
+            imageBasename: r['image_basename']! as String,
+            captionText: r['caption_text']! as String,
+            transliteration: r['transliteration'] as String?,
+            gloss: r['gloss'] as String?,
+            routeKey: r['route_key'] as String?,
+            deckId: r['deck_id'] as int?,
+            createdAt: r['created_at']! as String,
+          ),
+          fibIndex: _asInt(r['fib_index']),
+          failCount: _asInt(r['fail_count']),
+          passCount: _asInt(r['pass_count']),
+        ),
+      )
+      .toList();
+}
+
 void lbDeleteMatchPair(Database db, int id) {
   ensureLibrarySchema(db);
   final rows = db.select(
@@ -367,26 +430,32 @@ List<LbMatchPairRow> lbPickRandomPairsForSession(
   final ids = all.map((p) => p.id).toList();
   final fibById = <int, int>{};
   final dueById = <int, DateTime>{};
+  final failById = <int, int>{};
   if (ids.isNotEmpty) {
     final placeholders = List.filled(ids.length, '?').join(',');
     final st = db.select(
-      'SELECT pair_id, fib_index, due_at FROM lb_match_pair_fsrs_state WHERE pair_id IN ($placeholders)',
+      'SELECT pair_id, fib_index, due_at, fail_count FROM lb_match_pair_fsrs_state WHERE pair_id IN ($placeholders)',
       ids,
     );
     for (final r in st) {
       final pid = r['pair_id']! as int;
       fibById[pid] = _asInt(r['fib_index']);
       dueById[pid] = _parseDueAt(r['due_at'] as String?);
+      failById[pid] = _asInt(r['fail_count']);
     }
   }
 
   int fibOf(LbMatchPairRow p) => fibById[p.id] ?? 0;
+  int failOf(LbMatchPairRow p) => failById[p.id] ?? 0;
   DateTime dueOf(LbMatchPairRow p) => dueById[p.id] ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
 
+  /// Prioriza intervalo corto (fib bajo), luego más fallos acumulados, luego due más antiguo.
   final sorted = List<LbMatchPairRow>.from(all)
     ..sort((a, b) {
       final c = fibOf(a).compareTo(fibOf(b));
       if (c != 0) return c;
+      final f = failOf(b).compareTo(failOf(a));
+      if (f != 0) return f;
       return dueOf(a).compareTo(dueOf(b));
     });
   final n = math.min(maxPairs, sorted.length);

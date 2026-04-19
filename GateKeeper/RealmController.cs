@@ -35,7 +35,10 @@ public partial class RealmController : Node
 			_viewer.EnterLevelRequested += OnEnterLevelRequested;
 			_viewer.FocusKeyNavigationRequested += ApplyFocusOnlyFromViewer;
 			_viewer.BackLevelRequested += OnViewerBackWithFocusStack;
+			_viewer.PlaceRecallUnlockedInSession += OnPlaceRecallUnlockedInSession;
 		}
+
+		LogGkDiagnostics();
 		GD.Print(_camera == null ? "[RC][CAMERA NULL]" : "[RC][CAMERA OK]");
 		GD.Print(_viewer == null ? "[RC][VIEWER NULL] path=/root/Realm/ViewerService" : "[RC][VIEWER OK]");
 		Input.MouseMode = Input.MouseModeEnum.Captured;
@@ -54,15 +57,57 @@ public partial class RealmController : Node
 		_intentHud.OffsetTop = 10f;
 		_intentHud.OffsetRight = -12f;
 		_intentHud.OffsetBottom = 36f;
-		_intentHud.Text = "Intent: " + BridgeSpatial.ReadNavigationIntent();
+		_intentHud.Text = "Mode: " + BridgeSpatial.ReadNavigationIntent();
 		hudRoot.AddChild(_intentHud);
 
 		SetupGkHudMenu(hudRoot);
 		SetupGkUserHelp();
+		SetupPlaceRecallEnterObjectDialog();
 
 		SetProcess(true);
 		SetProcessInput(true);
 		SetProcessUnhandledInput(true);
+	}
+
+	public override void _ExitTree()
+	{
+		PlaceRecallSessionState.ClearSession();
+		base._ExitTree();
+	}
+
+	private static void LogGkDiagnostics()
+	{
+		try
+		{
+			var root = AlexandriaDataRoot.RealmDataRoot;
+			GD.Print($"[GK][DIAG] RealmDataRoot={root}");
+			var pr = BridgeSpatial.PlaceRecallEnabledPath;
+			GD.Print(File.Exists(pr)
+				? $"[GK][DIAG] place_recall_enabled.txt={File.ReadAllText(pr).Trim()}"
+				: "[GK][DIAG] place_recall_enabled.txt=(missing)");
+			var ctx = Path.Combine(BridgeSpatial.BridgeDir, "context_key.txt");
+			var foc = Path.Combine(BridgeSpatial.BridgeDir, "focus_key.txt");
+			GD.Print(File.Exists(ctx)
+				? $"[GK][DIAG] context_key.txt={File.ReadAllText(ctx).Trim()}"
+				: "[GK][DIAG] context_key.txt=(missing)");
+			GD.Print(File.Exists(foc)
+				? $"[GK][DIAG] focus_key.txt={File.ReadAllText(foc).Trim()}"
+				: "[GK][DIAG] focus_key.txt=(missing)");
+			GD.Print($"[GK][DIAG] navigation_intent mode (line1)={BridgeSpatial.ReadNavigationIntentModeFirstLine()} placeRecallOn={BridgeSpatial.ReadPlaceRecallGloballyEnabled()}");
+			var gkLang = BridgeSpatial.GkUiLangPath;
+			GD.Print(File.Exists(gkLang)
+				? $"[GK][DIAG] gk_ui_lang.txt={File.ReadAllText(gkLang).Trim()}"
+				: "[GK][DIAG] gk_ui_lang.txt=(missing) → GK uses en");
+		}
+		catch (Exception e)
+		{
+			GD.PrintErr("[GK][DIAG] " + e.Message);
+		}
+	}
+
+	private void OnPlaceRecallUnlockedInSession(string key)
+	{
+		_spawner?.RefreshPlaceRecallVisualForKey(key);
 	}
 
 	public void OnFrameSelected(string key)
@@ -111,23 +156,13 @@ public partial class RealmController : Node
 
 		_viewerFocusStack.Clear();
 
-		try
+		if (ShouldOfferPlaceRecallSessionResetOnObjectEnter(key))
 		{
-			Directory.CreateDirectory(BridgeSpatial.BridgeDir);
-			BridgeSpatial.WriteContextKey(key);
-			BridgeSpatial.WriteFocusKey(key);
-
-			var refreshPath = Path.Combine(BridgeSpatial.BridgeDir, "refresh_now.txt");
-			File.WriteAllText(refreshPath, "1");
-		}
-		catch (Exception e)
-		{
-			GD.PrintErr("[RC][WARP_ERR] " + e.Message);
+			ShowPlaceRecallEnterObjectDialog(key);
 			return;
 		}
 
-		GD.Print($"[RC][WARP] context_key={key} focus_key={key}");
-		_viewer?.ClosePanel();
+		ExecuteEnterLevelWarp(key);
 	}
 
 	/// <summary>Back del viewer: primero deshace navegaciones de foco; si no hay pila, sube de nivel.</summary>
@@ -296,7 +331,7 @@ public partial class RealmController : Node
 		{
 			_intentPoll = 0;
 			if (_intentHud != null)
-				_intentHud.Text = "Intent: " + BridgeSpatial.ReadNavigationIntent();
+				_intentHud.Text = "Mode: " + BridgeSpatial.ReadNavigationIntent();
 		}
 	}
 

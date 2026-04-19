@@ -1,12 +1,14 @@
-using System.Globalization;
-
-/// <summary>Texto de ayuda de usuario para GateKeeper (sin detalle de código). ES / EN según UI del sistema.</summary>
+/// <summary>User help for GateKeeper (F1). Language matches Library Build via <c>bridge/gk_ui_lang.txt</c>.</summary>
 public static class AlexandriaGkUserHelpCopy
 {
 	public static string GetBody()
 	{
-		var lang = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
-		return lang == "es" ? Es : En;
+		return GkUiLocale.ReadGkUiLanguageCode() switch
+		{
+			"es" => Es,
+			"pt" => En, // same as LB until a dedicated PT body is added
+			_ => En,
+		};
 	}
 
 	public const string En = """

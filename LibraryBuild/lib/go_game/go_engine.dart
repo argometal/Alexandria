@@ -79,6 +79,24 @@ class GoBoard {
     );
   }
 
+  /// Posición inicial de un **problema** (tsumego): superko empieza solo con este tablero.
+  factory GoBoard.problemStart({
+    required List<int> initialCells,
+    required int toPlay,
+    double komi = 5.5,
+  }) {
+    assert(initialCells.length == 81);
+    final h = initialCells.join(',');
+    return GoBoard._restore(
+      size: 9,
+      komi: komi,
+      cells: List<int>.from(initialCells),
+      toPlay: toPlay,
+      consecutivePasses: 0,
+      seen: {h},
+    );
+  }
+
   final int size;
   final double komi;
   final List<int> cells;
@@ -143,6 +161,30 @@ class GoBoard {
       }
     }
     return lib.length;
+  }
+
+  /// Quita grupos sin ninguna libertad (capturas que siguieron en el tablero al
+  /// terminar con dos pasos). Repite hasta fijar — necesario para que el recuento
+  /// por área no deje piedras muertas sumando y bloqueando territorio rival.
+  void _removeGroupsWithNoLiberties() {
+    while (true) {
+      final toClear = <int>{};
+      final visited = <int>{};
+      for (var i = 0; i < len; i++) {
+        if (cells[i] == 0 || visited.contains(i)) continue;
+        final grp = _group(i);
+        for (final x in grp) {
+          visited.add(x);
+        }
+        if (_liberties(grp) == 0) {
+          toClear.addAll(grp);
+        }
+      }
+      if (toClear.isEmpty) return;
+      for (final i in toClear) {
+        cells[i] = 0;
+      }
+    }
   }
 
   /// Quita grupos rivales sin libertades; devuelve piedras capturadas.
@@ -215,8 +257,34 @@ class GoBoard {
     return out;
   }
 
-  /// Puntuación área simple al terminar: piedras + vacíos alcanzables solo por un color (BFS por vacíos).
-  (double black, double white) areaScore() {
+  /// Piedras vivas en [cells] (sin retirar grupos sin libertad).
+  (int black, int white) countStonesOnBoard() {
+    var b = 0;
+    var w = 0;
+    for (var i = 0; i < len; i++) {
+      if (cells[i] == 1) b++;
+      if (cells[i] == 2) w++;
+    }
+    return (b, w);
+  }
+
+  /// Puntuación **área** (estilo chino) sobre una copia: primero retira grupos con
+  /// 0 libertades (fin de partida con pasos), luego piedras + territorio vacío
+  /// rodeado solo por un color.
+  ///
+  /// **Sin** komi; el komi se aplica solo al total de blancas en [areaScore].
+  (double black, double whiteOnBoard) areaScoreOnBoard() {
+    final g = copy();
+    g._removeGroupsWithNoLiberties();
+    return g._areaScoreOnBoardFromCurrentCells();
+  }
+
+  /// Misma lógica de área pero **sin** retirar capturas (solo diagnóstico / tests).
+  (double black, double whiteOnBoard) areaScoreOnBoardRaw() {
+    return _areaScoreOnBoardFromCurrentCells();
+  }
+
+  (double black, double whiteOnBoard) _areaScoreOnBoardFromCurrentCells() {
     var b = 0.0;
     var w = 0.0;
     for (var i = 0; i < len; i++) {
@@ -251,8 +319,13 @@ class GoBoard {
         if (touches.contains(2)) w += region.length.toDouble();
       }
     }
-    w += komi;
     return (b, w);
+  }
+
+  /// Totales finales: negras [black], blancas [white] = on-board + [komi] para blancas.
+  (double black, double white) areaScore() {
+    final (b, w0) = areaScoreOnBoard();
+    return (b, w0 + komi);
   }
 
   /// +1 si ganan negras, -1 si ganan blancas, 0 empate.

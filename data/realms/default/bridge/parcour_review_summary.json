@@ -1,7 +1,28 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-04-18T22:48:10.842269Z",
+  "generatedAt": "2026-04-19T22:56:50.600271Z",
   "parcours": {
+    "L1": {
+      "parcourKey": "L1",
+      "fibIndex": 0,
+      "nextDueAt": null,
+      "lastOkAt": null,
+      "stableAt": null,
+      "lastScoreNorm": null,
+      "lastScoreRaw": null,
+      "evaluatedCount": 0,
+      "lastSessionAt": null,
+      "lastSessionPass": null,
+      "failedLoci": [],
+      "mediumLoci": [],
+      "goodLoci": [],
+      "counts": {
+        "good": 0,
+        "medium": 0,
+        "fail": 0
+      },
+      "sessionPct": null
+    },
     "L2": {
       "parcourKey": "L2",
       "fibIndex": 0,

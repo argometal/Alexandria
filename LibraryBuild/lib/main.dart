@@ -21,6 +21,8 @@ import 'pao/pao_individual_drill_page.dart';
 import 'pao/pao_standard_page.dart';
 import 'go_game/go_game_page.dart';
 import 'match_cards/match_cards_page.dart';
+import 'poker_memory/poker_memory_page.dart';
+import 'parcour_fib_timeline.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,12 +47,14 @@ class _LbMinimalAppState extends State<LbMinimalApp> {
       setState(() {
         _locale = AppLocalePreferences.localeFromCode(code);
       });
+      writeGkUiLangBridge(code);
     });
   }
 
   void _setLocale(Locale? locale) {
     setState(() => _locale = locale);
     AppLocalePreferences.saveLanguageCode(locale?.languageCode);
+    writeGkUiLangBridge(locale?.languageCode);
   }
 
   @override
@@ -86,8 +90,12 @@ class LbHome extends StatefulWidget {
   State<LbHome> createState() => _LbHomeState();
 }
 
+/// Superficie principal de [LbHome]: árbol del realm activo vs editor Match cards (misma base).
+enum _LbMainShell { realmTree, matchCards }
+
 class _LbHomeState extends State<LbHome> {
   Database? _db;
+  _LbMainShell _mainShell = _LbMainShell.realmTree;
   String _currentParentKey = 'ROOT';
   List<Map<String, Object?>> _rows = [];
   /// Último rating Parcour Review por locus cuando el padre actual es un parcour (semáforo LB).
@@ -97,8 +105,15 @@ class _LbHomeState extends State<LbHome> {
     'review',
     'seek',
     'drift',
+    'place_recall',
   ];
   int _intentIndex = 0;
+
+  /// Un solo interruptor para todo el realm: `bridge/place_recall_enabled.txt` (GateKeeper lee `1`).
+  bool _placeRecallGloballyEnabled = false;
+
+  /// `bridge/memory_athlete_mode.txt`: `1` = umbral 100% en métricas; `0` = estándar 80%.
+  bool _memoryAthleteMetricsEnabled = true;
 
   /// Leading de lista: base 40px; factor **4×** (160) para parcour/objeto/realm en la misma lista.
   static const double _kListHeroSize = 160;
@@ -109,11 +124,89 @@ class _LbHomeState extends State<LbHome> {
     AlexandriaPaths.ensureMigratedToRealmLayout();
     _openDbAndSchema();
     ensureDualBridgeDefaults();
+    syncGkUiLangBridgeFromPreference();
     ensureGatekeeperSnapshotArtifactsSync();
     _syncNavigationIntentIndexFromDisk();
+    _syncMemoryAthleteFromDisk();
+    _syncPlaceRecallFromDisk();
     _syncParentFromBridgeContext();
     _loadChildren();
     _syncIntentBridgeAnchorWithFocus();
+  }
+
+  void _syncPlaceRecallFromDisk() {
+    try {
+      var fromFile = false;
+      final fPr = File(AlexandriaPaths.placeRecallEnabledPath);
+      if (fPr.existsSync()) {
+        final t = fPr.readAsStringSync().trim();
+        fromFile = t == '1' ||
+            t.toLowerCase() == 'true' ||
+            t.toLowerCase() == 'yes';
+      }
+      var fromIntent = false;
+      final fIntent = File(AlexandriaPaths.navigationIntentPath);
+      if (fIntent.existsSync()) {
+        final line = fIntent
+            .readAsStringSync()
+            .split(RegExp(r'\r?\n'))
+            .first
+            .trim()
+            .toLowerCase();
+        fromIntent = line == 'place_recall';
+      }
+      if (mounted) {
+        setState(() => _placeRecallGloballyEnabled = fromFile || fromIntent);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _placeRecallGloballyEnabled = false);
+    }
+  }
+
+  void _setPlaceRecallGloballyEnabled(bool value) {
+    try {
+      final f = File(AlexandriaPaths.placeRecallEnabledPath);
+      f.parent.createSync(recursive: true);
+      f.writeAsStringSync(value ? '1' : '0');
+
+      if (value) {
+        try {
+          final fi = File(AlexandriaPaths.navigationIntentPath);
+          fi.parent.createSync(recursive: true);
+          final focus = readFocusKeyWithFallback().trim();
+          const mode = 'place_recall';
+          if (focus.isNotEmpty) {
+            fi.writeAsStringSync('$mode\n$focus');
+          } else {
+            fi.writeAsStringSync(mode);
+          }
+          _syncNavigationIntentIndexFromDisk();
+        } catch (_) {}
+      } else {
+        try {
+          final fi = File(AlexandriaPaths.navigationIntentPath);
+          if (fi.existsSync()) {
+            final lines = fi.readAsStringSync().split(RegExp(r'\r?\n'));
+            if (lines.isNotEmpty &&
+                lines.first.trim().toLowerCase() == 'place_recall') {
+              final rest = lines.length > 1 ? lines.sublist(1) : <String>[];
+              const newMode = 'explore';
+              fi.writeAsStringSync(
+                rest.isEmpty ? newMode : '$newMode\n${rest.join('\n')}',
+              );
+              _syncNavigationIntentIndexFromDisk();
+            }
+          }
+        } catch (_) {}
+      }
+
+      _syncPlaceRecallFromDisk();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
+    }
   }
 
   @override
@@ -127,14 +220,20 @@ class _LbHomeState extends State<LbHome> {
     _db = null;
     _openDbAndSchema();
     ensureDualBridgeDefaults();
+    syncGkUiLangBridgeFromPreference();
     ensureGatekeeperSnapshotArtifactsSync();
     _syncNavigationIntentIndexFromDisk();
+    _syncMemoryAthleteFromDisk();
+    _syncPlaceRecallFromDisk();
     _syncParentFromBridgeContext();
     _loadChildren();
     _syncIntentBridgeAnchorWithFocus();
+    if (mounted) {
+      setState(() => _mainShell = _LbMainShell.realmTree);
+    }
   }
 
-  /// Borrado nuclear: [performAlexandriaNuclearDataResetSync] deja solo `default/alexandria.db`.
+  /// Borrado nuclear: [performAlexandriaNuclearDataResetSync] reconstruye realms; PAO/Match del realm activo se preservan en `default`.
   Future<void> _onNuclearDataResetFromAdmin() async {
     _db?.dispose();
     _db = null;
@@ -152,8 +251,11 @@ class _LbHomeState extends State<LbHome> {
       );
       _openDbAndSchema();
       ensureDualBridgeDefaults();
+      syncGkUiLangBridgeFromPreference();
       ensureGatekeeperSnapshotArtifactsSync();
       _syncNavigationIntentIndexFromDisk();
+      _syncMemoryAthleteFromDisk();
+      _syncPlaceRecallFromDisk();
       _syncParentFromBridgeContext();
       _loadChildren();
       return;
@@ -161,14 +263,101 @@ class _LbHomeState extends State<LbHome> {
     if (!mounted) return;
     _openDbAndSchema();
     ensureDualBridgeDefaults();
+    syncGkUiLangBridgeFromPreference();
     ensureGatekeeperSnapshotArtifactsSync();
     _syncNavigationIntentIndexFromDisk();
+    _syncMemoryAthleteFromDisk();
+    _syncPlaceRecallFromDisk();
     setState(() {
       _currentParentKey = 'ROOT';
     });
     _syncParentFromBridgeContext();
     _loadChildren();
     _syncIntentBridgeAnchorWithFocus();
+  }
+
+  Future<void> _onPaoDataCleanupFromAdmin() async {
+    _db?.dispose();
+    _db = null;
+    try {
+      performPaoLibraryDataCleanupSync();
+    } catch (e, st) {
+      debugPrint('$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.snackbarNuclearError(e.toString()),
+          ),
+        ),
+      );
+      _openDbAndSchema();
+      ensureDualBridgeDefaults();
+      syncGkUiLangBridgeFromPreference();
+      ensureGatekeeperSnapshotArtifactsSync();
+      _syncNavigationIntentIndexFromDisk();
+      _syncMemoryAthleteFromDisk();
+      _syncPlaceRecallFromDisk();
+      _syncParentFromBridgeContext();
+      _loadChildren();
+      return;
+    }
+    if (!mounted) return;
+    _openDbAndSchema();
+    ensureDualBridgeDefaults();
+    syncGkUiLangBridgeFromPreference();
+    ensureGatekeeperSnapshotArtifactsSync();
+    _syncNavigationIntentIndexFromDisk();
+    _syncMemoryAthleteFromDisk();
+    _syncPlaceRecallFromDisk();
+    _syncParentFromBridgeContext();
+    _loadChildren();
+    _syncIntentBridgeAnchorWithFocus();
+    try {
+      runLibraryBuild();
+    } catch (_) {}
+  }
+
+  Future<void> _onMatchCardsDataCleanupFromAdmin() async {
+    _db?.dispose();
+    _db = null;
+    try {
+      performMatchCardsLibraryDataCleanupSync();
+    } catch (e, st) {
+      debugPrint('$st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.snackbarNuclearError(e.toString()),
+          ),
+        ),
+      );
+      _openDbAndSchema();
+      ensureDualBridgeDefaults();
+      syncGkUiLangBridgeFromPreference();
+      ensureGatekeeperSnapshotArtifactsSync();
+      _syncNavigationIntentIndexFromDisk();
+      _syncMemoryAthleteFromDisk();
+      _syncPlaceRecallFromDisk();
+      _syncParentFromBridgeContext();
+      _loadChildren();
+      return;
+    }
+    if (!mounted) return;
+    _openDbAndSchema();
+    ensureDualBridgeDefaults();
+    syncGkUiLangBridgeFromPreference();
+    ensureGatekeeperSnapshotArtifactsSync();
+    _syncNavigationIntentIndexFromDisk();
+    _syncMemoryAthleteFromDisk();
+    _syncPlaceRecallFromDisk();
+    _syncParentFromBridgeContext();
+    _loadChildren();
+    _syncIntentBridgeAnchorWithFocus();
+    try {
+      runLibraryBuild();
+    } catch (_) {}
   }
 
   /// Sanitiza el realm activo, Library build y copia a `data/realm_seed/`. Cierra/reabre la DB.
@@ -181,8 +370,11 @@ class _LbHomeState extends State<LbHome> {
       debugPrint('$st');
       _openDbAndSchema();
       ensureDualBridgeDefaults();
+      syncGkUiLangBridgeFromPreference();
       ensureGatekeeperSnapshotArtifactsSync();
       _syncNavigationIntentIndexFromDisk();
+      _syncMemoryAthleteFromDisk();
+      _syncPlaceRecallFromDisk();
       _syncParentFromBridgeContext();
       _loadChildren();
       rethrow;
@@ -190,8 +382,11 @@ class _LbHomeState extends State<LbHome> {
     if (!mounted) return;
     _openDbAndSchema();
     ensureDualBridgeDefaults();
+    syncGkUiLangBridgeFromPreference();
     ensureGatekeeperSnapshotArtifactsSync();
     _syncNavigationIntentIndexFromDisk();
+    _syncMemoryAthleteFromDisk();
+    _syncPlaceRecallFromDisk();
     _syncParentFromBridgeContext();
     _loadChildren();
     _syncIntentBridgeAnchorWithFocus();
@@ -210,29 +405,65 @@ class _LbHomeState extends State<LbHome> {
     } catch (_) {}
   }
 
-  /// Drawer line: mode + optional focus locus (Hero frame).
-  String _intentDrawerSubtitle(BuildContext context) {
+  void _syncMemoryAthleteFromDisk() {
+    try {
+      var on = true;
+      final f = File(AlexandriaPaths.memoryAthleteModePath);
+      if (f.existsSync()) {
+        final t = f.readAsStringSync().trim().toLowerCase();
+        if (t == '0' ||
+            t == 'false' ||
+            t == 'no' ||
+            t == 'off' ||
+            t == 'normal' ||
+            t == 'standard') {
+          on = false;
+        }
+      }
+      if (mounted) setState(() => _memoryAthleteMetricsEnabled = on);
+    } catch (_) {
+      if (mounted) setState(() => _memoryAthleteMetricsEnabled = true);
+    }
+  }
+
+  void _setMemoryAthleteMetricsEnabled(bool value) {
+    try {
+      final f = File(AlexandriaPaths.memoryAthleteModePath);
+      f.parent.createSync(recursive: true);
+      f.writeAsStringSync(value ? '1' : '0');
+      if (mounted) setState(() => _memoryAthleteMetricsEnabled = value);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
+    }
+  }
+
+  /// Drawer: modo de estudio + marco Hero (línea 2 del bridge), separado del umbral de métricas.
+  String _studyNavigationDrawerSubtitle(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     try {
       final f = File(AlexandriaPaths.navigationIntentPath);
       if (!f.existsSync()) {
-        return _kNavIntents[_intentIndex];
+        return l10n.studyNavigationDetailModeOnly(_kNavIntents[_intentIndex]);
       }
       final lines = f.readAsStringSync().split(RegExp(r'\r?\n'));
       final mode =
           lines.isNotEmpty ? lines.first.trim() : _kNavIntents[_intentIndex];
       if (lines.length >= 2 && lines[1].trim().isNotEmpty) {
-        return l10n.intentDrawerWithFrame(mode, lines[1].trim());
+        return l10n.studyNavigationDetailWithFrame(mode, lines[1].trim());
       }
-      return mode;
+      return l10n.studyNavigationDetailModeOnly(mode);
     } catch (_) {
-      return _kNavIntents[_intentIndex];
+      return l10n.studyNavigationDetailModeOnly(_kNavIntents[_intentIndex]);
     }
   }
 
   void _cycleNavigationIntent() {
     setState(() => _intentIndex = (_intentIndex + 1) % _kNavIntents.length);
     _syncIntentBridgeAnchorWithFocus();
+    _syncPlaceRecallFromDisk();
     if (!mounted) return;
     final l = AppLocalizations.of(context)!;
     final focus = readFocusKeyWithFallback().trim();
@@ -865,6 +1096,7 @@ CREATE TABLE IF NOT EXISTS entries (
     final l = AppLocalizations.of(context)!;
     final stats = computeRecallStatsForSubtree(d, parcourKey);
     final fib = summarizeLocusScheduleForSubtree(d, parcourKey);
+    final review = loadParcourReviewSummary(d, parcourKey);
     final cs = Theme.of(context).colorScheme;
     final due = stats['due'] ?? 0;
     final n = stats['new'] ?? 0;
@@ -897,14 +1129,13 @@ CREATE TABLE IF NOT EXISTS entries (
           ),
           const SizedBox(height: 4),
           Text(
-            formatParcourReviewOneLine(
-              loadParcourReviewSummary(d, parcourKey),
-              l,
-            ),
+            formatParcourReviewOneLine(review, l),
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: cs.secondary,
                 ),
           ),
+          const SizedBox(height: 8),
+          ParcourFibTimelineStrip(fibIndex: review.fibIndex),
           const SizedBox(height: 4),
           Text(
             _realmCompletionLine(context, d, parcourKey),
@@ -964,6 +1195,13 @@ CREATE TABLE IF NOT EXISTS entries (
           },
           onNuclearDataReset: _onNuclearDataResetFromAdmin,
           onRegenerateRealmSeed: _onRegenerateRealmSeedFromAdmin,
+          onPaoDataCleanup: _onPaoDataCleanupFromAdmin,
+          onMatchCardsDataCleanup: _onMatchCardsDataCleanupFromAdmin,
+          onOpenMatchCards: () {
+            Navigator.of(context).pop();
+            if (!mounted) return;
+            setState(() => _mainShell = _LbMainShell.matchCards);
+          },
         ),
       ),
     );
@@ -1131,6 +1369,172 @@ CREATE TABLE IF NOT EXISTS entries (
           padding: EdgeInsets.zero,
           children: [
             _drawerHeader(context),
+            _drawerSection(context, loc.sectionPao),
+            ListTile(
+              leading: const Icon(Icons.face_retouching_natural_outlined),
+              title: Text(loc.paoEditorTitle),
+              subtitle: Text(loc.paoEditorSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => PaoStandardPage(db: d),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.school_outlined),
+              title: Text(loc.paoPracticeTitle),
+              subtitle: Text(loc.paoPracticeSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => PaoIndividualDrillPage(db: d),
+                  ),
+                );
+              },
+            ),
+            _drawerSection(context, loc.sectionMatchCards),
+            ListTile(
+              leading: const Icon(Icons.style_outlined),
+              title: Text(loc.matchCardsTitle),
+              subtitle: Text(loc.matchCardsSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                setState(() => _mainShell = _LbMainShell.matchCards);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.numbers_outlined),
+              title: Text(loc.pokerMemoryTitle),
+              subtitle: Text(loc.pokerMemoryDrawerSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => PokerMemoryPage(db: d),
+                  ),
+                );
+              },
+            ),
+            _drawerSection(context, loc.sectionGo),
+            ListTile(
+              leading: const Icon(Icons.grid_on_outlined),
+              title: Text(loc.goGameTitle),
+              subtitle: Text(loc.goGameSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => GoGamePage(db: d),
+                  ),
+                );
+              },
+            ),
+            _drawerSection(context, loc.sectionMetrics),
+            ListTile(
+              leading: const Icon(Icons.insights_outlined),
+              title: Text(loc.metricsRecallTitle),
+              subtitle: Text(loc.metricsRecallSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                if (d == null) return;
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => MetricsRecallPage(db: d),
+                  ),
+                );
+              },
+            ),
+            _drawerSection(context, loc.sectionLanguage),
+            ListTile(
+              leading: const Icon(Icons.translate_outlined),
+              title: Text(loc.languageTitle),
+              subtitle: Text(_currentLanguageChoiceSubtitle(loc)),
+              onTap: () {
+                Navigator.pop(context);
+                _showLanguagePicker();
+              },
+            ),
+            _drawerSection(context, loc.sectionSystem),
+            ListTile(
+              leading: const Icon(Icons.dns_outlined),
+              title: Text(loc.realmsTitle),
+              subtitle: Text(loc.realmsSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                _openRealmAdmin();
+              },
+            ),
+            SwitchListTile(
+              secondary: Icon(
+                Icons.percent_outlined,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              title: Text(loc.memoryAthleteSwitchTitle),
+              subtitle: Text(
+                _memoryAthleteMetricsEnabled
+                    ? loc.memoryAthleteSwitchSubtitleOn
+                    : loc.memoryAthleteSwitchSubtitleOff,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              value: _memoryAthleteMetricsEnabled,
+              onChanged: _setMemoryAthleteMetricsEnabled,
+            ),
+            Tooltip(
+              message: loc.studyNavigationTooltip,
+              child: ListTile(
+                leading: const Icon(Icons.explore_outlined),
+                title: Text(loc.studyNavigationTitle),
+                subtitle: Text(
+                  _studyNavigationDrawerSubtitle(context),
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 3,
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _cycleNavigationIntent();
+                },
+              ),
+            ),
+            SwitchListTile(
+              secondary: Icon(
+                Icons.quiz_outlined,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              title: Text(loc.placeRecallDrawerTitle),
+              subtitle: Text(
+                loc.placeRecallDrawerSubtitle,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              value: _placeRecallGloballyEnabled,
+              onChanged: _setPlaceRecallGloballyEnabled,
+            ),
+            _drawerSection(context, loc.sectionHelp),
+            ListTile(
+              leading: const Icon(Icons.menu_book_outlined),
+              title: Text(loc.helpGuideTitle),
+              subtitle: Text(
+                loc.helpGuideGkHint,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AlexandriaHelpPage(),
+                  ),
+                );
+              },
+            ),
             _drawerSection(context, loc.sectionReading),
             ListTile(
               leading: const Icon(Icons.chrome_reader_mode_outlined),
@@ -1177,134 +1581,6 @@ CREATE TABLE IF NOT EXISTS entries (
                 );
               },
             ),
-            _drawerSection(context, loc.sectionPao),
-            ListTile(
-              leading: const Icon(Icons.face_retouching_natural_outlined),
-              title: Text(loc.paoEditorTitle),
-              subtitle: Text(loc.paoEditorSubtitle),
-              onTap: () {
-                Navigator.pop(context);
-                if (d == null) return;
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => PaoStandardPage(db: d),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.school_outlined),
-              title: Text(loc.paoPracticeTitle),
-              subtitle: Text(loc.paoPracticeSubtitle),
-              onTap: () {
-                Navigator.pop(context);
-                if (d == null) return;
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => PaoIndividualDrillPage(db: d),
-                  ),
-                );
-              },
-            ),
-            _drawerSection(context, loc.sectionMatchCards),
-            ListTile(
-              leading: const Icon(Icons.style_outlined),
-              title: Text(loc.matchCardsTitle),
-              subtitle: Text(loc.matchCardsSubtitle),
-              onTap: () {
-                Navigator.pop(context);
-                if (d == null) return;
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => MatchCardsPage(db: d),
-                  ),
-                );
-              },
-            ),
-            _drawerSection(context, loc.sectionGo),
-            ListTile(
-              leading: const Icon(Icons.grid_on_outlined),
-              title: Text(loc.goGameTitle),
-              subtitle: Text(loc.goGameSubtitle),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const GoGamePage(),
-                  ),
-                );
-              },
-            ),
-            _drawerSection(context, loc.sectionMetrics),
-            ListTile(
-              leading: const Icon(Icons.insights_outlined),
-              title: Text(loc.metricsRecallTitle),
-              subtitle: Text(loc.metricsRecallSubtitle),
-              onTap: () {
-                Navigator.pop(context);
-                if (d == null) return;
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => MetricsRecallPage(db: d),
-                  ),
-                );
-              },
-            ),
-            _drawerSection(context, loc.sectionLanguage),
-            ListTile(
-              leading: const Icon(Icons.translate_outlined),
-              title: Text(loc.languageTitle),
-              subtitle: Text(_currentLanguageChoiceSubtitle(loc)),
-              onTap: () {
-                Navigator.pop(context);
-                _showLanguagePicker();
-              },
-            ),
-            _drawerSection(context, loc.sectionSystem),
-            ListTile(
-              leading: const Icon(Icons.dns_outlined),
-              title: Text(loc.realmsTitle),
-              subtitle: Text(loc.realmsSubtitle),
-              onTap: () {
-                Navigator.pop(context);
-                _openRealmAdmin();
-              },
-            ),
-            Tooltip(
-              message: loc.navigationIntentTooltip,
-              child: ListTile(
-                leading: const Icon(Icons.explore_outlined),
-                title: Text(loc.navigationIntentTitle),
-                subtitle: Text(
-                  _intentDrawerSubtitle(context),
-                  style: Theme.of(context).textTheme.bodySmall,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _cycleNavigationIntent();
-                },
-              ),
-            ),
-            _drawerSection(context, loc.sectionHelp),
-            ListTile(
-              leading: const Icon(Icons.menu_book_outlined),
-              title: Text(loc.helpGuideTitle),
-              subtitle: Text(
-                loc.helpGuideGkHint,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.of(context).push<void>(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const AlexandriaHelpPage(),
-                  ),
-                );
-              },
-            ),
           ],
         ),
       ),
@@ -1315,14 +1591,18 @@ CREATE TABLE IF NOT EXISTS entries (
           children: [
             Text(loc.appTitle),
             Text(
-              _parentBreadcrumbLabel(context, _currentParentKey),
+              _mainShell == _LbMainShell.matchCards
+                  ? loc.matchCardsTitle
+                  : _parentBreadcrumbLabel(context, _currentParentKey),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
             ),
           ],
         ),
-        leadingWidth: _currentParentKey == 'ROOT' ? 56 : 112,
+        leadingWidth: _mainShell == _LbMainShell.matchCards
+            ? 56
+            : (_currentParentKey == 'ROOT' ? 56 : 112),
         automaticallyImplyLeading: false,
         leading: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1334,7 +1614,8 @@ CREATE TABLE IF NOT EXISTS entries (
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
               ),
             ),
-            if (_currentParentKey != 'ROOT')
+            if (_mainShell == _LbMainShell.realmTree &&
+                _currentParentKey != 'ROOT')
               IconButton(
                 icon: const Icon(Icons.arrow_back),
                 tooltip: AppLocalizations.of(context)!.backTooltip,
@@ -1358,19 +1639,65 @@ CREATE TABLE IF NOT EXISTS entries (
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _buildStatsStrip(context),
+          if (d != null) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: SegmentedButton<_LbMainShell>(
+                segments: [
+                  ButtonSegment<_LbMainShell>(
+                    value: _LbMainShell.realmTree,
+                    label: Text(loc.librarySurfaceRealmTree),
+                    icon: const Icon(Icons.account_tree_outlined),
+                  ),
+                  ButtonSegment<_LbMainShell>(
+                    value: _LbMainShell.matchCards,
+                    label: Text(loc.matchCardsTitle),
+                    icon: const Icon(Icons.style_outlined),
+                  ),
+                ],
+                selected: <_LbMainShell>{_mainShell},
+                onSelectionChanged: (Set<_LbMainShell> next) {
+                  if (next.isEmpty) return;
+                  setState(() => _mainShell = next.first);
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (_mainShell == _LbMainShell.realmTree) _buildStatsStrip(context),
           Expanded(
-            child: _rows.isEmpty
-                ? Center(
-                    child: Text(
-                      loc.emptyLevelMessage,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color: Theme.of(context).colorScheme.outline,
-                          ),
-                    ),
-                  )
-                : ListView.separated(
+            child: _buildHomeMainBody(context, loc),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Contenido principal: carga, árbol del realm o Match cards incrustado (misma DB).
+  Widget _buildHomeMainBody(BuildContext context, AppLocalizations loc) {
+    final d = _db;
+    if (d == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_mainShell == _LbMainShell.matchCards) {
+      return MatchCardsPage(
+        key: const ValueKey<String>('lb_embed_match_cards'),
+        db: d,
+        embedded: true,
+      );
+    }
+    if (_rows.isEmpty) {
+      return Center(
+        child: Text(
+          loc.emptyLevelMessage,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.outline,
+              ),
+        ),
+      );
+    }
+    return ListView.separated(
                     padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
                     itemCount: _rows.length,
                     separatorBuilder: (_, _) => const SizedBox(height: 4),
@@ -1627,10 +1954,6 @@ CREATE TABLE IF NOT EXISTS entries (
                         ),
                       );
                     },
-                  ),
-          ),
-        ],
-      ),
-    );
+                  );
   }
 }

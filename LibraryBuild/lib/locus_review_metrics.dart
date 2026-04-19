@@ -4,6 +4,7 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'fib_locale_text.dart';
 import 'l10n/app_localizations.dart';
+import 'parcour_review.dart' show currentParcourPassNormSync;
 
 const List<int> _fibonacci = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233];
 
@@ -44,7 +45,7 @@ void applyLocusReviewOutcome({
     return;
   }
 
-  final pass = pct >= 0.8;
+  final pass = pct >= currentParcourPassNormSync();
 
   final rows = db.select(
     'SELECT fib_index FROM locus_review_state WHERE entry_key = ?',

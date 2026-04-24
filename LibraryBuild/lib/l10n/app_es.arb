@@ -376,6 +376,7 @@
     }
   },
   "matchCardsDeckOverviewFibBars": "Pares por paso Fibonacci (altura de barra)",
+  "matchCardsDeckStatsMenu": "Estadísticas del mazo…",
   "matchCardsSessionPickDeckTitle": "Elegir mazo",
   "matchCardsAttempts": "Intentos: {count}",
   "@matchCardsAttempts": {

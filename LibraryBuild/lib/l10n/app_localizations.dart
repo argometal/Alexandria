@@ -1410,6 +1410,12 @@ abstract class AppLocalizations {
   /// **'Pairs per Fibonacci step (bar height)'**
   String get matchCardsDeckOverviewFibBars;
 
+  /// No description provided for @matchCardsDeckStatsMenu.
+  ///
+  /// In en, this message translates to:
+  /// **'Deck statistics…'**
+  String get matchCardsDeckStatsMenu;
+
   /// No description provided for @matchCardsSessionPickDeckTitle.
   ///
   /// In en, this message translates to:

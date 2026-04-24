@@ -286,6 +286,49 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
     );
   }
 
+  bool get _canOpenDeckStats =>
+      _selectedDeckId != null && (_deckOverview?.pairCount ?? 0) > 0;
+
+  Future<void> _openDeckStatsDialog() async {
+    final deckId = _selectedDeckId;
+    final l10n = AppLocalizations.of(context)!;
+    if (deckId == null) return;
+    final o =
+        _deckOverview ?? lbLoadMatchDeckOverview(widget.db, deckId: deckId);
+    if (!mounted) return;
+    if (o.pairCount == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.matchCardsEmpty)),
+      );
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final dl = AppLocalizations.of(ctx)!;
+        return AlertDialog(
+          title: Text(dl.matchCardsSessionStatsTitle),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: MatchCardsDeckOverviewCard(
+                overview: o,
+                compact: true,
+                showTitleRow: false,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(dl.matchCardsCancel),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _promptNewDeck() async {
     final l10n = AppLocalizations.of(context)!;
     final ctrl = TextEditingController();
@@ -538,6 +581,11 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
         ),
         const PopupMenuDivider(),
         PopupMenuItem(
+          value: 'deckStats',
+          enabled: _canOpenDeckStats,
+          child: Text(l10n.matchCardsDeckStatsMenu),
+        ),
+        PopupMenuItem(
           value: 'export',
           child: Text(l10n.matchCardsExportMenu),
         ),
@@ -562,6 +610,9 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
             break;
           case 'import':
             _importDeck();
+            break;
+          case 'deckStats':
+            _openDeckStatsDialog();
             break;
         }
       },
@@ -597,6 +648,11 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  IconButton(
+                    icon: const Icon(Icons.bar_chart_outlined),
+                    tooltip: l10n.matchCardsDeckStatsMenu,
+                    onPressed: _canOpenDeckStats ? _openDeckStatsDialog : null,
+                  ),
                   _deckOverflowMenu(l10n),
                   if (_rows.length >= 2 && _selectedDeckId != null)
                     TextButton(
@@ -625,11 +681,6 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
                 _reload(selectDeckId: v);
               },
             ),
-          ),
-        if (_deckOverview != null && _deckOverview!.pairCount > 0)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: MatchCardsDeckOverviewCard(overview: _deckOverview!),
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -865,6 +916,11 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
       appBar: AppBar(
         title: Text(l10n.matchCardsTitle),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.bar_chart_outlined),
+            tooltip: l10n.matchCardsDeckStatsMenu,
+            onPressed: _canOpenDeckStats ? _openDeckStatsDialog : null,
+          ),
           _deckOverflowMenu(l10n),
           if (_rows.length >= 2 && _selectedDeckId != null)
             TextButton(

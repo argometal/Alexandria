@@ -381,6 +381,7 @@
     }
   },
   "matchCardsDeckOverviewFibBars": "Pairs per Fibonacci step (bar height)",
+  "matchCardsDeckStatsMenu": "Deck statistics…",
   "matchCardsSessionPickDeckTitle": "Choose deck",
   "matchCardsAttempts": "Attempts: {count}",
   "@matchCardsAttempts": {

@@ -772,6 +772,9 @@ class AppLocalizationsEs extends AppLocalizations {
       'Pares por paso Fibonacci (altura de barra)';
 
   @override
+  String get matchCardsDeckStatsMenu => 'Estadísticas del mazo…';
+
+  @override
   String get matchCardsSessionPickDeckTitle => 'Elegir mazo';
 
   @override

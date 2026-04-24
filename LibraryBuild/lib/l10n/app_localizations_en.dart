@@ -768,6 +768,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Pairs per Fibonacci step (bar height)';
 
   @override
+  String get matchCardsDeckStatsMenu => 'Deck statistics…';
+
+  @override
   String get matchCardsSessionPickDeckTitle => 'Choose deck';
 
   @override

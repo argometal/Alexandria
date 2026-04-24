@@ -18,7 +18,9 @@
 
 ## 2. Alcance implementado
 
-- **UI:** cajón LB → sección Match cards → mazos, lista de pares, alta (imagen + pie), borrado, sesión (hasta 4 pares por sesión por defecto) con **priorización** por `fib_index` bajo / `due_at` antiguo / más `fail_count`, luego barajado; **hoja de estadísticas** por par (`fib_index`, aciertos/fallos) en la sesión (`match_cards_session_page.dart`).
+**Criterio práctico (v1):** scheduling **solo Fibonacci** por par (`kParcourFibDays`, mismo eje que locus/parcour). **FSRS no está implementado**; las columnas `stability` / `difficulty` / `elapsed_days` son reserva. Renombrar la tabla implicaría migración; el ORM documenta el comportamiento real sobre el nombre histórico `lb_match_pair_fsrs_state`.
+
+- **UI:** cajón LB → sección Match cards → mazos, lista de pares, alta (imagen + pie), borrado, sesión (hasta 4 pares por sesión por defecto) con **priorización** por `fib_index` bajo / `due_at` antiguo / más `fail_count`, luego barajado; estadísticas del mazo en diálogo; **hoja de estadísticas** por par en la sesión (`match_cards_session_page.dart`).
 - **Persistencia:** SQLite en `alexandria.db` del realm activo (`ensureLibrarySchema` → `_ensureMatchCardsSchema`).
 - **Archivos:** imágenes bajo `data/realms/<realm>/assets/lb_match_cards/` (nombre almacenado en columna `image_basename`).
 
@@ -64,7 +66,7 @@ Estado **por par** tras sesiones de emparejamiento: scheduler **tipo Fibonacci**
 ## 4. Evolución prevista (no obligatoria en código hasta acuerdo)
 
 1. **Ruta:** rellenar `route_key` y filtrar sesiones por contexto espacial o de navegación — probablemente coordinado con bridge/`context_key` solo en LB primero.
-2. **FSRS “de verdad”:** usar o sustituir las columnas `stability` / `difficulty` / `elapsed_days` con un modelo distinto del Fib actual (hoy no se leen).
+2. **FSRS u otro modelo:** solo si las métricas de uso del Fib v1 piden más finura; entonces poblar las columnas reservadas o nueva tabla, sin romper export/import de mazos sin decisión explícita.
 
 ---
 
@@ -83,3 +85,4 @@ Estado **por par** tras sesiones de emparejamiento: scheduler **tipo Fibonacci**
 |---------|------|
 | 1.0 | Primera versión ORM-16-06; inventario según implementación LibraryBuild + tablas match cards. |
 | 1.1 | Alineación: `lb_match_pair_fsrs_state` con scheduler Fib + conteos en uso; UI de stats en sesión; priorización de pares; FSRS legacy aún sin lógica. |
+| 1.2 | Criterio explícito v1 = solo Fib; FSRS reservado; stats mazo en diálogo. |

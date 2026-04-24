@@ -184,7 +184,9 @@ int _asInt(Object? value) {
   return int.tryParse(value.toString()) ?? 0;
 }
 
-/// Tras acierto sube `fib_index` (intervalo más largo); tras fallo baja. `due_at` = próximo repaso (UTC ISO).
+/// Scheduling **Fibonacci** (mismo eje que locus/parcour): acierto sube
+/// `fib_index`; fallo baja. `due_at` = ahora + días del nuevo índice (UTC ISO).
+/// Tabla `lb_match_pair_fsrs_state`: nombre histórico; columnas FSRS sin usar.
 void lbRecordMatchPairOutcome(
   Database db, {
   required int pairId,
@@ -436,7 +438,7 @@ void lbInsertMatchPairFromBytes(
   );
 }
 
-/// Pares del mazo con contadores FSRS (para UI: palabras con más fallos primero).
+/// Pares del mazo con estado Fib + contadores de sesión (para UI: más fallos primero).
 List<LbMatchPairStatView> lbListMatchPairStats(
   Database db, {
   required int deckId,

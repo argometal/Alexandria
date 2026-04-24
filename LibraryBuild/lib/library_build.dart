@@ -364,7 +364,12 @@ const List<String> kCognitiveRoles = [
 /// [lb_match_pairs.route_key]: `NULL` = pool global del realm (UI actual).
 /// Futuro: fila por “ruta” (p. ej. parcour) para repaso caminando el espacio — sin lógica aún.
 ///
-/// [lb_match_pair_fsrs_state]: `fib_index` + `due_at` = repaso tipo Fibonacci (mismo eje que locus review); columnas FSRS legacy opcionales sin usar.
+/// **Match cards — scheduling v1 (práctico):** solo **Fibonacci por días**
+/// (`fib_index`, `due_at`, `last_review_at`, `reps`, `pass_count`, `fail_count`)
+/// vía [kParcourFibDays] en `match_cards_store.dart`. La tabla se llama
+/// `lb_match_pair_fsrs_state` por histórico; **no** hay modelo FSRS activo:
+/// `stability` / `difficulty` / `elapsed_days` quedan reservadas por si un día
+/// se sustituye o híbrida el scheduler.
 void _ensureMatchCardsSchema(Database db) {
   db.execute('''
     CREATE TABLE IF NOT EXISTS lb_match_pairs (
@@ -428,21 +433,21 @@ void _ensureMatchCardsSchema(Database db) {
       [defaultDeckId],
     );
   }
-  final fsrsCols = db
+  final matchPairStateCols = db
       .select('PRAGMA table_info(lb_match_pair_fsrs_state)')
       .map((r) => r['name'] as String)
       .toList();
-  if (!fsrsCols.contains('fib_index')) {
+  if (!matchPairStateCols.contains('fib_index')) {
     db.execute(
       'ALTER TABLE lb_match_pair_fsrs_state ADD COLUMN fib_index INTEGER NOT NULL DEFAULT 0',
     );
   }
-  if (!fsrsCols.contains('fail_count')) {
+  if (!matchPairStateCols.contains('fail_count')) {
     db.execute(
       'ALTER TABLE lb_match_pair_fsrs_state ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0',
     );
   }
-  if (!fsrsCols.contains('pass_count')) {
+  if (!matchPairStateCols.contains('pass_count')) {
     db.execute(
       'ALTER TABLE lb_match_pair_fsrs_state ADD COLUMN pass_count INTEGER NOT NULL DEFAULT 0',
     );

@@ -17,11 +17,12 @@
 
 | Mechanism | Status |
 |-----------|--------|
-| **Random session** | Implemented: LB picks up to N pairs, shuffles image+text tiles, user matches by pair id. |
-| **FSRS / due dates** | **Not implemented.** Table `lb_match_pair_fsrs_state` exists as an ORM placeholder for a future scheduler (possibly parcour-scoped, not object recall — see product discussion). |
+| **Practice session** | Implemented: LB picks up to N pairs (biased toward **lower Fib index**, older `due_at`, higher `fail_count`), shuffles that subset, image↔text matching by pair id. |
+| **Fib-style scheduling + due** | **Implemented** in `lb_match_pair_fsrs_state`: `fib_index` uses the same day ladder as locus/parcour (`kParcourFibDays`); `due_at` / `last_review_at` / `reps` / `pass_count` / `fail_count` updated in `lbRecordMatchPairOutcome` (`match_cards_store.dart`). Session UI can show per-pair stats (`match_cards_session_page.dart`). |
+| **Full FSRS model** | **Not implemented** for `stability` / `difficulty` / `elapsed_days` (columns exist, unused). |
 | **Object recall (`entries`)** | Separate system (Recall grades, etc.). Match cards do **not** write to `entries` today. |
 
-So “review” today means **deliberate practice in LB**, not spaced repetition for match cards.
+So “review” for match cards = **LB-only spaced-ish practice** on pair rows, **orthogonal** to `entries` recall and `locus_review_*` Fib.
 
 ---
 
@@ -54,3 +55,4 @@ In the DB: `caption_text = 'кошка'`, `transliteration = 'koshka'`, `gloss =
 | Version | Note |
 |---------|------|
 | 1.0 | First ORM-16-08; aligns with `transliteration` / `gloss` columns and LB UI. |
+| 1.1 | Scheduling row: Fib + due + counters implemented; FSRS triple still reserved. |

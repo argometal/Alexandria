@@ -759,6 +759,19 @@ class AppLocalizationsEs extends AppLocalizations {
   }
 
   @override
+  String matchCardsDeckOverviewKpis(
+    int pairCount,
+    int dueCount,
+    String matchRate,
+  ) {
+    return '$pairCount pares · $dueCount pendientes de repaso · aciertos $matchRate';
+  }
+
+  @override
+  String get matchCardsDeckOverviewFibBars =>
+      'Pares por paso Fibonacci (altura de barra)';
+
+  @override
   String get matchCardsSessionPickDeckTitle => 'Elegir mazo';
 
   @override

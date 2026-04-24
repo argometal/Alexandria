@@ -530,7 +530,16 @@ CREATE TABLE IF NOT EXISTS entries (
     if (d == null) return;
 
     final result = d.select(
-      'SELECT key, seq, title, cognitiveRole, body_text, last_reviewed_at, next_review_at, memory_strength, stability_days, recall_score, review_count, success_count, failure_count FROM entries WHERE parentKey = ? ORDER BY seq ASC',
+      '''
+SELECT e.key, e.seq, e.title, e.cognitiveRole, e.body_text, e.last_reviewed_at,
+       e.next_review_at, e.memory_strength, e.stability_days, e.recall_score,
+       e.review_count, e.success_count, e.failure_count,
+       COALESCE(lrs.fib_index, 0) AS locus_fib_index
+FROM entries e
+LEFT JOIN locus_review_state lrs ON lrs.entry_key = e.key
+WHERE e.parentKey = ?
+ORDER BY e.seq ASC
+''',
       [_currentParentKey],
     );
 
@@ -557,6 +566,7 @@ CREATE TABLE IF NOT EXISTS entries (
                 'review_count': row['review_count'],
                 'success_count': row['success_count'],
                 'failure_count': row['failure_count'],
+                'locus_fib_index': row['locus_fib_index'],
               })
           .toList();
       _parcourRatingByLocus = parentIsParcour
@@ -1858,6 +1868,15 @@ CREATE TABLE IF NOT EXISTS entries (
                                               style: Theme.of(context).textTheme.labelSmall,
                                             ),
                                           ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        ParcourFibTimelineStrip(
+                                          fibIndex: (row['locus_fib_index'] is int)
+                                              ? row['locus_fib_index'] as int
+                                              : int.tryParse(
+                                                      '${row['locus_fib_index']}',
+                                                    ) ??
+                                                    0,
                                         ),
                                       ],
                                       const SizedBox(height: 2),

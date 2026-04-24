@@ -367,6 +367,15 @@
       "n": {"type": "int"}
     }
   },
+  "matchCardsDeckOverviewKpis": "{pairCount} pares · {dueCount} a rever · taxa de acertos {matchRate}",
+  "@matchCardsDeckOverviewKpis": {
+    "placeholders": {
+      "pairCount": {"type": "int"},
+      "dueCount": {"type": "int"},
+      "matchRate": {"type": "String"}
+    }
+  },
+  "matchCardsDeckOverviewFibBars": "Pares por passo Fibonacci (altura da barra)",
   "matchCardsSessionPickDeckTitle": "Escolher baralho",
   "matchCardsAttempts": "Tentativas: {count}",
   "@matchCardsAttempts": {

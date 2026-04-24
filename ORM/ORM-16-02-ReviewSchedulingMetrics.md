@@ -40,7 +40,7 @@ Campos usados por UI y agregados (entre otros):
 - **`locus_review_state`:** `entry_key`, `fib_index` (índice en tabla de días), `last_ok_at`, `next_due_at`, `last_session_pct`
 - **`locus_review_events`:** trazas de sesión (`rating` PASS/FAIL/INSUFFICIENT_DATA, `pct`, índices fib antes/después, `due_after`, `created_at`)
 
-**Reglas (implementación):** `applyLocusReviewOutcome` — si no hay suficientes bloques evaluables, se registra evento sin mutar estado; si hay datos, `pct ≥ 0.8` avanza índice Fibonacci (hasta tope), si no retrocede; intervalo en días = valor en `_fibonacci`.
+**Reglas (implementación):** `applyLocusReviewOutcome` — si no hay suficientes bloques evaluables, se registra evento sin mutar estado; si hay datos, pass según `currentParcourPassNormSync()` avanza índice Fibonacci (hasta tope), si no retrocede; intervalo en días = valor en `kParcourFibDays` (`parcour_review.dart`, compartido con parcour y Match cards; ver ORM-16-09 §4 para la lista literal).
 
 **Agregación UI:** `getLocusStatsForParent`, `summarizeLocusScheduleForSubtree`, `formatLocusScheduleSummaryLine` — barra “Fib · última / próximo” separada del recall.
 

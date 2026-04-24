@@ -13,6 +13,7 @@ import '../alexandria_lb_theme.dart';
 import '../library_build.dart';
 import '../l10n/app_localizations.dart';
 import 'match_cards_bundle_io.dart';
+import 'match_cards_deck_overview.dart';
 import 'match_cards_session_page.dart';
 import 'match_cards_store.dart';
 
@@ -84,6 +85,7 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
   List<LbMatchPairRow> _rows = [];
   List<LbMatchDeckRow> _decks = [];
   int? _selectedDeckId;
+  LbMatchDeckOverview? _deckOverview;
 
   final TextEditingController _searchCtrl = TextEditingController();
   bool _dupesOnly = false;
@@ -142,12 +144,16 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
     super.dispose();
   }
 
-  void _reload() {
+  void _reload({int? selectDeckId}) {
     setState(() {
+      if (selectDeckId != null) {
+        _selectedDeckId = selectDeckId;
+      }
       _decks = lbListDecks(widget.db);
       if (_decks.isEmpty) {
         _selectedDeckId = null;
         _rows = [];
+        _deckOverview = null;
         return;
       }
       if (_selectedDeckId == null ||
@@ -159,6 +165,9 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
         poolOnly: true,
         deckId: _selectedDeckId,
       );
+      _deckOverview = _selectedDeckId == null
+          ? null
+          : lbLoadMatchDeckOverview(widget.db, deckId: _selectedDeckId!);
     });
   }
 
@@ -613,16 +622,14 @@ class _MatchCardsPageState extends State<MatchCardsPage> {
               ],
               onChanged: (v) {
                 if (v == null) return;
-                setState(() {
-                  _selectedDeckId = v;
-                  _rows = lbListMatchPairs(
-                    widget.db,
-                    poolOnly: true,
-                    deckId: v,
-                  );
-                });
+                _reload(selectDeckId: v);
               },
             ),
+          ),
+        if (_deckOverview != null && _deckOverview!.pairCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: MatchCardsDeckOverviewCard(overview: _deckOverview!),
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),

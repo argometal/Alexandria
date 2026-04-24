@@ -367,6 +367,15 @@
       "n": {"type": "int"}
     }
   },
+  "matchCardsDeckOverviewKpis": "{pairCount} pares · {dueCount} pendientes de repaso · aciertos {matchRate}",
+  "@matchCardsDeckOverviewKpis": {
+    "placeholders": {
+      "pairCount": {"type": "int"},
+      "dueCount": {"type": "int"},
+      "matchRate": {"type": "String"}
+    }
+  },
+  "matchCardsDeckOverviewFibBars": "Pares por paso Fibonacci (altura de barra)",
   "matchCardsSessionPickDeckTitle": "Elegir mazo",
   "matchCardsAttempts": "Intentos: {count}",
   "@matchCardsAttempts": {

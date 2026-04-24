@@ -4,9 +4,8 @@ import 'package:sqlite3/sqlite3.dart';
 
 import 'fib_locale_text.dart';
 import 'l10n/app_localizations.dart';
-import 'parcour_review.dart' show currentParcourPassNormSync;
-
-const List<int> _fibonacci = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233];
+import 'parcour_review.dart'
+    show currentParcourPassNormSync, kParcourFibDays;
 
 int _asInt(Object? value) {
   if (value == null) return 0;
@@ -54,10 +53,10 @@ void applyLocusReviewOutcome({
   final currentIndex = rows.isEmpty ? 0 : _asInt(rows.first['fib_index']);
 
   final newIndex = pass
-      ? math.min(currentIndex + 1, _fibonacci.length - 1)
+      ? math.min(currentIndex + 1, kParcourFibDays.length - 1)
       : math.max(currentIndex - 1, 0);
 
-  final intervalDays = _fibonacci[newIndex];
+  final intervalDays = kParcourFibDays[newIndex];
   final nextDue = now.add(Duration(days: intervalDays));
 
   db.execute('''

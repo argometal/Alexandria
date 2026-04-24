@@ -755,6 +755,19 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String matchCardsDeckOverviewKpis(
+    int pairCount,
+    int dueCount,
+    String matchRate,
+  ) {
+    return '$pairCount pairs · $dueCount due · match rate $matchRate';
+  }
+
+  @override
+  String get matchCardsDeckOverviewFibBars =>
+      'Pairs per Fibonacci step (bar height)';
+
+  @override
   String get matchCardsSessionPickDeckTitle => 'Choose deck';
 
   @override

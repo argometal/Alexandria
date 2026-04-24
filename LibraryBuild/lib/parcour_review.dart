@@ -9,9 +9,12 @@ import 'l10n/app_localizations.dart';
 import 'fts_object_search.dart';
 import 'study/study_utils.dart' show countEvaluableBlocks, isRealmActiveLocus;
 
-// --- Fibonacci (días), mismo eje que locus_review_metrics ---------------------------------
+// --- Fibonacci (días), mismo eje que locus_review_metrics / Match cards --------------------
+// Siguiente tras 233 es 377 (primer salto > ~365 días). Mantener una sola lista en código.
 
-const List<int> kParcourFibDays = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233];
+const List<int> kParcourFibDays = [
+  1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377,
+];
 
 int _fibDaysAtIndex(int i) {
   if (i < 0) return kParcourFibDays[0];

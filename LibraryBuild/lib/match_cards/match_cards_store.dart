@@ -7,11 +7,6 @@ import 'package:sqlite3/sqlite3.dart' hide Row;
 import '../alexandria_paths.dart';
 import '../library_build.dart';
 
-/// Días hasta siguiente repaso (misma secuencia que [applyLocusReviewOutcome] / locus_review_metrics).
-const List<int> kMatchCardsFibonacciDays = [
-  1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233,
-];
-
 /// Carpeta por realm: `assets/lb_match_cards/` (imágenes de pares).
 String lbMatchCardsAssetsDir() =>
     '${AlexandriaPaths.assetsRoot}${Platform.pathSeparator}lb_match_cards';
@@ -45,6 +40,94 @@ class LbMatchPairStatView {
   final int fibIndex;
   final int failCount;
   final int passCount;
+}
+
+/// Vista agregada del mazo: KPIs + conteo por paso Fib (índice alineado a [kParcourFibDays]).
+class LbMatchDeckOverview {
+  const LbMatchDeckOverview({
+    required this.pairCount,
+    required this.dueCount,
+    required this.sumPass,
+    required this.sumFail,
+    required this.countByFibIndex,
+  });
+
+  final int pairCount;
+  final int dueCount;
+  final int sumPass;
+  final int sumFail;
+  final List<int> countByFibIndex;
+
+  String matchRatePercentOrDash() {
+    final t = sumPass + sumFail;
+    if (t <= 0) return '—';
+    return '${(100 * sumPass / t).round()}%';
+  }
+}
+
+/// KPIs + histograma Fib para el mazo [deckId] (solo `route_key IS NULL`).
+LbMatchDeckOverview lbLoadMatchDeckOverview(
+  Database db, {
+  required int deckId,
+}) {
+  ensureLibrarySchema(db);
+  final now = DateTime.now().toUtc();
+  final maxFib = kParcourFibDays.length;
+
+  final totals = db.select('''
+    SELECT COUNT(*) AS c,
+           IFNULL(SUM(COALESCE(s.pass_count, 0)), 0) AS sp,
+           IFNULL(SUM(COALESCE(s.fail_count, 0)), 0) AS sf
+    FROM lb_match_pairs p
+    LEFT JOIN lb_match_pair_fsrs_state s ON s.pair_id = p.id
+    WHERE p.deck_id = ? AND p.route_key IS NULL
+  ''', [deckId]);
+
+  final pairCount = totals.isEmpty ? 0 : _asInt(totals.first['c']);
+  final sumPass = totals.isEmpty ? 0 : _asInt(totals.first['sp']);
+  final sumFail = totals.isEmpty ? 0 : _asInt(totals.first['sf']);
+
+  final fibRows = db.select('''
+    SELECT fi, COUNT(*) AS cnt FROM (
+      SELECT COALESCE(s.fib_index, 0) AS fi
+      FROM lb_match_pairs p
+      LEFT JOIN lb_match_pair_fsrs_state s ON s.pair_id = p.id
+      WHERE p.deck_id = ? AND p.route_key IS NULL
+    )
+    GROUP BY fi
+  ''', [deckId]);
+
+  final countByFib = List<int>.filled(maxFib, 0);
+  for (final r in fibRows) {
+    var fi = _asInt(r['fi']);
+    if (fi < 0) fi = 0;
+    if (fi >= maxFib) fi = maxFib - 1;
+    countByFib[fi] += _asInt(r['cnt']);
+  }
+
+  final dueRows = db.select('''
+    SELECT s.due_at
+    FROM lb_match_pairs p
+    INNER JOIN lb_match_pair_fsrs_state s ON s.pair_id = p.id
+    WHERE p.deck_id = ? AND p.route_key IS NULL AND s.due_at IS NOT NULL
+  ''', [deckId]);
+
+  var dueCount = 0;
+  for (final r in dueRows) {
+    final raw = r['due_at']?.toString();
+    if (raw == null || raw.trim().isEmpty) continue;
+    final t = DateTime.tryParse(raw.trim())?.toUtc();
+    if (t == null) continue;
+    if (!t.isAfter(now)) dueCount++;
+  }
+
+  return LbMatchDeckOverview(
+    pairCount: pairCount,
+    dueCount: dueCount,
+    sumPass: sumPass,
+    sumFail: sumFail,
+    countByFibIndex: countByFib,
+  );
 }
 
 class LbMatchPairRow {
@@ -116,9 +199,9 @@ void lbRecordMatchPairOutcome(
   );
   final current = rows.isEmpty ? 0 : _asInt(rows.first['fib_index']);
   final newIdx = pass
-      ? math.min(current + 1, kMatchCardsFibonacciDays.length - 1)
+      ? math.min(current + 1, kParcourFibDays.length - 1)
       : math.max(current - 1, 0);
-  final intervalDays = kMatchCardsFibonacciDays[newIdx];
+  final intervalDays = kParcourFibDays[newIdx];
   final nextDue = t.add(Duration(days: intervalDays));
   final passDelta = pass ? 1 : 0;
   final failDelta = pass ? 0 : 1;

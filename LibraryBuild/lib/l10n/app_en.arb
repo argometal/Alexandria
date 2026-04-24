@@ -372,6 +372,15 @@
       "n": {"type": "int"}
     }
   },
+  "matchCardsDeckOverviewKpis": "{pairCount} pairs · {dueCount} due · match rate {matchRate}",
+  "@matchCardsDeckOverviewKpis": {
+    "placeholders": {
+      "pairCount": {"type": "int"},
+      "dueCount": {"type": "int"},
+      "matchRate": {"type": "String"}
+    }
+  },
+  "matchCardsDeckOverviewFibBars": "Pairs per Fibonacci step (bar height)",
   "matchCardsSessionPickDeckTitle": "Choose deck",
   "matchCardsAttempts": "Attempts: {count}",
   "@matchCardsAttempts": {

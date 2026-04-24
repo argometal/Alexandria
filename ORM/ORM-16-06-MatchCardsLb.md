@@ -11,14 +11,14 @@
 | Referencia | Cómo encaja |
 |------------|-------------|
 | **ORM-15V3** | GK posee layout MAZE; snapshot y viewer JSON son lectura de contenido. Las tablas aquí descritas **no** alimentan snapshot ni `viewer/*.json` del pipeline A15 salvo decisión explícita futura. |
-| **ORM-15V4-A15 §1** | Los **dos motores de repaso** (Recall en `entries` / Fibonacci en `locus_review_*`) son **independientes** del juego Match cards. La tabla `lb_match_pair_fsrs_state` es un **hueco ORM** para un posible scheduler tipo FSRS **solo sobre pares de este juego** — no unifica métricas con Recall/Fibonacci sin decisión explícita. |
+| **ORM-15V4-A15 §1** | Los **dos motores de repaso** (Recall en `entries` / Fibonacci en `locus_review_*`) siguen **independientes** del juego Match cards. La tabla `lb_match_pair_fsrs_state` guarda **métricas y scheduling propios del juego** (índice Fib + `due_at` + conteos), con el **mismo eje de días** que locus/parcour (`kParcourFibDays`); **no** escribe en `entries` ni en `locus_review_*`. Las columnas `stability` / `difficulty` / `elapsed_days` siguen sin uso (reserva FSRS-like). |
 | **ORM-15V4-A15 §7** | Estudio estructurado por parcour vs objeto: Match cards es una **tercera superficie** (práctica de pares en LB); sigue fuera del alcance “Object structured study” del §7 hasta que el ORM lo una explícitamente. |
 
 ---
 
 ## 2. Alcance implementado
 
-- **UI:** cajón LB → sección Match cards → lista de pares, alta (imagen + pie), borrado, sesión de emparejamiento **aleatoria** (hasta 4 pares por sesión en la implementación actual).
+- **UI:** cajón LB → sección Match cards → mazos, lista de pares, alta (imagen + pie), borrado, sesión (hasta 4 pares por sesión por defecto) con **priorización** por `fib_index` bajo / `due_at` antiguo / más `fail_count`, luego barajado; **hoja de estadísticas** por par (`fib_index`, aciertos/fallos) en la sesión (`match_cards_session_page.dart`).
 - **Persistencia:** SQLite en `alexandria.db` del realm activo (`ensureLibrarySchema` → `_ensureMatchCardsSchema`).
 - **Archivos:** imágenes bajo `data/realms/<realm>/assets/lb_match_cards/` (nombre almacenado en columna `image_basename`).
 
@@ -46,23 +46,25 @@
 
 ### 3.2 `lb_match_pair_fsrs_state`
 
-Hueco para **scheduling** (FSRS u otro) **por `pair_id`**, análogo en intención a la separación de motores en ORM-16-02, pero **sin scheduler implementado**: columnas preparadas; filas pueden no existir hasta que exista lógica de repaso.
+Estado **por par** tras sesiones de emparejamiento: scheduler **tipo Fibonacci** (mismo vector `kParcourFibDays` que ORM-16-02 / `parcour_review.dart`), no FSRS completo. Escritura: `lbRecordMatchPairOutcome` en `match_cards_store.dart` (acierto sube `fib_index`, fallo baja; actualiza `due_at`, `last_review_at`, `reps`, `pass_count`, `fail_count`).
 
 | Columna | Tipo | Notas |
 |---------|------|--------|
 | `pair_id` | INTEGER PK | Coincide con `lb_match_pairs.id`. |
-| `stability`, `difficulty`, `elapsed_days` | REAL NULL | Placeholder FSRS / SM-2-like. |
-| `due_at`, `last_review_at` | TEXT NULL | ISO-8601 cuando se usen. |
-| `reps` | INTEGER NOT NULL DEFAULT 0 | Contador de repasos. |
+| `fib_index` | INTEGER NOT NULL DEFAULT 0 | Índice en `kParcourFibDays` (intervalo hasta próximo `due_at`). |
+| `due_at`, `last_review_at` | TEXT NULL | ISO-8601 UTC; `due_at` alimenta ordenación de sesión. |
+| `reps` | INTEGER NOT NULL DEFAULT 0 | Sesiones de juego registradas (incremento por outcome). |
+| `pass_count`, `fail_count` | INTEGER NOT NULL DEFAULT 0 | Contadores por acierto / fallo en el tablero. |
+| `stability`, `difficulty`, `elapsed_days` | REAL NULL | Sin lógica aún (reserva nombre FSRS). |
 
-**Invariante ORM:** no mezclar estas columnas con `entries.recall_score` ni `locus_review_state` sin trazabilidad en revisión de ORM.
+**Invariante ORM:** no mezclar el significado de estas columnas con `entries.recall_score` ni `locus_review_state` sin trazabilidad en revisión de ORM.
 
 ---
 
 ## 4. Evolución prevista (no obligatoria en código hasta acuerdo)
 
 1. **Ruta:** rellenar `route_key` y filtrar sesiones por contexto espacial o de navegación — probablemente coordinado con bridge/`context_key` solo en LB primero.
-2. **FSRS:** poblar y actualizar `lb_match_pair_fsrs_state` desde sesiones de juego; criterios de “due” independientes del Recall rápido.
+2. **FSRS “de verdad”:** usar o sustituir las columnas `stability` / `difficulty` / `elapsed_days` con un modelo distinto del Fib actual (hoy no se leen).
 
 ---
 
@@ -80,3 +82,4 @@ Hueco para **scheduling** (FSRS u otro) **por `pair_id`**, análogo en intenció
 | Versión | Nota |
 |---------|------|
 | 1.0 | Primera versión ORM-16-06; inventario según implementación LibraryBuild + tablas match cards. |
+| 1.1 | Alineación: `lb_match_pair_fsrs_state` con scheduler Fib + conteos en uso; UI de stats en sesión; priorización de pares; FSRS legacy aún sin lógica. |

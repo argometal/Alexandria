@@ -1394,6 +1394,22 @@ abstract class AppLocalizations {
   /// **'Step {n}'**
   String matchCardsSessionStatsFib(int n);
 
+  /// No description provided for @matchCardsDeckOverviewKpis.
+  ///
+  /// In en, this message translates to:
+  /// **'{pairCount} pairs · {dueCount} due · match rate {matchRate}'**
+  String matchCardsDeckOverviewKpis(
+    int pairCount,
+    int dueCount,
+    String matchRate,
+  );
+
+  /// No description provided for @matchCardsDeckOverviewFibBars.
+  ///
+  /// In en, this message translates to:
+  /// **'Pairs per Fibonacci step (bar height)'**
+  String get matchCardsDeckOverviewFibBars;
+
   /// No description provided for @matchCardsSessionPickDeckTitle.
   ///
   /// In en, this message translates to:

@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import 'parcour_review.dart' show kParcourFibDays;
 
-/// Franja horizontal de hitos Fib (días de intervalo por índice), solo para **parcour**:
-/// pasado = verde, índice actual = acento, futuro = gris. Sin fechas de calendario.
+/// Franja horizontal de hitos Fib (días por índice): mismo eje en
+/// `parcour_review_state` y en `locus_review_state` (objetos / Parcour Study).
+/// Pasado = verde, índice actual = acento, futuro = gris. Sin fechas de calendario.
 class ParcourFibTimelineStrip extends StatelessWidget {
   const ParcourFibTimelineStrip({
     super.key,
@@ -13,8 +14,9 @@ class ParcourFibTimelineStrip extends StatelessWidget {
   /// Índice vigente en `parcour_review_state` (mismo eje que [kParcourFibDays]).
   final int fibIndex;
 
-  static const double _dotSize = 11;
-  static const double _connectorWidth = 14;
+  static const double _dotSize = 15;
+  static const double _connectorWidth = 22;
+  static const double _connectorHeight = 4;
 
   @override
   Widget build(BuildContext context) {
@@ -23,28 +25,41 @@ class ParcourFibTimelineStrip extends StatelessWidget {
     if (n == 0) return const SizedBox.shrink();
 
     final current = fibIndex.clamp(0, n - 1);
-    final doneLine = const Color(0xFF558B2F);
-    final doneNode = const Color(0xFF66BB6A);
-    final idleLine = cs.outlineVariant.withValues(alpha: 0.55);
-    final idleNode = cs.onSurfaceVariant.withValues(alpha: 0.35);
+    final doneLine = const Color(0xFF689F38);
+    final doneNode = const Color(0xFF7CB342);
+    final idleLine = Color.alphaBlend(
+      cs.outline.withValues(alpha: 0.55),
+      cs.surfaceContainerHighest,
+    );
+    final idleNode = cs.onSurfaceVariant.withValues(alpha: 0.55);
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Padding(
-        padding: const EdgeInsets.only(top: 2, bottom: 2),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (int i = 0; i < n; i++) ...[
               if (i > 0)
                 Padding(
-                  padding: const EdgeInsets.only(top: _dotSize / 2 - 1.5),
+                  padding: EdgeInsets.only(top: _dotSize / 2 - _connectorHeight / 2),
                   child: Container(
                     width: _connectorWidth,
-                    height: 3,
+                    height: _connectorHeight,
                     decoration: BoxDecoration(
                       color: (fibIndex < 0 ? 0 : fibIndex) >= i ? doneLine : idleLine,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(3),
+                      boxShadow: (fibIndex < 0 ? 0 : fibIndex) >= i
+                          ? [
+                              BoxShadow(
+                                color: doneLine.withValues(alpha: 0.35),
+                                blurRadius: 0,
+                                spreadRadius: 0,
+                                offset: const Offset(0, 1),
+                              ),
+                            ]
+                          : null,
                     ),
                   ),
                 ),
@@ -99,15 +114,15 @@ class _FibNode extends StatelessWidget {
     if (isCurrent) {
       fill = activeColor;
       border = onActive;
-      stroke = 2;
+      stroke = 3;
     } else if (isPast) {
       fill = doneFill;
-      border = doneFill.withValues(alpha: 0.85);
-      stroke = 1;
+      border = doneFill.withValues(alpha: 0.9);
+      stroke = 2;
     } else {
       fill = idleFill;
-      border = idleBorder;
-      stroke = 1;
+      border = idleBorder.withValues(alpha: 0.85);
+      stroke = 1.5;
     }
 
     return Tooltip(
@@ -125,26 +140,27 @@ class _FibNode extends StatelessWidget {
               boxShadow: isCurrent
                   ? [
                       BoxShadow(
-                        color: activeColor.withValues(alpha: 0.45),
-                        blurRadius: 6,
-                        spreadRadius: 0,
+                        color: activeColor.withValues(alpha: 0.55),
+                        blurRadius: 10,
+                        spreadRadius: 1,
                       ),
                     ]
                   : null,
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           Text(
             '+$days',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  fontSize: 9,
-                  height: 1.05,
+                  fontSize: 11,
+                  height: 1.1,
+                  fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
                   fontFeatures: const [FontFeature.tabularFigures()],
                   color: isFuture
-                      ? cs.onSurfaceVariant.withValues(alpha: 0.65)
+                      ? cs.onSurfaceVariant.withValues(alpha: 0.78)
                       : isCurrent
                           ? cs.tertiary
-                          : cs.onSurfaceVariant,
+                          : cs.onSurface.withValues(alpha: 0.82),
                 ),
           ),
         ],

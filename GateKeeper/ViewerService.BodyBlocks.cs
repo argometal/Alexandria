@@ -93,7 +93,7 @@ public partial class ViewerService
 			tr.Texture = tex;
 			tr.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
 			tr.ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional;
-			tr.CustomMinimumSize = new Vector2(0, 200);
+			tr.CustomMinimumSize = new Vector2(0, ViewerImgBlockMinHeightPx);
 			tr.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 			_stack.AddChild(tr);
 			return;
@@ -229,7 +229,7 @@ public partial class ViewerService
 						tr.Texture = tex;
 						tr.StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered;
 						tr.ExpandMode = TextureRect.ExpandModeEnum.FitWidthProportional;
-						tr.CustomMinimumSize = new Vector2(0, 220);
+						tr.CustomMinimumSize = new Vector2(0, ViewerCardImageMinHeightPx);
 						tr.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 						inner.AddChild(tr);
 					}

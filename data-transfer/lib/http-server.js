@@ -15,7 +15,12 @@ const {
 const state = require('./state');
 const { log } = require('./log');
 const { sseBroadcast } = require('./sse');
-const { getLocalIp, openDataTransferInBrowser, openLocalFolder } = require('./utils');
+const {
+  buildAccessUrlRows,
+  listIPv4Endpoints,
+  openDataTransferInBrowser,
+  openLocalFolder
+} = require('./utils');
 const { writeHowToFile } = require('./howto');
 const { escapeHtml } = require('./html-utils');
 const { renderReaderPanelHtml } = require('./panels/reader');
@@ -26,6 +31,7 @@ const {
   normalizeLang,
   homeIntro,
   homeStrings,
+  endpointKindLabel,
   folderOpenForbiddenBody,
   latestStrings,
   COOKIE
@@ -356,8 +362,19 @@ function requestHandler(req, res) {
     const lang = resolveLang(req.url, req.headers.cookie);
     const hs = homeStrings(lang);
     const intro = homeIntro(lang, CONFIG.maxUploadMb, CONFIG.maxSfsMb);
-    const ip = writeHowToFile();
-    const baseUrl = `http://${ip}:${PORT}`;
+    writeHowToFile();
+    const urlRows = buildAccessUrlRows(PORT);
+    const urlRowsJson = JSON.stringify(urlRows.map((r) => r.url)).replace(/</g, '\\u003c');
+    const urlRowsHtml = urlRows
+      .map((row, i) => {
+        const kindL = endpointKindLabel(lang, row.kind);
+        return `<li class="dt-url-li">
+    <div class="dt-url-meta">${escapeHtml(row.name)} — <span class="dt-url-kind">${escapeHtml(kindL)}</span></div>
+    <div class="dt-url-text">${escapeHtml(row.url)}</div>
+    <button type="button" class="dt-tab dt-url-copy" onclick="dtCopyOneUrl(${i})">${escapeHtml(hs.urlCopyOne)}</button>
+  </li>`;
+      })
+      .join('');
     const readerHtml = renderReaderPanelHtml(lang);
     const senderHtml = renderSenderPanelHtml(lang);
     const htmlLang = lang === 'en' ? 'en' : 'es';
@@ -396,11 +413,18 @@ function requestHandler(req, res) {
   .dt-recent a { color:var(--accent); text-decoration:none; word-break:break-all; }
   .dt-recent a:hover { text-decoration:underline; }
   .dt-recent .dt-mute { color:var(--muted); flex-shrink:0; font-size:12px; }
+  .dt-url-list { list-style:none; padding:0; margin:8px 0 0 0; }
+  .dt-url-li { margin:0; padding:12px 0; border-bottom:1px solid var(--border); list-style:none; }
+  .dt-url-li:last-child { border-bottom:none; padding-bottom:0; }
+  .dt-url-meta { font-size:11px; color:var(--muted); margin-bottom:6px; }
+  .dt-url-kind { color:var(--accent); }
+  .dt-url-text { font-family:ui-monospace,monospace; font-size:14px; word-break:break-all; margin-bottom:8px; }
+  .dt-url-copy { border-radius:8px; padding:6px 12px; font-size:12px; }
 </style>
 </head>
 <body class="dt-shell">
 <div id="dtToast"></div>
-<script>var __DT_HOME=${homeJson};var __DT_DATE_LOCALE__=${dateLocJson};</script>
+<script>var __DT_HOME=${homeJson};var __DT_DATE_LOCALE__=${dateLocJson};var __DT_URLS=${urlRowsJson};</script>
 <div class="dt-tabbar">
   <button type="button" class="dt-tab active" id="dtBtnHome" onclick="dtShowTab('home')">${hs.tabHome}</button>
   <button type="button" class="dt-tab" id="dtBtnReader" onclick="dtShowTab('reader')">${hs.tabReader}</button>
@@ -429,8 +453,8 @@ function requestHandler(req, res) {
   </div>
   <div class="dt-home-card">
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">${hs.urlCardLabel}</div>
-    <div id="urlBox" style="font-family:monospace;font-size:15px;word-break:break-all;">${baseUrl}</div>
-    <button type="button" onclick="dtCopyUrl()" style="margin-top:10px;padding:8px 14px;font-size:13px;cursor:pointer;border-radius:8px;border:1px solid var(--border);background:#2a2d36;color:var(--text);">${hs.copyUrl}</button>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 4px 0;line-height:1.45;max-width:52em;">${hs.urlCardHint}</p>
+    <ul class="dt-url-list">${urlRowsHtml}</ul>
   </div>
   <p style="font-size:12px;color:var(--muted);margin-top:14px;">${hs.sseLine} <span id="dtSse">…</span> · ${hs.events} <span id="dtSfsCount">0</span></p>
   <script>
@@ -439,8 +463,10 @@ function requestHandler(req, res) {
       .then(function() { location.reload(); })
       .catch(function(e) { alert(String(e)); });
   }
-  function dtCopyUrl() {
-    var u = document.getElementById('urlBox').innerText;
+  function dtCopyOneUrl(i) {
+    var urls = typeof __DT_URLS !== 'undefined' ? __DT_URLS : [];
+    var u = urls[i];
+    if (!u) return;
     var h = typeof __DT_HOME !== 'undefined' ? __DT_HOME : {};
     navigator.clipboard.writeText(u).then(function(){ alert((h.copyUrlOk || 'OK') + ' ' + u); }).catch(function(){ alert(u); });
   }
@@ -723,6 +749,16 @@ document.getElementById('cp').onclick=cp; cp();
         },
         outDirExists: fs.existsSync(OUT_DIR),
         incomingDirExists: fs.existsSync(INCOMING_DIR),
+        net: {
+          ipv4: listIPv4Endpoints().map((e) => ({
+            interface: e.name,
+            address: e.address,
+            kind: e.kind,
+            internal: e.internal,
+            url: 'http://' + e.address + ':' + PORT
+          })),
+          accessUrls: buildAccessUrlRows(PORT)
+        },
         timestamp: new Date().toISOString()
       })
     );
@@ -735,11 +771,11 @@ document.getElementById('cp').onclick=cp; cp();
 http.createServer(requestHandler).listen(PORT, '0.0.0.0', () => {
   ensureDir(OUT_DIR);
   ensureDir(INCOMING_DIR);
-  const ip = getLocalIp();
-  const url = 'http://' + ip + ':' + PORT;
-  log('SERVER', 'LISTEN', url);
+  const rows = buildAccessUrlRows(PORT);
+  log('SERVER', 'LISTEN', rows.map((r) => r.url).join(' | '));
   console.log('==============================');
-  console.log('Data transfer (dumb transport)', url);
+  console.log('Data transfer (dumb transport) — URLs on this host:');
+  rows.forEach((r) => console.log(' ', r.url, '←', r.name, '(' + r.kind + ')'));
   console.log('OUT:', OUT_DIR);
   console.log('INCOMING:', INCOMING_DIR);
   console.log('==============================');

@@ -106,7 +106,12 @@ class _EncodeScreenState extends State<EncodeScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            Text('${c.targetSpeedSec} s / estímulo'),
+            Text(
+              c.targetSpeedSec == c.targetSpeedSec.roundToDouble()
+                  ? '${c.targetSpeedSec.round()} s / estímulo (ajustas en inicio)'
+                  : '${c.targetSpeedSec.toStringAsFixed(1)} s / estímulo (ajustas en inicio)',
+              style: const TextStyle(color: Colors.white60, fontSize: 13),
+            ),
           ],
         ),
       ),

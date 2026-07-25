@@ -51,6 +51,15 @@ public static class GkUiLocale
 	public static string MenuGoParcourHub() =>
 		IsSpanishUi() ? "Ir al hub del parcour" : "Go to parcour hub";
 
+	public static string MenuSectionAlexandriaApps() =>
+		IsSpanishUi() ? "Suite Alexandria" : "Alexandria suite";
+
+	public static string MenuOpenLibraryBuild() =>
+		IsSpanishUi() ? "Abrir Library Build" : "Open Library Build";
+
+	public static string MenuOpenTrainingLab() =>
+		IsSpanishUi() ? "Abrir Training Lab" : "Open Training Lab";
+
 	public static string MenuFrameLine(int zeroBasedIndex, int slotCount) =>
 		IsSpanishUi()
 			? $"Marco {zeroBasedIndex + 1} / {slotCount} (índice {zeroBasedIndex})"

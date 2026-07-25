@@ -1,11 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:sqlite3/sqlite3.dart' hide Row;
 
 import 'alexandria_help_page.dart';
 import 'alexandria_lb_theme.dart';
+import 'alexandria_app_log.dart';
 import 'alexandria_paths.dart';
+import 'alexandria_sibling_apps.dart';
 import 'app_locale_preferences.dart';
 import 'l10n/app_localizations.dart';
 import 'library_build.dart';
@@ -26,6 +29,8 @@ import 'parcour_fib_timeline.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  AlexandriaAppLog.init();
+  AlexandriaPaths.writeRuntimeRootMarkerForGateKeeper();
   runApp(const LbMinimalApp());
 }
 
@@ -1191,6 +1196,18 @@ ORDER BY e.seq ASC
     _loadChildren();
   }
 
+  Future<void> _launchSiblingApp(AlexandriaSiblingAppKind kind) async {
+    final loc = AppLocalizations.of(context)!;
+    try {
+      await AlexandriaSiblingApps.launch(kind);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(loc.siblingAppMissingShort)),
+      );
+    }
+  }
+
   void _openRealmAdmin() {
     Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
@@ -1474,6 +1491,25 @@ ORDER BY e.seq ASC
               },
             ),
             _drawerSection(context, loc.sectionSystem),
+            _drawerSection(context, loc.sectionAlexandriaApps),
+            ListTile(
+              leading: const Icon(Icons.view_in_ar_outlined),
+              title: Text(loc.siblingOpenGatekeeper),
+              subtitle: Text(loc.siblingOpenGatekeeperSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                _launchSiblingApp(AlexandriaSiblingAppKind.gateKeeper);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.school_outlined),
+              title: Text(loc.siblingOpenTrainingLab),
+              subtitle: Text(loc.siblingOpenTrainingLabSubtitle),
+              onTap: () {
+                Navigator.pop(context);
+                _launchSiblingApp(AlexandriaSiblingAppKind.trainingLab);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.dns_outlined),
               title: Text(loc.realmsTitle),
@@ -1542,6 +1578,46 @@ ORDER BY e.seq ASC
                   MaterialPageRoute<void>(
                     builder: (_) => const AlexandriaHelpPage(),
                   ),
+                );
+              },
+            ),
+            if (Platform.isWindows ||
+                Platform.isMacOS ||
+                Platform.isLinux)
+              ListTile(
+                leading: const Icon(Icons.article_outlined),
+                title: Text(loc.launcherDiagnosticsTitle),
+                subtitle: Text(loc.launcherDiagnosticsSubtitle),
+                onTap: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  Navigator.pop(context);
+                  final dir = AlexandriaPaths.sharedDiagnosticsDirectory;
+                  try {
+                    Directory(dir).createSync(recursive: true);
+                  } catch (_) {}
+                  final ok = await AlexandriaPaths.openDirectoryInFileManager(
+                    dir,
+                  );
+                  if (!context.mounted) return;
+                  if (!ok) {
+                    messenger.showSnackBar(
+                      SnackBar(content: Text(loc.siblingAppMissingShort)),
+                    );
+                  }
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.copy_outlined),
+              title: Text(loc.appDiagnosticsLogTitle),
+              subtitle: Text(loc.appDiagnosticsLogSubtitle),
+              onTap: () {
+                final messenger = ScaffoldMessenger.of(context);
+                final p = AlexandriaAppLog.logFilePath;
+                Navigator.pop(context);
+                Clipboard.setData(ClipboardData(text: p));
+                if (!context.mounted) return;
+                messenger.showSnackBar(
+                  SnackBar(content: Text(loc.appDiagnosticsPathCopied)),
                 );
               },
             ),

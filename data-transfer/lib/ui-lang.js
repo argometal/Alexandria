@@ -60,7 +60,10 @@ function homeStrings(lang) {
       loading: 'Loading…',
       empty: '(empty)',
       listError: 'Could not load list',
-      urlCardLabel: 'LAN URL',
+      urlCardLabel: 'Access URLs',
+      urlCardHint:
+        'Each row is a network interface on this PC. Use Wi‑Fi if Ethernet does not work from your phone; virtual adapters are often wrong unless you use VPN.',
+      urlCopyOne: 'Copy this URL',
       copyUrl: 'Copy URL',
       sseLine: 'SSE:',
       sseConnected: 'connected',
@@ -90,8 +93,11 @@ function homeStrings(lang) {
     loading: 'Cargando…',
     empty: '(vacío)',
     listError: 'No se pudo cargar la lista',
-    urlCardLabel: 'URL en red',
-    copyUrl: 'Copiar URL',
+      urlCardLabel: 'URLs de acceso',
+      urlCardHint:
+        'Cada fila es una interfaz de red de este equipo. Prueba la de Wi‑Fi si desde el móvil no responde la de cable; los adaptadores virtuales suelen ser incorrectos salvo VPN.',
+      urlCopyOne: 'Copiar esta URL',
+      copyUrl: 'Copiar URL',
     sseLine: 'SSE:',
     sseConnected: 'conectado',
     sseReconnecting: 'reconectando…',
@@ -214,6 +220,27 @@ function senderClientPack(lang) {
   };
 }
 
+function endpointKindLabel(lang, kind) {
+  if (lang === 'en') {
+    const m = {
+      loopback: 'This PC (loopback)',
+      wireless: 'Wi‑Fi / wireless',
+      wired: 'Ethernet / wired LAN',
+      virtual: 'Virtual / VPN / hypervisor',
+      other: 'Other interface'
+    };
+    return m[kind] || kind;
+  }
+  const m = {
+    loopback: 'Este equipo (loopback)',
+    wireless: 'Wi‑Fi / inalámbrica',
+    wired: 'Ethernet / cable (LAN)',
+    virtual: 'Virtual / VPN / hipervisor',
+    other: 'Otra interfaz'
+  };
+  return m[kind] || kind;
+}
+
 module.exports = {
   COOKIE,
   parseCookie,
@@ -221,6 +248,7 @@ module.exports = {
   normalizeLang,
   homeIntro,
   homeStrings,
+  endpointKindLabel,
   folderOpenForbiddenBody,
   latestStrings,
   readerClientPack,

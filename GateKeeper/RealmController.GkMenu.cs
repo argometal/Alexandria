@@ -47,7 +47,7 @@ public partial class RealmController
 		_gkMenuPanel.OffsetLeft = 8f;
 		_gkMenuPanel.OffsetTop = 56f;
 		_gkMenuPanel.OffsetRight = 300f;
-		_gkMenuPanel.OffsetBottom = 400f;
+		_gkMenuPanel.OffsetBottom = 520f;
 		hudRoot.AddChild(_gkMenuPanel);
 
 		var outer = new MarginContainer();
@@ -67,6 +67,31 @@ public partial class RealmController
 		};
 		helpBtn.Pressed += OnGkMenuHelpPressed;
 		v.AddChild(helpBtn);
+
+		v.AddChild(new HSeparator());
+
+		var alexTitle = new Label
+		{
+			Text = GkUiLocale.MenuSectionAlexandriaApps(),
+		};
+		alexTitle.AddThemeFontSizeOverride("font_size", 13);
+		v.AddChild(alexTitle);
+
+		var btnLb = new Button
+		{
+			Text = GkUiLocale.MenuOpenLibraryBuild(),
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		btnLb.Pressed += OnGkMenuOpenLibraryBuild;
+		v.AddChild(btnLb);
+
+		var btnLab = new Button
+		{
+			Text = GkUiLocale.MenuOpenTrainingLab(),
+			SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+		};
+		btnLab.Pressed += OnGkMenuOpenTrainingLab;
+		v.AddChild(btnLab);
 
 		v.AddChild(new HSeparator());
 
@@ -127,6 +152,20 @@ public partial class RealmController
 	{
 		SetGkMenuVisible(false);
 		ToggleGkUserHelp();
+	}
+
+	private void OnGkMenuOpenLibraryBuild()
+	{
+		SetGkMenuVisible(false);
+		if (!SiblingApps.TryLaunch(SiblingApps.Kind.LibraryBuild))
+			GD.PrintErr("[GK] No se pudo abrir Library Build (ruta no encontrada).");
+	}
+
+	private void OnGkMenuOpenTrainingLab()
+	{
+		SetGkMenuVisible(false);
+		if (!SiblingApps.TryLaunch(SiblingApps.Kind.TrainingLab))
+			GD.PrintErr("[GK] No se pudo abrir Training Lab (ruta no encontrada).");
 	}
 
 	private void ToggleGkMenu()

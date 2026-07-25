@@ -22,6 +22,9 @@ public partial class ViewerService : CanvasLayer
 	private const int BlockSeparationPx = 16;
 	private const int PanelMarginPx = 20;
 	private const int SectionSeparationPx = 12;
+	/// Altura mínima de imágenes en el panel viewer (×3 respecto al diseño original 200 / 220).
+	private const int ViewerImgBlockMinHeightPx = 600;
+	private const int ViewerCardImageMinHeightPx = 660;
 
 	/// <summary>Etiquetas alineadas con <c>_kTextKinds</c> en LibraryBuild <c>locus_editor.dart</c>.</summary>
 	private static string ViewerLabelForTextKind(string raw)
@@ -45,6 +48,8 @@ public partial class ViewerService : CanvasLayer
 	/// Tras clic en frame: polls rápidos hasta que LB escribe viewer para la nueva key.
 	private double _burstRemainSec;
 	private double _burstAccumSec;
+	/// Una sola línea TRACE con DataRoot/bridge al abrir el panel (evita spam cada 120 ms).
+	private bool _loggedViewerCheckContext;
 	private PanelContainer _panel = null!;
 	private VBoxContainer _stack = null!;
 	/// Fuera del scroll: siempre visible aunque el body sea largo (frames 1..19).
@@ -144,6 +149,7 @@ public partial class ViewerService : CanvasLayer
 	public void NotifyFrameOpened(string key)
 	{
 		_viewerOpenByUser = true;
+		_loggedViewerCheckContext = false;
 		_lastKeyShown = "";
 		_lastVersionShown = -1;
 		_lastHasChildrenShown = false;
@@ -250,22 +256,34 @@ public partial class ViewerService : CanvasLayer
 		if (!_viewerOpenByUser)
 			return;
 
+		AppDiagnosticsLog.InitIfNeeded();
 		var focusKey = BridgeSpatial.ReadFocusKey();
+		var focusKeyPath = Path.Combine(BridgeSpatial.BridgeDir, "focus_key.txt");
 		var viewerPath = string.IsNullOrEmpty(focusKey)
 			? ViewerCurrentPath
 			: Path.Combine(DataRoot, "viewer", focusKey + ".json");
+		if (!_loggedViewerCheckContext)
+		{
+			_loggedViewerCheckContext = true;
+			AppDiagnosticsLog.Trace("ViewerService.CheckForContent",
+				$"CONTEXT_ONCE DataRoot={DataRoot} focusKey=\"{focusKey}\" focus_key.txt exists={File.Exists(focusKeyPath)} path={focusKeyPath} viewerTarget={viewerPath} currentJson={ViewerCurrentPath} existsCurrent={File.Exists(ViewerCurrentPath)}");
+		}
 		var usedCurrentJsonFallback = false;
 		if (!File.Exists(viewerPath))
 		{
 			if (viewerPath != ViewerCurrentPath && File.Exists(ViewerCurrentPath))
 			{
 				GD.Print($"[VIEWER][FALLBACK] missing={viewerPath} using=current.json");
+				AppDiagnosticsLog.Trace("ViewerService.CheckForContent",
+					$"FALLBACK keyed file missing -> use current.json missingWas={viewerPath}");
 				viewerPath = ViewerCurrentPath;
 				usedCurrentJsonFallback = true;
 			}
 			else
 			{
 				GD.Print($"[VIEWER][MISS] {viewerPath}");
+				AppDiagnosticsLog.Trace("ViewerService.CheckForContent",
+					$"MISS no viewer JSON at path={viewerPath} (and no usable current.json)");
 				return;
 			}
 		}
@@ -275,21 +293,35 @@ public partial class ViewerService : CanvasLayer
 		{
 			text = File.ReadAllText(viewerPath);
 		}
-		catch
+		catch (Exception ex)
 		{
+			AppDiagnosticsLog.E("ViewerService.CheckForContent", $"read fail path={viewerPath}", ex);
 			return;
 		}
 
 		var json = new Json();
-		if (json.Parse(text) != Error.Ok)
+		var parseErr = json.Parse(text);
+		if (parseErr != Error.Ok)
+		{
+			AppDiagnosticsLog.Trace("ViewerService.CheckForContent",
+				$"JSON_PARSE_FAIL path={viewerPath} err={parseErr}");
 			return;
+		}
 
 		if (json.Data.VariantType != Variant.Type.Dictionary)
+		{
+			AppDiagnosticsLog.Trace("ViewerService.CheckForContent",
+				$"JSON_NOT_OBJECT path={viewerPath} type={json.Data.VariantType}");
 			return;
+		}
 
 		var data = json.Data.AsGodotDictionary();
 		if (!data.ContainsKey("key"))
+		{
+			AppDiagnosticsLog.Trace("ViewerService.CheckForContent",
+				$"JSON_NO_KEY_FIELD path={viewerPath}");
 			return;
+		}
 
 		var key = data["key"].AsString();
 		long version = ReadViewerVersion(data);
@@ -341,6 +373,8 @@ public partial class ViewerService : CanvasLayer
 		    !string.Equals(key.Trim(), focusKey.Trim(), StringComparison.Ordinal))
 		{
 			GD.Print($"[VIEWER][STALE] focusKey={focusKey} jsonKey={key} — esperando viewer keyed");
+			AppDiagnosticsLog.Trace("ViewerService.CheckForContent",
+				$"STALE wait for LB: focusKey={focusKey} jsonKey={key} path={viewerPath}");
 			return;
 		}
 

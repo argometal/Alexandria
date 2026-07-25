@@ -1,6 +1,14 @@
 const path = require('path');
 
-const ROOT_DIR = path.join(__dirname, '..');
+/** Con `pkg`, __dirname apunta al snapshot; `out/` debe quedar junto al .exe para que LibraryBuild vea los mismos archivos. */
+function resolveRootDir() {
+  if (process.pkg) {
+    return path.dirname(process.execPath);
+  }
+  return path.join(__dirname, '..');
+}
+
+const ROOT_DIR = resolveRootDir();
 
 function envInt(name, def) {
   const v = process.env[name];

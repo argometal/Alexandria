@@ -132,16 +132,10 @@ class _DataTransferPageState extends State<DataTransferPage> {
 
   Future<void> _startServer() async {
     final loc = AppLocalizations.of(context)!;
-    final script = File('${AlexandriaPaths.dataTransferRoot}/server.js');
-    if (!script.existsSync()) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(loc.dataTransferScriptMissing(script.path)),
-        ),
-      );
-      return;
-    }
+    final dtRoot = AlexandriaPaths.dataTransferRoot;
+    final pkgExe = File('$dtRoot${Platform.pathSeparator}DataTransfer.exe');
+    final script = File('$dtRoot${Platform.pathSeparator}server.js');
+
     await _stopServer();
     await _tickHealth();
     if (_serverReachable) {
@@ -154,12 +148,32 @@ class _DataTransferPageState extends State<DataTransferPage> {
     }
     setState(() => _busy = true);
     try {
-      _node = await Process.start(
-        'node',
-        [script.path],
-        workingDirectory: AlexandriaPaths.dataTransferRoot,
-        mode: ProcessStartMode.normal,
-      );
+      if (pkgExe.existsSync()) {
+        Directory(dtRoot).createSync(recursive: true);
+        _node = await Process.start(
+          pkgExe.path,
+          const <String>[],
+          workingDirectory: dtRoot,
+          mode: ProcessStartMode.normal,
+        );
+      } else if (script.existsSync()) {
+        _node = await Process.start(
+          'node',
+          [script.path],
+          workingDirectory: dtRoot,
+          mode: ProcessStartMode.normal,
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${loc.dataTransferScriptMissing(script.path)}\n${loc.dataTransferNoServerHint}',
+            ),
+          ),
+        );
+        return;
+      }
       _node!.stdout.listen((_) {});
       _node!.stderr.listen((_) {});
       await Future<void>.delayed(const Duration(milliseconds: 800));

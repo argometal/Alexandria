@@ -2239,8 +2239,44 @@ void regenerateRealmSeedFromActiveRealmSync() {
   copyActiveRealmDbToRealmSeedSnapshotSync();
 }
 
+/// Copia `assets/` y `manifests/` desde [AlexandriaPaths.bundledDefaultRealmRoot] cuando existen,
+/// para que GateKeeper pinte collage guía (hero, instrucciones, muros) en los **20 huecos** aunque la DB
+/// siga «limpia» ([bootstrapEmptyRealmDatabase]). Sin plantilla en disco, no hace nada (GK queda en blanco).
+void seedBundledWallGuidesIntoRealmSync(String rawRealmId) {
+  final sep = Platform.pathSeparator;
+  final bundledRoot = Directory(AlexandriaPaths.bundledDefaultRealmRoot);
+  if (!bundledRoot.existsSync()) {
+    print(
+      '[LB][REALM_GUIDE_SEED] skip: no folder ${AlexandriaPaths.bundledDefaultRealmRoot}',
+    );
+    return;
+  }
+  final id = AlexandriaPaths.sanitizeRealmPath(rawRealmId);
+  final dstRoot = Directory(AlexandriaPaths.realmDataRoot(id));
+  if (!dstRoot.existsSync()) return;
+
+  final srcAssets = Directory('${bundledRoot.path}${sep}assets');
+  final dstAssets = Directory('${dstRoot.path}${sep}assets');
+  if (srcAssets.existsSync()) {
+    dstAssets.createSync(recursive: true);
+    AlexandriaPaths.copyDirectoryTreeContents(srcAssets, dstAssets);
+  }
+
+  final srcManifests = Directory('${bundledRoot.path}${sep}manifests');
+  final dstManifests = Directory('${dstRoot.path}${sep}manifests');
+  if (srcManifests.existsSync()) {
+    dstManifests.createSync(recursive: true);
+    AlexandriaPaths.copyDirectoryTreeContents(srcManifests, dstManifests);
+  }
+
+  print(
+    '[LB][REALM_GUIDE_SEED] $id ← bundled_default_realm (assets+manifests)',
+  );
+}
+
 /// Realm **nuevo** sin copiar otro: mismo **esqueleto** que un mundo completo (20 parcours + 400 objetos bajo el hub),
-/// pero **sin datos** (sin texto en `body_text`, sin recall/review; `assets/` vacío al crear).
+/// pero **sin datos** en DB (sin texto en `body_text`, sin recall/review). Si existe
+/// `data/bundled_default_realm/`, se copian **assets** y **manifests** guía para que GK no muestre slots en blanco.
 bool createEmptyRealm(String rawId) {
   final id = AlexandriaPaths.sanitizeRealmPath(rawId);
   final root = Directory(AlexandriaPaths.realmDataRoot(id));
@@ -2264,6 +2300,7 @@ bool createEmptyRealm(String rawId) {
 
     File('${root.path}/bridge/context_key.txt').writeAsStringSync('ROOT');
     File('${root.path}/bridge/focus_key.txt').writeAsStringSync('');
+    seedBundledWallGuidesIntoRealmSync(id);
     print('[LB][REALM_EMPTY] $id (árbol homogéneo, sin datos de usuario)');
     return true;
   } catch (e, st) {
@@ -2521,6 +2558,7 @@ void performAlexandriaNuclearDataResetSync() {
   } finally {
     db.dispose();
   }
+  seedBundledWallGuidesIntoRealmSync('default');
   _nuclearRestorePreservedTrainingData(staging);
   copyActiveRealmDbToRealmSeedSnapshotSync();
   print(

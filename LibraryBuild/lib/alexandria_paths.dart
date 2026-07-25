@@ -35,6 +35,26 @@ String? _findRepoRootWalkingUp(Directory start) {
   return null;
 }
 
+bool _looksLikeAlexandriaRepoRoot(String root) {
+  final n = _normalizeRepoRoot(root);
+  final gk = Directory(_pathJoin(n, 'GateKeeper'));
+  final lb = Directory(_pathJoin(n, 'LibraryBuild'));
+  return gk.existsSync() && lb.existsSync();
+}
+
+String? _findRepoRootBySiblingFolders(Directory start) {
+  var d = start;
+  for (var i = 0; i < 36; i++) {
+    if (_looksLikeAlexandriaRepoRoot(d.path)) {
+      return Directory(d.path).absolute.path;
+    }
+    final p = d.parent;
+    if (p.path == d.path) return null;
+    d = p;
+  }
+  return null;
+}
+
 /// Hijo directo bajo un prefijo de `data/realms/` (`listImmediateFolderChildren`).
 class RealmsFolderChild {
   const RealmsFolderChild({
@@ -56,42 +76,168 @@ class AlexandriaPaths {
 
   static String? _repoRootCache;
 
-  /// Raíz del repo donde existe `data/realms/`.
+  /// Log a `library_build.log` sin depender de [AlexandriaAppLog] (evita import circular con resolución de rutas).
+  static void _pathResolutionTrace(String tag, String message) {
+    try {
+      final f = File(appDiagnosticsFilePath('library_build.log'));
+      f.parent.createSync(recursive: true);
+      final ts = DateTime.now().toUtc().toIso8601String();
+      final one = message.replaceAll('\r', ' ').replaceAll('\n', ' | ');
+      f.writeAsStringSync('$ts\tINFO\t$tag\t$one\n', mode: FileMode.append, flush: true);
+    } catch (_) {}
+  }
+
+  /// Raíz del repo (`data/realms/` **o** carpeta con `GateKeeper/` + `LibraryBuild/`).
   ///
-  /// Orden: `ALEXANDRIA_ROOT` → subir desde [Directory.current] (típico al abrir el proyecto) →
-  /// subir desde el ejecutable → [kDefaultAlexandriaRepoRoot] solo si ahí existe `data/realms/` →
-  /// último recurso [kDefaultAlexandriaRepoRoot].
-  ///
-  /// Así no se prefiere un `C:\Alexandria` vacío o viejo por encima del repo desde el que corres LB.
+  /// Orden: `ALEXANDRIA_ROOT` si tiene `data/realms/` → subir desde cwd → por ejecutable →
+  /// mismo criterio por carpetas hermanas (sin necesitar `data/realms` aún) →
+  /// `C:\Alexandria` solo si tiene `data/realms/` → último recurso `C:\Alexandria` (warning si vacío).
   static String get repoRoot {
     return _repoRootCache ??= _resolveRepoRoot();
   }
 
   static String _resolveRepoRoot() {
+    _pathResolutionTrace(
+      'PATH._resolveRepoRoot',
+      'BEGIN cwd=${Directory.current.path} exe=${Platform.resolvedExecutable}',
+    );
     final env = Platform.environment['ALEXANDRIA_ROOT']?.trim();
-    if (env != null && env.isNotEmpty && _hasDataRealms(env)) {
-      return _normalizeRepoRoot(env);
+    if (env != null && env.isNotEmpty) {
+      final envHasRealms = _hasDataRealms(env);
+      final envLooks = _looksLikeAlexandriaRepoRoot(env);
+      _pathResolutionTrace(
+        'PATH._resolveRepoRoot',
+        'ALEXANDRIA_ROOT="$env" _hasDataRealms=$envHasRealms _looksLikeAlexandriaRepoRoot=$envLooks',
+      );
+      if (envHasRealms) {
+        final r = _normalizeRepoRoot(env);
+        _pathResolutionTrace('PATH._resolveRepoRoot', 'CHOSEN=ALEXANDRIA_ROOT(hasRealms) -> $r');
+        return r;
+      }
+      if (envLooks) {
+        final r = _normalizeRepoRoot(env);
+        _pathResolutionTrace('PATH._resolveRepoRoot', 'CHOSEN=ALEXANDRIA_ROOT(looksLikeRepo) -> $r');
+        return r;
+      }
+      _pathResolutionTrace(
+        'PATH._resolveRepoRoot',
+        'ALEXANDRIA_ROOT set but rejected (no data/realms and not GateKeeper+LibraryBuild siblings)',
+      );
+    } else {
+      _pathResolutionTrace('PATH._resolveRepoRoot', 'ALEXANDRIA_ROOT unset or empty');
+    }
+    // Antes que walkUp(cwd): si el .exe está en un bundle (LB+GK+…), la raíz es el extracto, no
+    // `.../LibraryBuild` cuando ahí hay un `data/realms` embebido (desincroniza LB vs GK; ver gatekeeper.log PATH vs LB).
+    final bundleFromExe =
+        findBundleTripletInstallRoot() ?? findBundleRootByLibraryBuildOnly();
+    if (bundleFromExe != null) {
+      final br = _normalizeRepoRoot(bundleFromExe);
+      if (_hasDataRealms(br)) {
+        _pathResolutionTrace(
+          'PATH._resolveRepoRoot',
+          'CHOSEN=bundleFromExe(has data/realms) -> $br',
+        );
+        return br;
+      }
+      if (_looksLikeAlexandriaRepoRoot(br)) {
+        _pathResolutionTrace(
+          'PATH._resolveRepoRoot',
+          'CHOSEN=bundleFromExe(GateKeeper+LibraryBuild) -> $br',
+        );
+        return br;
+      }
+      _pathResolutionTrace(
+        'PATH._resolveRepoRoot',
+        'bundleFromExe=$br skipped (no data/realms at bundle root and not full repo layout)',
+      );
     }
     final fromCwd = _findRepoRootWalkingUp(Directory.current);
-    if (fromCwd != null) return fromCwd;
+    if (fromCwd != null) {
+      _pathResolutionTrace('PATH._resolveRepoRoot', 'CHOSEN=walkUp(cwd has data/realms) -> $fromCwd');
+      return fromCwd;
+    }
+    final fromCwdSib = _findRepoRootBySiblingFolders(Directory.current);
+    if (fromCwdSib != null) {
+      _pathResolutionTrace(
+        'PATH._resolveRepoRoot',
+        'CHOSEN=siblingsFrom(cwd GateKeeper+LibraryBuild) -> $fromCwdSib',
+      );
+      return fromCwdSib;
+    }
+    _pathResolutionTrace(
+      'PATH._resolveRepoRoot',
+      'cwd walk: no data/realms upward; no sibling repo from cwd',
+    );
     try {
       var d = File(Platform.resolvedExecutable).parent;
       for (var i = 0; i < 28; i++) {
         final w = _findRepoRootWalkingUp(d);
-        if (w != null) return w;
+        if (w != null) {
+          _pathResolutionTrace(
+            'PATH._resolveRepoRoot',
+            'CHOSEN=walkUp(exeDir i=$i has data/realms) -> $w',
+          );
+          return w;
+        }
+        final ws = _findRepoRootBySiblingFolders(d);
+        if (ws != null) {
+          _pathResolutionTrace(
+            'PATH._resolveRepoRoot',
+            'CHOSEN=siblingsFrom(exeDir i=$i) -> $ws',
+          );
+          return ws;
+        }
         final p = d.parent;
         if (p.path == d.path) break;
         d = p;
       }
-    } catch (_) {}
-    if (_hasDataRealms(kDefaultAlexandriaRepoRoot)) {
-      return _normalizeRepoRoot(kDefaultAlexandriaRepoRoot);
+      _pathResolutionTrace('PATH._resolveRepoRoot', 'exe walk: exhausted parents without match');
+    } catch (e, st) {
+      _pathResolutionTrace('PATH._resolveRepoRoot', 'exe walk exception: $e | $st');
     }
-    return _normalizeRepoRoot(kDefaultAlexandriaRepoRoot);
+    if (_hasDataRealms(kDefaultAlexandriaRepoRoot)) {
+      final r = _normalizeRepoRoot(kDefaultAlexandriaRepoRoot);
+      _pathResolutionTrace(
+        'PATH._resolveRepoRoot',
+        'CHOSEN=fallbackDefault(has data/realms at default) -> $r',
+      );
+      return r;
+    }
+    if (!_hasDataRealms(kDefaultAlexandriaRepoRoot)) {
+      // ignore: avoid_print
+      print(
+        '[AlexandriaPaths] Sin data/realms ni repo GateKeeper+LibraryBuild; fallback '
+        '${kDefaultAlexandriaRepoRoot}. Define ALEXANDRIA_ROOT para alinear con GateKeeper.',
+      );
+    }
+    final last = _normalizeRepoRoot(kDefaultAlexandriaRepoRoot);
+    _pathResolutionTrace(
+      'PATH._resolveRepoRoot',
+      'CHOSEN=fallbackDefault(last resort, may be empty on this machine) -> $last',
+    );
+    return last;
   }
 
   /// Compatibilidad: misma raíz resuelta que [repoRoot].
   static String get kAlexandriaRepoRoot => repoRoot;
+
+  /// Archivo en la raíz del repo (al lado de `GateKeeper/`). GateKeeper lo lee para anclar la misma [repoRoot].
+  static const String runtimeRootMarkerFileName = 'alexandria_runtime_root.txt';
+
+  /// Escribe la raíz resuelta para que GateKeeper no use otra carpeta que Flutter (p. ej. `C:\\Alexandria` vacío).
+  static void writeRuntimeRootMarkerForGateKeeper() {
+    try {
+      final root = repoRoot;
+      final marker = File(_pathJoin(root, runtimeRootMarkerFileName));
+      marker.writeAsStringSync('$root\n');
+      _pathResolutionTrace(
+        'PATH.writeRuntimeRootMarkerForGateKeeper',
+        'wrote ${marker.path} firstLine=$root',
+      );
+    } catch (e, st) {
+      _pathResolutionTrace('PATH.writeRuntimeRootMarkerForGateKeeper', 'FAIL $e | $st');
+    }
+  }
 
   static String get _activeRealmFile =>
       '${repoRoot}/$_activeRealmRelative';
@@ -159,8 +305,99 @@ class AlexandriaPaths {
   static String get realmSeedDbPath =>
       '${realmSeedDir}${Platform.pathSeparator}alexandria.db';
 
-  /// Servidor Node en repo: `data-transfer/` → `out/`, `handoff/incoming/`.
-  static String get dataTransferRoot => '${repoRoot}/data-transfer';
+  /// Raíz del instalador embebido (tres .exe hermanos + carpeta `data-transfer/`), si existe.
+  static String? findBundleTripletInstallRoot() {
+    try {
+      var dir = File(Platform.resolvedExecutable).parent;
+      for (var i = 0; i < 22; i++) {
+        final root = dir.absolute.path;
+        final lb = File(_pathJoin(root, 'LibraryBuild', 'library_build.exe'));
+        final gk = File(_pathJoin(root, 'GateKeeper', 'Gatekeeper.exe'));
+        final lab = File(_pathJoin(root, 'TrainingLab', 'training_app.exe'));
+        if (lb.existsSync() && gk.existsSync() && lab.existsSync()) {
+          return root;
+        }
+        final parent = dir.parent;
+        if (parent.path == dir.path) break;
+        dir = parent;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Carpeta padre del layout embebido cuando al menos existe `LibraryBuild/library_build.exe`
+  /// (no exige GK/Lab: evita caer en `LibraryBuild/data-transfer` si el triplete falla).
+  static String? findBundleRootByLibraryBuildOnly() {
+    try {
+      var dir = File(Platform.resolvedExecutable).parent;
+      for (var i = 0; i < 22; i++) {
+        final root = dir.absolute.path;
+        final lb = File(_pathJoin(root, 'LibraryBuild', 'library_build.exe'));
+        if (lb.existsSync()) {
+          return root;
+        }
+        final parent = dir.parent;
+        if (parent.path == dir.path) break;
+        dir = parent;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  static String _dataTransferDirForBundleRoot(String bundleRoot) {
+    final nested = _pathJoin(bundleRoot, 'data-transfer');
+    final pkg = File(_pathJoin(nested, 'DataTransfer.exe'));
+    if (pkg.existsSync()) {
+      return nested;
+    }
+    final legacy = File(_pathJoin(bundleRoot, 'DataTransfer.exe'));
+    if (legacy.existsSync()) {
+      return bundleRoot;
+    }
+    return nested;
+  }
+
+  /// Carpeta donde el launcher de Windows escribe **`launcher.log`** (errores / arranques).
+  /// No depende del realm; sirve para soporte entre versiones.
+  static String get launcherDiagnosticsFolder {
+    if (!Platform.isWindows) return '';
+    return sharedDiagnosticsDirectory;
+  }
+
+  static String get launcherDiagnosticsLogPath =>
+      _pathJoin(launcherDiagnosticsFolder, 'launcher.log');
+
+  /// Carpeta compartida: `…/Alexandria/diagnostics` (Windows) o `~/.alexandria/diagnostics` (otros).
+  static String get sharedDiagnosticsDirectory {
+    if (Platform.isWindows) {
+      final la = Platform.environment['LOCALAPPDATA'];
+      if (la != null && la.isNotEmpty) {
+        return _pathJoin(la, 'Alexandria', 'diagnostics');
+      }
+    }
+    final h = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+    if (h != null && h.isNotEmpty) {
+      return _pathJoin(h, '.alexandria', 'diagnostics');
+    }
+    return _pathJoin(Directory.systemTemp.path, 'Alexandria_diagnostics');
+  }
+
+  /// Ruta de un `.log` bajo [sharedDiagnosticsDirectory].
+  static String appDiagnosticsFilePath(String fileName) =>
+      _pathJoin(sharedDiagnosticsDirectory, fileName);
+
+  /// `data-transfer/` del repo en desarrollo, o junto al bundle del .exe publicado.
+  ///
+  /// Prioridad: triplete completo → mismo [bundleRoot] solo con LB → repo `data-transfer`.
+  /// Con pkg en `data-transfer/DataTransfer.exe` el directorio es `<bundle>/data-transfer`;
+  /// con exe legado en la raíz del extract, el servidor escribe `out/` en `<bundle>/`.
+  static String get dataTransferRoot {
+    final bundle = findBundleTripletInstallRoot() ?? findBundleRootByLibraryBuildOnly();
+    if (bundle != null) {
+      return _dataTransferDirForBundleRoot(bundle);
+    }
+    return '${repoRoot}/data-transfer';
+  }
 
   /// Dataset PAO 00–99 (JSON fijo del repo; import en LB al realm activo).
   static String get paoDatasetDir => '${repoRoot}/data/pao';

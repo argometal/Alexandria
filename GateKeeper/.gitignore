@@ -1,3 +1,5 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+# Salida local de export (CREAR-APP.bat)
+/export/

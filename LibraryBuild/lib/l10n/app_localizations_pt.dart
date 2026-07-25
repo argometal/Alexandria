@@ -41,6 +41,43 @@ class AppLocalizationsPt extends AppLocalizations {
   String get sectionSystem => 'SISTEMA';
 
   @override
+  String get sectionAlexandriaApps => 'APPS ALEXANDRIA';
+
+  @override
+  String get siblingOpenGatekeeper => 'Abrir GateKeeper';
+
+  @override
+  String get siblingOpenGatekeeperSubtitle => 'Visualizador 3D do realm';
+
+  @override
+  String get siblingOpenTrainingLab => 'Abrir Training lab';
+
+  @override
+  String get siblingOpenTrainingLabSubtitle => 'Encode / recall';
+
+  @override
+  String get siblingAppMissingShort =>
+      'Executável não encontrado. Compile ou use o bundle publicado.';
+
+  @override
+  String get launcherDiagnosticsTitle => 'Diagnósticos do launcher';
+
+  @override
+  String get launcherDiagnosticsSubtitle =>
+      'Abre a pasta: launcher.log, library_build.log, gatekeeper.log (se existir).';
+
+  @override
+  String get appDiagnosticsLogTitle => 'Log da app (exportar)';
+
+  @override
+  String get appDiagnosticsLogSubtitle =>
+      'Copia o caminho de library_build.log para anexar em relatórios de erro.';
+
+  @override
+  String get appDiagnosticsPathCopied =>
+      'Caminho copiado para a área de transferência';
+
+  @override
   String get sectionLanguage => 'IDIOMA';
 
   @override
@@ -170,6 +207,10 @@ class AppLocalizationsPt extends AppLocalizations {
   String dataTransferScriptMissing(String path) {
     return 'Ficheiro em falta: $path';
   }
+
+  @override
+  String get dataTransferNoServerHint =>
+      'Esperava-se DataTransfer.exe na pasta do bundle ou server.js em desenvolvimento. Execute CREAR-APP.bat outra vez ou use o repositório com Node.';
 
   @override
   String get dataTransferServerAlreadyRunning =>

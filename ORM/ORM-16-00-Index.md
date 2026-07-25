@@ -28,6 +28,8 @@
 | **ORM-16-06-MatchCardsLb** | Juego Match cards solo en LB: tablas `lb_match_pairs` / `lb_match_pair_fsrs_state`, `route_key` reservado, assets `lb_match_cards/`; sin GK. |
 | **ORM-16-07-LocusBodyJsonViewer** | Contrato `body_text` como JSON de bloques (`p`, `img`, `link`, `card`, …) y viewer GK; distinción vs ORM-16-06. |
 | **ORM-16-08-MatchCardsModel-en** | Match cards: modelo (lemma / transliteration / gloss), revisión vs FSRS, ejemplo léxico (EN). |
+| **ORM-16-09-SQLiteSchemaReference** | Referencia de esquema SQLite (tablas / índices). |
+| **ORM-16-10-BundledLauncherDiagnostics** | Build Windows de un solo .exe: layout en `%LOCALAPPDATA%`, `launcher.log`, data-transfer/pkg, checklist PR. |
 
 ---
 
@@ -47,3 +49,5 @@
 | 1.3 | ORM-16-05 Realm seed (`data/realm_seed/alexandria.db` + script). |
 | 1.4 | ORM-16-06 Match cards (LB); ORM-16-07 bloques JSON locus + viewer; nota “Alexandria 16” en índice. |
 | 1.5 | ORM-16-08 modelo Match cards (EN); columnas `transliteration` / `gloss`. |
+| 1.6 | ORM-16-10 launcher empaquetado + `launcher.log` + drawer LB; enlace ORM-16-09 en tabla. |
+| 1.7 | ORM-16-10 §6 desinstalador; §7 Cat-Attack; metadatos launcher. |

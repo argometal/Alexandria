@@ -1,0 +1,55 @@
+# Deliverables / machine-local paths
+/deliveries/
+/alexandria_runtime_root.txt
+
+# Dependencies
+node_modules/
+
+# Secrets / private env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.swp
+*~
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Caches
+.cache/
+.npm/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+.godot/
+.dart_tool/
+.pub-cache/
+.flutter-plugins-dependencies
+**/.godot/
+
+# Regenerable builds / outputs
+build/
+**/build/
+bin/
+obj/
+**/bin/
+**/obj/
+dist/
+out/
+**/export/
+*.apk
+*.aab
+*.ipa
+*.pck
+*.exe
+!CREAR-APP.bat
+!UNINSTALL-Alexandria.bat

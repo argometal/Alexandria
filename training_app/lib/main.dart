@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import 'alexandria_app_log.dart';
 import 'screens/home_screen.dart';
 import 'services/session_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  AlexandriaAppLog.init();
   final store = await SessionStore.create();
   runApp(TrainingApp(sessionStore: store));
 }

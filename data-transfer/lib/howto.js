@@ -1,11 +1,12 @@
 const fs = require('fs');
 const { HOWTO_FILE, PORT, OUT_DIR, INCOMING_DIR, CONFIG, ROOT_DIR } = require('./config');
-const { getLocalIp } = require('./utils');
+const { buildAccessUrlRows, getLocalIp } = require('./utils');
 
 function writeHowToFile() {
-  const ip = getLocalIp();
-  const text =
-`================================================================================
+  const rows = buildAccessUrlRows(PORT);
+  const urlBlock = rows.map((r) => `  ${r.url}  (${r.name}; ${r.kind})`).join('\n');
+  const preferred = getLocalIp();
+  const text = `================================================================================
 DATA TRANSFER — transporte tonto (out/ + handoff/incoming/)
 ================================================================================
 
@@ -19,10 +20,11 @@ ARRANQUE
 
   Puerto: ${PORT}
 
-URL
----
-  http://127.0.0.1:${PORT}
-  http://${ip}:${PORT}
+URL (todas las IPv4 de este equipo; prueba la que corresponda a tu red)
+-----------------------------------------------------------------------
+  IP preferida (log): ${preferred}
+
+${urlBlock}
 
 RUTAS (sin interpretar cuerpo)
 ------------------------------
@@ -39,7 +41,7 @@ RUTAS (sin interpretar cuerpo)
   GET  /download?name=&bucket=...
   GET  /send?text=...            — texto → out/
   GET  /latest?bucket=out|incoming
-  GET  /health                   — límites y rutas (JSON)
+  GET  /health                   — límites, rutas y net.ipv4 (JSON)
   POST /clean-out                — borra archivos en out/
   POST /clean-incoming           — borra archivos en incoming/
 
@@ -47,7 +49,6 @@ RUTAS (sin interpretar cuerpo)
 ================================================================================
 `;
   fs.writeFileSync(HOWTO_FILE, text, 'utf8');
-  return ip;
 }
 
 module.exports = { writeHowToFile };

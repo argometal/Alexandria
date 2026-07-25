@@ -17,12 +17,13 @@ class DelayScreen extends StatefulWidget {
 }
 
 class _DelayScreenState extends State<DelayScreen> {
-  int _left = 60;
+  late int _left;
   Timer? _t;
 
   @override
   void initState() {
     super.initState();
+    _left = (widget.session.config?.interRecallDelaySec ?? 60).clamp(5, 600);
     _t = Timer.periodic(const Duration(seconds: 1), (tm) {
       if (!mounted) {
         tm.cancel();
@@ -77,9 +78,20 @@ class _DelayScreenState extends State<DelayScreen> {
         ],
       ),
       body: Center(
-        child: Text(
-          '$_left s',
-          style: const TextStyle(fontSize: 56, color: Colors.white30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '$_left s',
+              style: const TextStyle(fontSize: 56, color: Colors.white30),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Elegida en inicio: ${(widget.session.config?.interRecallDelaySec ?? 60)} s (Skip = ir ya)',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: Colors.white38),
+            ),
+          ],
         ),
       ),
     );

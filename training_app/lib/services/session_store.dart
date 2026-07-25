@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../models/daily_metric.dart';
 import '../models/event.dart';
 
 /// Escribe JSONL bajo [applicationSupportDirectory]/training_app/sessions
@@ -13,6 +14,9 @@ class SessionStore {
 
   final Directory sessionsDir;
   final File metricsFile;
+
+  /// Carpeta `.../application_support/training_app` (JSONL en `sessions/`, CSV en `metrics/`).
+  String get dataRootPath => sessionsDir.parent.path;
 
   static Future<SessionStore> create() async {
     final root = await getApplicationSupportDirectory();
@@ -50,4 +54,84 @@ class SessionStore {
     }
     metricsFile.writeAsStringSync('$line\n', mode: FileMode.append, flush: true);
   }
+
+  /// Filas de historial (orden cronológico del CSV). Sin archivo o solo cabecera: lista vacía.
+  List<DailyMetricRow> readDailyMetrics() {
+    if (!metricsFile.existsSync()) {
+      return [];
+    }
+    final raw = metricsFile.readAsStringSync();
+    final lines = const LineSplitter().convert(raw);
+    if (lines.isEmpty) {
+      return [];
+    }
+    final out = <DailyMetricRow>[];
+    for (final line0 in lines) {
+      final line = line0.trim();
+      if (line.isEmpty) {
+        continue;
+      }
+      if (line.startsWith('date_utc,')) {
+        continue;
+      }
+      final p = _splitCsvLine(line);
+      if (p.length < 7) {
+        continue;
+      }
+      out.add(
+        DailyMetricRow(
+          dateUtc: p[0],
+          sessionId: p[1],
+          modality: p[2],
+          scoreNorm: double.tryParse(p[3]) ?? 0,
+          accImmediate: double.tryParse(p[4]) ?? 0,
+          accDelayed: double.tryParse(p[5]) ?? 0,
+          retention: double.tryParse(p[6]) ?? 0,
+        ),
+      );
+    }
+    return out;
+  }
+}
+
+/// Campos con comas o comillas usan comillas; el resto se parten por `,`.
+List<String> _splitCsvLine(String line) {
+  if (!line.contains('"')) {
+    return line.split(',');
+  }
+  final out = <String>[];
+  var i = 0;
+  while (i < line.length) {
+    if (line[i] == '"') {
+      i++;
+      final buf = StringBuffer();
+      while (i < line.length) {
+        if (line[i] == r'"') {
+          if (i + 1 < line.length && line[i + 1] == r'"') {
+            buf.write(r'"');
+            i += 2;
+          } else {
+            i++;
+            break;
+          }
+        } else {
+          buf.write(line[i]);
+          i++;
+        }
+      }
+      out.add(buf.toString());
+      if (i < line.length && line[i] == ',') {
+        i++;
+      }
+    } else {
+      final j = line.indexOf(',', i);
+      if (j < 0) {
+        out.add(line.substring(i).trim());
+        break;
+      }
+      out.add(line.substring(i, j).trim());
+      i = j + 1;
+    }
+  }
+  return out;
 }

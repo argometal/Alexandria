@@ -25,6 +25,7 @@ public partial class RealmController : Node
 
 	public override void _Ready()
 	{
+		AppDiagnosticsLog.InitIfNeeded();
 		GD.Print("[RC][INIT]");
 
 		_camera = GetNode<CameraRig>("/root/Realm/CameraRig");
@@ -50,6 +51,7 @@ public partial class RealmController : Node
 		hudRoot.SetAnchorsPreset(Control.LayoutPreset.FullRect);
 		hudRoot.MouseFilter = Control.MouseFilterEnum.Ignore;
 		hudLayer.AddChild(hudRoot);
+		SetupStartupDataPathsOverlay(hudRoot);
 		_intentHud = new Label();
 		_intentHud.HorizontalAlignment = HorizontalAlignment.Right;
 		_intentHud.SetAnchorsPreset(Control.LayoutPreset.TopRight);
@@ -80,7 +82,17 @@ public partial class RealmController : Node
 		try
 		{
 			var root = AlexandriaDataRoot.RealmDataRoot;
+			var repo = AlexandriaDataRoot.RepoRoot;
+			var bridge = BridgeSpatial.BridgeDir;
+			var snap = Path.Combine(root, "snapshot");
+			GD.Print($"[GK][DIAG] RepoRoot={repo}");
 			GD.Print($"[GK][DIAG] RealmDataRoot={root}");
+			GD.Print($"[GK][DIAG] bridgeDir={bridge}");
+			GD.Print($"[GK][DIAG] snapshotDir={snap}");
+			AppDiagnosticsLog.W("PATH", $"RepoRoot={repo}");
+			AppDiagnosticsLog.W("PATH", $"RealmDataRoot={root}");
+			AppDiagnosticsLog.W("PATH", $"bridgeDir={bridge}");
+			AppDiagnosticsLog.W("PATH", $"snapshotDir={snap}");
 			var pr = BridgeSpatial.PlaceRecallEnabledPath;
 			GD.Print(File.Exists(pr)
 				? $"[GK][DIAG] place_recall_enabled.txt={File.ReadAllText(pr).Trim()}"
@@ -93,6 +105,13 @@ public partial class RealmController : Node
 			GD.Print(File.Exists(foc)
 				? $"[GK][DIAG] focus_key.txt={File.ReadAllText(foc).Trim()}"
 				: "[GK][DIAG] focus_key.txt=(missing)");
+			AppDiagnosticsLog.W("BRIDGE_FILE",
+				File.Exists(foc)
+					? $"focus_key.txt path={foc} value={File.ReadAllText(foc).Trim()}"
+					: $"focus_key.txt MISSING path={foc}");
+			var vCur = Path.Combine(root, "viewer", "current.json");
+			AppDiagnosticsLog.W("BRIDGE_FILE",
+				File.Exists(vCur) ? $"viewer/current.json OK path={vCur}" : $"viewer/current.json MISSING path={vCur}");
 			GD.Print($"[GK][DIAG] navigation_intent mode (line1)={BridgeSpatial.ReadNavigationIntentModeFirstLine()} placeRecallOn={BridgeSpatial.ReadPlaceRecallGloballyEnabled()}");
 			var gkLang = BridgeSpatial.GkUiLangPath;
 			GD.Print(File.Exists(gkLang)
@@ -103,6 +122,53 @@ public partial class RealmController : Node
 		{
 			GD.PrintErr("[GK][DIAG] " + e.Message);
 		}
+	}
+
+	/// <summary>Empaquetado sin consola: panel breve con rutas + mismo texto en <c>gatekeeper.log</c>.</summary>
+	private void SetupStartupDataPathsOverlay(Control parent)
+	{
+		var panel = new PanelContainer();
+		panel.Name = "GkStartupPathsOverlay";
+		panel.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
+		panel.OffsetLeft = 10f;
+		panel.OffsetTop = -168f;
+		panel.OffsetRight = 640f;
+		panel.OffsetBottom = -10f;
+		panel.MouseFilter = Control.MouseFilterEnum.Ignore;
+
+		var flat = new StyleBoxFlat();
+		flat.BgColor = new Color(0.06f, 0.07f, 0.1f, 0.92f);
+		flat.SetCornerRadiusAll(6);
+		panel.AddThemeStyleboxOverride("panel", flat);
+
+		var vb = new VBoxContainer();
+		panel.AddChild(vb);
+
+		void AddLine(string text, int fontSize, bool wrap)
+		{
+			var lab = new Label { Text = text };
+			lab.AddThemeFontSizeOverride("font_size", fontSize);
+			if (wrap)
+			{
+				lab.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+				lab.CustomMinimumSize = new Vector2(600f, 0f);
+			}
+			vb.AddChild(lab);
+		}
+
+		AddLine("GateKeeper — datos que lee esta sesion (sin consola visible)", 11, false);
+		AddLine("Repo: " + AlexandriaDataRoot.RepoRoot, 10, true);
+		AddLine("Realm (DB / bridge / snapshot): " + AlexandriaDataRoot.RealmDataRoot, 10, true);
+		AddLine("Log: " + AppDiagnosticsLog.DiagnosticLogFilePath, 10, true);
+		AddLine("Se oculta en 20 s. Si falla el parcour, abre el .log y compara con Library Build.", 9, true);
+
+		parent.AddChild(panel);
+		var t = GetTree().CreateTimer(20.0);
+		t.Timeout += () =>
+		{
+			if (IsInstanceValid(panel))
+				panel.QueueFree();
+		};
 	}
 
 	private void OnPlaceRecallUnlockedInSession(string key)

@@ -24,7 +24,11 @@ class ActiveTrainingSession {
     required String phase,
     required String userInput,
     required int totalLatencyMs,
-    required double confidence,
+    /// `good` | `hard` | `fail`
+    required String selfReport,
+    /// `reorder` | `type` — se guarda en contexto por evento.
+    required String recallInputMode,
+    bool peekReferenceUsed = false,
   }) {
     final c = config;
     if (c == null) return [];
@@ -36,6 +40,9 @@ class ActiveTrainingSession {
         ? InputParser.parseDigitsInput(userInput, sequence)
         : InputParser.parseCardsInput(userInput, sequence);
     final t = DateTime.now().toUtc();
+    final ctx = <String, dynamic>{
+      'peek_reference_used': peekReferenceUsed,
+    };
     return [
       for (final s in slots)
         TrainingEvent(
@@ -47,8 +54,10 @@ class ActiveTrainingSession {
           stimulusPosition: s.position,
           userInput: s.user,
           latencyMs: per,
-          confidence: confidence,
+          selfReport: selfReport,
+          recallInputMode: recallInputMode,
           errorType: s.errorType,
+          context: ctx,
         ),
     ];
   }

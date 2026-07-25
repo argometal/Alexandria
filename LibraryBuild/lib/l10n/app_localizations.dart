@@ -160,6 +160,72 @@ abstract class AppLocalizations {
   /// **'SYSTEM'**
   String get sectionSystem;
 
+  /// No description provided for @sectionAlexandriaApps.
+  ///
+  /// In en, this message translates to:
+  /// **'ALEXANDRIA APPS'**
+  String get sectionAlexandriaApps;
+
+  /// No description provided for @siblingOpenGatekeeper.
+  ///
+  /// In en, this message translates to:
+  /// **'Open GateKeeper'**
+  String get siblingOpenGatekeeper;
+
+  /// No description provided for @siblingOpenGatekeeperSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'3D realm viewer'**
+  String get siblingOpenGatekeeperSubtitle;
+
+  /// No description provided for @siblingOpenTrainingLab.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Training lab'**
+  String get siblingOpenTrainingLab;
+
+  /// No description provided for @siblingOpenTrainingLabSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Encode / recall drills'**
+  String get siblingOpenTrainingLabSubtitle;
+
+  /// No description provided for @siblingAppMissingShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Executable not found. Build the app or run from the shipped bundle.'**
+  String get siblingAppMissingShort;
+
+  /// No description provided for @launcherDiagnosticsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Launcher diagnostics'**
+  String get launcherDiagnosticsTitle;
+
+  /// No description provided for @launcherDiagnosticsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Opens the diagnostics folder: launcher.log, library_build.log, gatekeeper.log (if present).'**
+  String get launcherDiagnosticsSubtitle;
+
+  /// No description provided for @appDiagnosticsLogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'App log (export)'**
+  String get appDiagnosticsLogTitle;
+
+  /// No description provided for @appDiagnosticsLogSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy full path to library_build.log to attach in bug reports.'**
+  String get appDiagnosticsLogSubtitle;
+
+  /// No description provided for @appDiagnosticsPathCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Path copied to clipboard'**
+  String get appDiagnosticsPathCopied;
+
   /// No description provided for @sectionLanguage.
   ///
   /// In en, this message translates to:
@@ -379,6 +445,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Missing file: {path}'**
   String dataTransferScriptMissing(String path);
+
+  /// No description provided for @dataTransferNoServerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Expected DataTransfer.exe in the shipped folder or server.js for dev. Re-run CREAR-APP.bat, or open the project from the repo with Node.'**
+  String get dataTransferNoServerHint;
 
   /// No description provided for @dataTransferServerAlreadyRunning.
   ///

@@ -8,7 +8,8 @@ class TrainingEvent {
     required this.stimulusPosition,
     this.userInput,
     this.latencyMs,
-    this.confidence,
+    this.selfReport,
+    this.recallInputMode,
     this.errorType,
     this.context = const {},
   });
@@ -21,7 +22,10 @@ class TrainingEvent {
   final int stimulusPosition;
   final String? userInput;
   final int? latencyMs;
-  final double? confidence;
+  /// Solo recall: [good] | [hard] | [fail] (cómo sentiste el intento, no un %).
+  final String? selfReport;
+  /// Solo recall: [reorder] o [type].
+  final String? recallInputMode;
   final String? errorType;
   final Map<String, dynamic> context;
 
@@ -34,7 +38,8 @@ class TrainingEvent {
         'stimulus_position': stimulusPosition,
         'user_input': userInput,
         'latency_ms': latencyMs,
-        'confidence': confidence,
+        'self_report': selfReport,
+        'recall_input_mode': recallInputMode,
         'error_type': errorType,
         'context': context,
       };
